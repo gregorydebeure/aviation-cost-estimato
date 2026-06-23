@@ -1,9 +1,9 @@
-"""
-✈️ Aviation Cost Estimator — Application Streamlit
-Estimation et simulation des coûts d'exploitation d'avions d'affaires.
-Auteur : Généré pour analyse budgétaire aviation privée/charter.
-"""
 
+"""
+✈️ Aviation Cost Estimator — Streamlit Application
+Estimation and simulation of business aircraft operating costs.
+"""
+ 
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
@@ -11,19 +11,19 @@ import plotly.express as px
 from io import BytesIO
 import warnings
 warnings.filterwarnings("ignore")
-
-# ─── CONFIG PAGE ────────────────────────────────────────────────────────────
+ 
+# ─── PAGE CONFIG ────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="Aviation Cost Estimator",
     page_icon="✈",
     layout="wide",
     initial_sidebar_state="expanded",
 )
-
-# ─── STYLES CSS ─────────────────────────────────────────────────────────────
+ 
+# ─── CSS STYLES ─────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
-    /* Palette : bleu nuit aviation + or ambre + gris ardoise */
+    /* Palette: aviation navy + amber gold + slate grey */
     :root {
         --navy:   #0B1629;
         --deep:   #112244;
@@ -35,22 +35,22 @@ st.markdown("""
         --white:  #F0F4FA;
         --card:   #13233F;
     }
-
-    /* Fond général */
+ 
+    /* Background */
     .stApp {
         background-color: var(--navy) !important;
         color: var(--light) !important;
         font-family: 'Segoe UI', system-ui, sans-serif;
     }
-
+ 
     /* Sidebar */
     [data-testid="stSidebar"] {
         background-color: var(--deep) !important;
         border-right: 1px solid var(--mid);
     }
     [data-testid="stSidebar"] * { color: var(--light) !important; }
-
-    /* Titre principal */
+ 
+    /* Main title */
     .main-title {
         font-family: 'Segoe UI', monospace;
         font-size: 2rem;
@@ -67,8 +67,8 @@ st.markdown("""
         text-transform: uppercase;
         margin-bottom: 1.5rem;
     }
-
-    /* Cartes métriques */
+ 
+    /* Metric cards */
     .metric-card {
         background: var(--card);
         border: 1px solid var(--mid);
@@ -94,7 +94,7 @@ st.markdown("""
         color: var(--slate);
         margin-top: 0.1rem;
     }
-
+ 
     /* Section headers */
     .section-header {
         font-size: 0.7rem;
@@ -105,25 +105,25 @@ st.markdown("""
         padding-bottom: 0.4rem;
         margin: 1.2rem 0 0.8rem 0;
     }
-
+ 
     /* Divider */
     hr { border-color: var(--mid) !important; }
-
-    /* Streamlit widgets override */
+ 
+    /* Widget labels */
     .stSelectbox label, .stSlider label, .stNumberInput label,
     .stFileUploader label { color: var(--light) !important; font-size: 0.82rem; }
-
+ 
     .stSlider [data-baseweb="slider"] { accent-color: var(--gold); }
-
-    /* Metric natif */
+ 
+    /* Native metrics */
     [data-testid="stMetricValue"] { color: var(--amber) !important; font-size: 1.5rem !important; }
     [data-testid="stMetricLabel"] { color: var(--slate) !important; font-size: 0.72rem !important; letter-spacing: 0.1em; }
     [data-testid="stMetricDelta"] { color: #4ADE80 !important; }
-
-    /* Alerte / info */
+ 
+    /* Alerts */
     .stAlert { background-color: var(--card) !important; border-color: var(--mid) !important; }
-
-    /* Bouton */
+ 
+    /* Buttons */
     .stButton > button {
         background: var(--mid) !important;
         color: var(--amber) !important;
@@ -133,30 +133,30 @@ st.markdown("""
         font-weight: 600;
     }
     .stButton > button:hover { background: var(--gold) !important; color: var(--navy) !important; }
-
-    /* Tableur */
+ 
+    /* Dataframe */
     .stDataFrame { border: 1px solid var(--mid); border-radius: 6px; }
-
+ 
     /* Tabs */
     [data-baseweb="tab-list"] { background: var(--card); border-radius: 6px; }
     [data-baseweb="tab"] { color: var(--slate) !important; }
     [aria-selected="true"] { color: var(--amber) !important; border-bottom-color: var(--gold) !important; }
-
+ 
     /* Expander */
     [data-testid="stExpander"] { background: var(--card); border: 1px solid var(--mid); border-radius: 6px; }
-
-    /* RunTag */
+ 
+    /* Status tags */
     .tag-ok  { background:#163A2A; color:#4ADE80; padding:2px 8px; border-radius:3px; font-size:0.75rem; }
     .tag-warn{ background:#3A2A10; color:#FBBF24; padding:2px 8px; border-radius:3px; font-size:0.75rem; }
     .tag-err { background:#3A1010; color:#F87171; padding:2px 8px; border-radius:3px; font-size:0.75rem; }
 </style>
 """, unsafe_allow_html=True)
-
-# ─── DONNÉES EXEMPLE ────────────────────────────────────────────────────────
+ 
+# ─── DEFAULT DATASET ────────────────────────────────────────────────────────
 def get_default_data() -> pd.DataFrame:
     """
-    Jeu de données intégré par défaut basé sur des références réelles
-    du marché de l'aviation d'affaires (source : JETNET, AMSTAT, NBAA 2023).
+    Built-in default dataset based on real business aviation market references
+    (sources: JETNET, AMSTAT, NBAA 2023).
     """
     data = {
         "Modele": [
@@ -207,146 +207,139 @@ def get_default_data() -> pd.DataFrame:
         "Passagers_Max": [13, 18, 17, 16, 9, 11, 10, 10, 18, 5],
     }
     return pd.DataFrame(data)
-
-# ─── COLONNES REQUISES ───────────────────────────────────────────────────────
-COLONNES_REQUISES = {
-    "Modele": "Nom de l'appareil",
-    "Couts_Fixes_Annuels": "Coûts fixes hors équipage (€/an)",
-    "Couts_Equipe_Annuels": "Coûts d'équipage annuels (€/an)",
-    "Cout_Horaire_Charter": "Coût variable horaire Charter (€/h)",
-    "Cout_Horaire_Prive": "Coût variable horaire Privé (€/h)",
-    "Taux_Charter_EUR_h": "Tarif charter facturé (€/h)",
+ 
+# ─── REQUIRED COLUMNS ────────────────────────────────────────────────────────
+REQUIRED_COLUMNS = {
+    "Modele":               "Aircraft name",
+    "Couts_Fixes_Annuels":  "Fixed costs excl. crew (€/year)",
+    "Couts_Equipe_Annuels": "Annual crew costs (€/year)",
+    "Cout_Horaire_Charter": "Variable charter hourly cost (€/h)",
+    "Cout_Horaire_Prive":   "Variable private hourly cost (€/h)",
+    "Taux_Charter_EUR_h":   "Charter rate billed to client (€/h)",
 }
-
-# ─── CHARGEMENT DONNÉES ──────────────────────────────────────────────────────
-def charger_donnees(fichier) -> tuple[pd.DataFrame, list[str]]:
+ 
+# ─── DATA LOADING ────────────────────────────────────────────────────────────
+def load_data(file) -> tuple[pd.DataFrame, list[str]]:
     """
-    Charge un fichier Excel ou CSV uploadé par l'utilisateur.
-    Retourne (DataFrame, liste_erreurs).
+    Loads an Excel or CSV file uploaded by the user.
+    Returns (DataFrame, list_of_errors).
     """
-    erreurs = []
+    errors = []
     try:
-        if fichier.name.endswith(".csv"):
-            df = pd.read_csv(fichier)
-        elif fichier.name.endswith(".xls"):
-            df = pd.read_excel(fichier, engine="xlrd")
+        if file.name.endswith(".csv"):
+            df = pd.read_csv(file)
+        elif file.name.endswith(".xls"):
+            df = pd.read_excel(file, engine="xlrd")
         else:
-            df = pd.read_excel(fichier)
+            df = pd.read_excel(file)
     except Exception as e:
-        return None, [f"Impossible de lire le fichier : {e}"]
-
-    # Vérification colonnes minimales requises
-    manquantes = [col for col in COLONNES_REQUISES if col not in df.columns]
-    if manquantes:
-        erreurs.append(
-            f"Colonnes manquantes : {', '.join(manquantes)}. "
-            f"Colonnes détectées : {', '.join(df.columns.tolist())}"
+        return None, [f"Cannot read file: {e}"]
+ 
+    # Check required columns
+    missing = [col for col in REQUIRED_COLUMNS if col not in df.columns]
+    if missing:
+        errors.append(
+            f"Missing columns: {', '.join(missing)}. "
+            f"Detected columns: {', '.join(df.columns.tolist())}"
         )
-        return None, erreurs
-
-    # Conversion types numériques
-    cols_num = [c for c in COLONNES_REQUISES if c != "Modele"]
-    for col in cols_num:
+        return None, errors
+ 
+    # Convert to numeric types
+    num_cols = [c for c in REQUIRED_COLUMNS if c != "Modele"]
+    for col in num_cols:
         df[col] = pd.to_numeric(df[col], errors="coerce")
-
+ 
     df = df.dropna(subset=["Modele"])
-    return df, erreurs
-
-# ─── CALCULS COÛTS ───────────────────────────────────────────────────────────
-def calculer_couts(avion: pd.Series, h_charter: int, h_prive: int) -> dict:
+    return df, errors
+ 
+# ─── COST CALCULATIONS ───────────────────────────────────────────────────────
+def calculate_costs(aircraft: pd.Series, h_charter: int, h_private: int) -> dict:
     """
-    Calcule la décomposition complète des coûts annuels pour un appareil donné.
+    Computes the full annual cost breakdown for a given aircraft.
     """
-    couts_fixes   = avion["Couts_Fixes_Annuels"]
-    couts_equipe  = avion["Couts_Equipe_Annuels"]
-    cout_h_charter = avion["Cout_Horaire_Charter"]
-    cout_h_prive   = avion["Cout_Horaire_Prive"]
-    tarif_charter  = avion.get("Taux_Charter_EUR_h", 0)
-
-    total_heures   = h_charter + h_prive
-    var_charter    = h_charter * cout_h_charter
-    var_prive      = h_prive   * cout_h_prive
-    total_variable = var_charter + var_prive
-    total_fixe     = couts_fixes + couts_equipe
-    total_general  = total_fixe + total_variable
-
-    cout_moyen_h   = total_general / total_heures if total_heures > 0 else 0
-
+    fixed_costs    = aircraft["Couts_Fixes_Annuels"]
+    crew_costs     = aircraft["Couts_Equipe_Annuels"]
+    charter_rate_h = aircraft["Cout_Horaire_Charter"]
+    private_rate_h = aircraft["Cout_Horaire_Prive"]
+    charter_tariff = aircraft.get("Taux_Charter_EUR_h", 0)
+ 
+    total_hours    = h_charter + h_private
+    var_charter    = h_charter * charter_rate_h
+    var_private    = h_private * private_rate_h
+    total_variable = var_charter + var_private
+    total_fixed    = fixed_costs + crew_costs
+    grand_total    = total_fixed + total_variable
+ 
+    avg_cost_h     = grand_total / total_hours if total_hours > 0 else 0
+ 
     return {
-        "couts_fixes":      couts_fixes,
-        "couts_equipe":     couts_equipe,
-        "total_fixe":       total_fixe,
-        "var_charter":      var_charter,
-        "var_prive":        var_prive,
-        "total_variable":   total_variable,
-        "total_general":    total_general,
-        "cout_moyen_h":     cout_moyen_h,
-        "h_charter":        h_charter,
-        "h_prive":          h_prive,
-        "total_heures":     total_heures,
-        "tarif_charter":    tarif_charter,
+        "fixed_costs":    fixed_costs,
+        "crew_costs":     crew_costs,
+        "total_fixed":    total_fixed,
+        "var_charter":    var_charter,
+        "var_private":    var_private,
+        "total_variable": total_variable,
+        "grand_total":    grand_total,
+        "avg_cost_h":     avg_cost_h,
+        "h_charter":      h_charter,
+        "h_private":      h_private,
+        "total_hours":    total_hours,
+        "charter_tariff": charter_tariff,
     }
-
-def calculer_rentabilite(couts: dict, marge_pct: float, commission_pct: float) -> dict:
+ 
+def calculate_profitability(costs: dict, markup_pct: float, commission_pct: float) -> dict:
     """
-    Simulation de rentabilité charter :
-    revenu brut, commission, revenu net, résultat net, break-even.
+    Charter profitability simulation:
+    gross revenue, commission, net revenue, net result, break-even.
     """
-    tarif         = couts["tarif_charter"]
-    h_charter     = couts["h_charter"]
-    revenu_brut   = tarif * h_charter
-    commission    = revenu_brut * commission_pct / 100
-    revenu_net    = revenu_brut - commission
-    revenu_marge  = revenu_net * (1 + marge_pct / 100)  # si le propriétaire majore le tarif
-
-    resultat_net  = revenu_net - couts["total_general"]
-    taux_couverture = (revenu_net / couts["total_general"] * 100) if couts["total_general"] > 0 else 0
-
-    # Heures break-even (combien d'heures charter couvrent les coûts totaux ?)
-    if tarif - couts["h_charter"] > 0 and couts["h_charter"] > 0:
-        h_breakeven = couts["total_fixe"] / (tarif * (1 - commission_pct/100) - couts["var_charter"] / max(h_charter, 1))
-    else:
-        h_breakeven = None
-
+    tariff        = costs["charter_tariff"]
+    h_charter     = costs["h_charter"]
+    gross_revenue = tariff * h_charter
+    commission    = gross_revenue * commission_pct / 100
+    net_revenue   = gross_revenue - commission
+ 
+    net_result    = net_revenue - costs["grand_total"]
+    coverage_rate = (net_revenue / costs["grand_total"] * 100) if costs["grand_total"] > 0 else 0
+ 
     return {
-        "revenu_brut":      revenu_brut,
-        "commission":       commission,
-        "revenu_net":       revenu_net,
-        "resultat_net":     resultat_net,
-        "taux_couverture":  taux_couverture,
+        "gross_revenue":  gross_revenue,
+        "commission":     commission,
+        "net_revenue":    net_revenue,
+        "net_result":     net_result,
+        "coverage_rate":  coverage_rate,
     }
-
-# ─── GRAPHIQUES ──────────────────────────────────────────────────────────────
-COULEURS = {
+ 
+# ─── CHARTS ──────────────────────────────────────────────────────────────────
+COLORS = {
     "fixed":   "#1A3A6E",
-    "equipe":  "#C9A84C",
+    "crew":    "#C9A84C",
     "charter": "#4A90D9",
-    "prive":   "#8496B0",
-    "revenu":  "#4ADE80",
-    "perte":   "#F87171",
+    "private": "#8496B0",
+    "profit":  "#4ADE80",
+    "loss":    "#F87171",
 }
-
-def graph_donut(couts: dict) -> go.Figure:
-    """Diagramme en anneau de la répartition des coûts."""
-    labels = ["Coûts fixes exploitation", "Équipage", "Variables Charter", "Variables Privé"]
+ 
+def chart_donut(costs: dict) -> go.Figure:
+    """Donut chart showing cost breakdown."""
+    labels = ["Fixed Operating Costs", "Crew Costs", "Charter Variable", "Private Variable"]
     values = [
-        couts["couts_fixes"],
-        couts["couts_equipe"],
-        couts["var_charter"],
-        couts["var_prive"],
+        costs["fixed_costs"],
+        costs["crew_costs"],
+        costs["var_charter"],
+        costs["var_private"],
     ]
-    couleurs = [COULEURS["fixed"], COULEURS["equipe"], COULEURS["charter"], COULEURS["prive"]]
-
+    colors = [COLORS["fixed"], COLORS["crew"], COLORS["charter"], COLORS["private"]]
+ 
     fig = go.Figure(go.Pie(
         labels=labels, values=values,
         hole=0.56,
-        marker=dict(colors=couleurs, line=dict(color="#0B1629", width=2)),
+        marker=dict(colors=colors, line=dict(color="#0B1629", width=2)),
         textinfo="label+percent",
         textfont=dict(size=11, color="#D6E4F7"),
         hovertemplate="<b>%{label}</b><br>%{value:,.0f} €<br>%{percent}<extra></extra>",
     ))
     fig.add_annotation(
-        text=f"<b>{couts['total_general']/1e6:.2f}M€</b><br><span style='font-size:10px'>TOTAL</span>",
+        text=f"<b>{costs['grand_total']/1e6:.2f}M€</b><br><span style='font-size:10px'>TOTAL</span>",
         x=0.5, y=0.5, showarrow=False,
         font=dict(size=16, color="#E8C46A"),
         align="center",
@@ -360,61 +353,56 @@ def graph_donut(couts: dict) -> go.Figure:
         showlegend=True,
     )
     return fig
-
-def graph_barres_empilees(couts: dict) -> go.Figure:
-    """Barres empilées : comparaison Charter vs Privé vs Fixe."""
-    categories = ["Charter", "Privé", "Total"]
-    totaux = [
-        couts["var_charter"] + couts["total_fixe"] * (couts["h_charter"] / max(couts["total_heures"], 1)),
-        couts["var_prive"]   + couts["total_fixe"] * (couts["h_prive"]   / max(couts["total_heures"], 1)),
-        couts["total_general"],
-    ]
-
+ 
+def chart_stacked_bars(costs: dict) -> go.Figure:
+    """Stacked bar chart: Charter vs Private vs Fixed costs."""
+    categories = ["Charter", "Private", "Total"]
+ 
     traces = [
-        go.Bar(name="Coûts fixes", x=categories,
-               y=[couts["total_fixe"] * (couts["h_charter"] / max(couts["total_heures"],1)),
-                  couts["total_fixe"] * (couts["h_prive"]   / max(couts["total_heures"],1)),
-                  couts["total_fixe"]],
-               marker_color=COULEURS["fixed"], text=None),
-        go.Bar(name="Variables Charter", x=categories,
-               y=[couts["var_charter"], 0, couts["var_charter"]],
-               marker_color=COULEURS["charter"]),
-        go.Bar(name="Variables Privé",   x=categories,
-               y=[0, couts["var_prive"], couts["var_prive"]],
-               marker_color=COULEURS["prive"]),
+        go.Bar(name="Fixed Costs", x=categories,
+               y=[costs["total_fixed"] * (costs["h_charter"] / max(costs["total_hours"], 1)),
+                  costs["total_fixed"] * (costs["h_private"] / max(costs["total_hours"], 1)),
+                  costs["total_fixed"]],
+               marker_color=COLORS["fixed"]),
+        go.Bar(name="Charter Variable", x=categories,
+               y=[costs["var_charter"], 0, costs["var_charter"]],
+               marker_color=COLORS["charter"]),
+        go.Bar(name="Private Variable", x=categories,
+               y=[0, costs["var_private"], costs["var_private"]],
+               marker_color=COLORS["private"]),
     ]
     fig = go.Figure(data=traces)
     fig.update_layout(
         barmode="stack",
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
         font=dict(color="#D6E4F7"),
-        yaxis=dict(title="Coût (€)", gridcolor="#1A3A6E", tickformat=",.0f"),
+        yaxis=dict(title="Cost (€)", gridcolor="#1A3A6E", tickformat=",.0f"),
         xaxis=dict(gridcolor="rgba(0,0,0,0)"),
         legend=dict(orientation="h", yanchor="bottom", y=-0.35, bgcolor="rgba(0,0,0,0)"),
         margin=dict(t=10, b=40, l=10, r=10),
         height=300,
     )
     return fig
-
-def graph_rentabilite(couts: dict, renta: dict) -> go.Figure:
-    """Waterfall : de revenu charter au résultat net."""
-    mesures = ["relative","relative","relative","relative","total"]
-    x = ["Revenu brut charter", "Commission opérateur", "Coûts variables", "Coûts fixes", "Résultat net"]
+ 
+def chart_waterfall(costs: dict, prof: dict) -> go.Figure:
+    """Waterfall chart: from charter revenue to net result."""
+    measures = ["relative", "relative", "relative", "relative", "total"]
+    x = ["Gross Charter Revenue", "Operator Commission", "Variable Costs", "Fixed Costs", "Net Result"]
     y = [
-        renta["revenu_brut"],
-        -renta["commission"],
-        -couts["total_variable"],
-        -couts["total_fixe"],
-        renta["resultat_net"],
+        prof["gross_revenue"],
+        -prof["commission"],
+        -costs["total_variable"],
+        -costs["total_fixed"],
+        prof["net_result"],
     ]
-    couleur_totale = COULEURS["revenu"] if renta["resultat_net"] >= 0 else COULEURS["perte"]
-
+    total_color = COLORS["profit"] if prof["net_result"] >= 0 else COLORS["loss"]
+ 
     fig = go.Figure(go.Waterfall(
-        measure=mesures, x=x, y=y,
+        measure=measures, x=x, y=y,
         connector=dict(line=dict(color="#1A3A6E", width=1.5)),
-        increasing=dict(marker_color=COULEURS["revenu"]),
-        decreasing=dict(marker_color=COULEURS["perte"]),
-        totals=dict(marker_color=couleur_totale),
+        increasing=dict(marker_color=COLORS["profit"]),
+        decreasing=dict(marker_color=COLORS["loss"]),
+        totals=dict(marker_color=total_color),
         texttemplate="%{y:+,.0f} €",
         textfont=dict(color="#D6E4F7", size=11),
         hovertemplate="<b>%{x}</b><br>%{y:+,.0f} €<extra></extra>",
@@ -429,334 +417,331 @@ def graph_rentabilite(couts: dict, renta: dict) -> go.Figure:
         height=340,
     )
     return fig
-
-def graph_sensibilite(avion: pd.Series, h_prive: int, commission_pct: float) -> go.Figure:
-    """Courbe de sensibilité : résultat net en fonction des heures charter."""
-    heures_range = list(range(0, 801, 25))
-    resultats = []
-    for h in heures_range:
-        c = calculer_couts(avion, h, h_prive)
-        r = calculer_rentabilite(c, 0, commission_pct)
-        resultats.append(r["resultat_net"])
-
+ 
+def chart_sensitivity(aircraft: pd.Series, h_private: int, commission_pct: float) -> go.Figure:
+    """Sensitivity curve: net result vs charter hours."""
+    hours_range = list(range(0, 801, 25))
+    results = []
+    for h in hours_range:
+        c = calculate_costs(aircraft, h, h_private)
+        r = calculate_profitability(c, 0, commission_pct)
+        results.append(r["net_result"])
+ 
     fig = go.Figure()
-    # Zone positive (profit)
     fig.add_trace(go.Scatter(
-        x=heures_range, y=resultats, mode="lines",
-        line=dict(color=COULEURS["charter"], width=2.5),
+        x=hours_range, y=results, mode="lines",
+        line=dict(color=COLORS["charter"], width=2.5),
         fill="tozeroy",
         fillcolor="rgba(74,144,217,0.12)",
-        name="Résultat net",
+        name="Net Result",
         hovertemplate="<b>%{x}h charter</b><br>%{y:+,.0f} €<extra></extra>",
     ))
-    # Ligne zéro
-    fig.add_hline(y=0, line_dash="dash", line_color=COULEURS["gold"] if False else "#C9A84C", line_width=1.5)
-
-    # Trouver le break-even
-    for i in range(1, len(resultats)):
-        if resultats[i-1] < 0 <= resultats[i]:
-            h_be = heures_range[i]
+    fig.add_hline(y=0, line_dash="dash", line_color="#C9A84C", line_width=1.5)
+ 
+    # Find break-even point
+    for i in range(1, len(results)):
+        if results[i-1] < 0 <= results[i]:
+            h_be = hours_range[i]
             fig.add_vline(x=h_be, line_dash="dot", line_color="#E8C46A", line_width=1.5,
                          annotation_text=f"Break-even ~{h_be}h",
                          annotation_font_color="#E8C46A",
                          annotation_position="top right")
             break
-
+ 
     fig.update_layout(
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
         font=dict(color="#D6E4F7"),
-        yaxis=dict(title="Résultat net (€)", gridcolor="#1A3A6E", tickformat=",.0f"),
-        xaxis=dict(title="Heures de vol charter", gridcolor="#1A3A6E"),
+        yaxis=dict(title="Net Result (€)", gridcolor="#1A3A6E", tickformat=",.0f"),
+        xaxis=dict(title="Charter Flight Hours", gridcolor="#1A3A6E"),
         margin=dict(t=10, b=10, l=10, r=10),
         height=300,
         showlegend=False,
     )
     return fig
-
-# ─── FORMAT MONNAIE ──────────────────────────────────────────────────────────
+ 
+# ─── CURRENCY FORMAT ─────────────────────────────────────────────────────────
 def fmt(v: float, decimals: int = 0) -> str:
-    """Formate un nombre en EUR avec séparateur milliers."""
-    return f"{v:,.{decimals}f} €".replace(",", " ").replace(".", ",")
-
+    """Formats a number as EUR with thousands separator."""
+    return f"€ {v:,.{decimals}f}"
+ 
 # ════════════════════════════════════════════════════════════════════════════
-# INTERFACE PRINCIPALE
+# MAIN INTERFACE
 # ════════════════════════════════════════════════════════════════════════════
 def main():
-    # ── En-tête ──────────────────────────────────────────────────────────
+    # ── Header ───────────────────────────────────────────────────────────
     col_logo, col_title = st.columns([1, 6])
     with col_logo:
         st.markdown("<div style='font-size:3rem;text-align:center;margin-top:0.3rem'>✈</div>",
                     unsafe_allow_html=True)
     with col_title:
         st.markdown('<div class="main-title">Aviation Cost Estimator</div>', unsafe_allow_html=True)
-        st.markdown('<div class="sub-title">Simulation des coûts d\'exploitation — Aviation d\'affaires</div>',
+        st.markdown('<div class="sub-title">Operating Cost Simulation — Business Aviation</div>',
                     unsafe_allow_html=True)
-
+ 
     st.markdown("<hr>", unsafe_allow_html=True)
-
-    # ── Sidebar : chargement & configuration ─────────────────────────────
+ 
+    # ── Sidebar ──────────────────────────────────────────────────────────
     with st.sidebar:
-        st.markdown('<div class="section-header">⬆ Base de données</div>', unsafe_allow_html=True)
-
-        fichier = st.file_uploader(
-            "Importer un fichier Excel / CSV",
+        st.markdown('<div class="section-header">⬆ Database</div>', unsafe_allow_html=True)
+ 
+        uploaded_file = st.file_uploader(
+            "Import an Excel / CSV file",
             type=["xlsx", "xls", "csv"],
-            help="Format requis : colonnes Modele, Couts_Fixes_Annuels, Couts_Equipe_Annuels, "
+            help="Required columns: Modele, Couts_Fixes_Annuels, Couts_Equipe_Annuels, "
                  "Cout_Horaire_Charter, Cout_Horaire_Prive, Taux_Charter_EUR_h"
         )
-
-        if fichier:
-            df, erreurs = charger_donnees(fichier)
-            if erreurs:
-                for e in erreurs:
+ 
+        if uploaded_file:
+            df, errors = load_data(uploaded_file)
+            if errors:
+                for e in errors:
                     st.error(f"⚠ {e}")
-                st.info("Le jeu de données par défaut est utilisé à la place.")
+                st.info("Using default dataset instead.")
                 df = get_default_data()
             else:
-                st.success(f"✓ {len(df)} appareil(s) chargés")
+                st.success(f"✓ {len(df)} aircraft loaded")
         else:
             df = get_default_data()
-            st.info("📋 Données d'exemple utilisées (10 appareils)")
-
-        st.markdown('<div class="section-header">✈ Sélection appareil</div>', unsafe_allow_html=True)
-
-        # Filtre par catégorie si disponible
+            st.info("📋 Using sample data (10 aircraft)")
+ 
+        st.markdown('<div class="section-header">✈ Aircraft Selection</div>', unsafe_allow_html=True)
+ 
+        # Filter by category if available
         if "Categorie" in df.columns:
-            cats = ["Toutes"] + sorted(df["Categorie"].dropna().unique().tolist())
-            cat_sel = st.selectbox("Catégorie", cats)
-            df_filtre = df if cat_sel == "Toutes" else df[df["Categorie"] == cat_sel]
+            cats = ["All"] + sorted(df["Categorie"].dropna().unique().tolist())
+            cat_sel = st.selectbox("Category", cats)
+            df_filtered = df if cat_sel == "All" else df[df["Categorie"] == cat_sel]
         else:
-            df_filtre = df
-
-        modele_sel = st.selectbox("Modèle d'avion", df_filtre["Modele"].tolist())
-        avion = df_filtre[df_filtre["Modele"] == modele_sel].iloc[0]
-
-        st.markdown('<div class="section-header">🕐 Configuration des heures</div>', unsafe_allow_html=True)
-
-        h_charter = st.slider("Heures Charter / an", 0, 800, 380, step=10,
-                              help="Heures de vol commerciales (charter tiers)")
-        h_prive   = st.slider("Heures Privé / an",   0, 800, 120, step=10,
-                              help="Heures d'utilisation propriétaire")
-
-        heures_totales = h_charter + h_prive
-        if heures_totales > 800:
-            st.warning(f"⚠ Total {heures_totales}h dépasse le plafond réglementaire recommandé (800h)")
-
-        st.markdown('<div class="section-header">💰 Simulation rentabilité</div>', unsafe_allow_html=True)
-
-        marge_pct      = st.slider("Majoration tarifaire (%)", 0, 50, 0, step=5,
-                                   help="% ajouté au tarif charter de base")
-        commission_pct = st.slider("Commission opérateur (%)", 0, 25, 10, step=1,
-                                   help="% de commission retenu par le broker/opérateur")
-
-    # ── Calculs ──────────────────────────────────────────────────────────
-    couts  = calculer_couts(avion, h_charter, h_prive)
-    renta  = calculer_rentabilite(couts, marge_pct, commission_pct)
-
+            df_filtered = df
+ 
+        aircraft_sel = st.selectbox("Aircraft Model", df_filtered["Modele"].tolist())
+        aircraft = df_filtered[df_filtered["Modele"] == aircraft_sel].iloc[0]
+ 
+        st.markdown('<div class="section-header">🕐 Flight Hours Configuration</div>', unsafe_allow_html=True)
+ 
+        h_charter = st.slider("Charter Hours / year", 0, 800, 380, step=10,
+                              help="Commercial charter flight hours (third-party clients)")
+        h_private = st.slider("Private Hours / year",  0, 800, 120, step=10,
+                              help="Owner / private use flight hours")
+ 
+        total_hours = h_charter + h_private
+        if total_hours > 800:
+            st.warning(f"⚠ Total {total_hours}h exceeds recommended regulatory ceiling (800h)")
+ 
+        st.markdown('<div class="section-header">💰 Profitability Simulation</div>', unsafe_allow_html=True)
+ 
+        markup_pct     = st.slider("Rate Markup (%)", 0, 50, 0, step=5,
+                                   help="% added on top of the base charter rate")
+        commission_pct = st.slider("Operator Commission (%)", 0, 25, 10, step=1,
+                                   help="% commission retained by broker / operator")
+ 
+    # ── Calculations ─────────────────────────────────────────────────────
+    costs = calculate_costs(aircraft, h_charter, h_private)
+    prof  = calculate_profitability(costs, markup_pct, commission_pct)
+ 
     # ════════════════════════════════════════════════════════════════════
-    # ONGLETS
+    # TABS
     # ════════════════════════════════════════════════════════════════════
     tab1, tab2, tab3, tab4 = st.tabs([
-        "📊  Tableau de bord",
-        "📈  Simulation rentabilité",
-        "🔍  Sensibilité",
-        "📋  Données",
+        "📊  Dashboard",
+        "📈  Profitability Simulation",
+        "🔍  Sensitivity Analysis",
+        "📋  Data",
     ])
-
+ 
     # ──────────────────────────────────────────────────────────────────
-    # ONGLET 1 : TABLEAU DE BORD
+    # TAB 1 : DASHBOARD
     # ──────────────────────────────────────────────────────────────────
     with tab1:
-        # Identité appareil
+        # Aircraft identity cards
         col_id1, col_id2, col_id3, col_id4 = st.columns(4)
         with col_id1:
             st.markdown(f"""
             <div class="metric-card">
-                <div class="metric-label">Appareil sélectionné</div>
-                <div class="metric-value" style="font-size:1.2rem">{avion['Modele']}</div>
-                <div class="metric-sub">{avion.get('Categorie','—')}</div>
+                <div class="metric-label">Selected Aircraft</div>
+                <div class="metric-value" style="font-size:1.2rem">{aircraft['Modele']}</div>
+                <div class="metric-sub">{aircraft.get('Categorie','—')}</div>
             </div>""", unsafe_allow_html=True)
         with col_id2:
             st.markdown(f"""
             <div class="metric-card">
-                <div class="metric-label">Total heures / an</div>
-                <div class="metric-value">{couts['total_heures']}h</div>
-                <div class="metric-sub">{h_charter}h charter · {h_prive}h privé</div>
+                <div class="metric-label">Total Hours / Year</div>
+                <div class="metric-value">{costs['total_hours']}h</div>
+                <div class="metric-sub">{h_charter}h charter · {h_private}h private</div>
             </div>""", unsafe_allow_html=True)
         with col_id3:
-            if "Autonomie_km" in avion and pd.notna(avion["Autonomie_km"]):
+            if "Autonomie_km" in aircraft and pd.notna(aircraft["Autonomie_km"]):
                 st.markdown(f"""
                 <div class="metric-card">
-                    <div class="metric-label">Autonomie maximale</div>
-                    <div class="metric-value">{avion['Autonomie_km']:,.0f} km</div>
-                    <div class="metric-sub">{avion.get('Passagers_Max','—')} passagers max</div>
+                    <div class="metric-label">Maximum Range</div>
+                    <div class="metric-value">{aircraft['Autonomie_km']:,.0f} km</div>
+                    <div class="metric-sub">{aircraft.get('Passagers_Max','—')} passengers max</div>
                 </div>""", unsafe_allow_html=True)
         with col_id4:
-            if "Vitesse_Croisiere_km_h" in avion and pd.notna(avion.get("Vitesse_Croisiere_km_h")):
+            if "Vitesse_Croisiere_km_h" in aircraft and pd.notna(aircraft.get("Vitesse_Croisiere_km_h")):
                 st.markdown(f"""
                 <div class="metric-card">
-                    <div class="metric-label">Vitesse croisière</div>
-                    <div class="metric-value">{avion['Vitesse_Croisiere_km_h']} km/h</div>
-                    <div class="metric-sub">Performances certifiées</div>
+                    <div class="metric-label">Cruise Speed</div>
+                    <div class="metric-value">{aircraft['Vitesse_Croisiere_km_h']} km/h</div>
+                    <div class="metric-sub">Certified performance</div>
                 </div>""", unsafe_allow_html=True)
-
+ 
         st.markdown("<hr>", unsafe_allow_html=True)
-
-        # KPIs principaux
+ 
+        # Main KPIs
         k1, k2, k3, k4 = st.columns(4)
-        k1.metric("💶 Coût total annuel",   fmt(couts["total_general"]))
-        k2.metric("🔒 Coûts fixes totaux",  fmt(couts["total_fixe"]))
-        k3.metric("⚡ Coûts variables",     fmt(couts["total_variable"]))
-        k4.metric("⌛ Coût moyen / heure", fmt(couts["cout_moyen_h"], 0))
-
+        k1.metric("💶 Total Annual Cost",    fmt(costs["grand_total"]))
+        k2.metric("🔒 Total Fixed Costs",    fmt(costs["total_fixed"]))
+        k3.metric("⚡ Variable Costs",       fmt(costs["total_variable"]))
+        k4.metric("⌛ Average Cost / Hour",  fmt(costs["avg_cost_h"]))
+ 
         st.markdown("<hr>", unsafe_allow_html=True)
-
-        # Graphiques
+ 
+        # Charts
         col_g1, col_g2 = st.columns([1, 1])
         with col_g1:
-            st.markdown('<div class="section-header">Répartition des coûts</div>', unsafe_allow_html=True)
-            st.plotly_chart(graph_donut(couts), use_container_width=True, config={"displayModeBar": False})
-
+            st.markdown('<div class="section-header">Cost Breakdown</div>', unsafe_allow_html=True)
+            st.plotly_chart(chart_donut(costs), use_container_width=True, config={"displayModeBar": False})
+ 
         with col_g2:
-            st.markdown('<div class="section-header">Décomposition par mode de vol</div>', unsafe_allow_html=True)
-            st.plotly_chart(graph_barres_empilees(couts), use_container_width=True, config={"displayModeBar": False})
-
-        # Détail tableau
-        st.markdown('<div class="section-header">Détail des postes de coût</div>', unsafe_allow_html=True)
+            st.markdown('<div class="section-header">Cost by Flight Mode</div>', unsafe_allow_html=True)
+            st.plotly_chart(chart_stacked_bars(costs), use_container_width=True, config={"displayModeBar": False})
+ 
+        # Detail table
+        st.markdown('<div class="section-header">Cost Line Detail</div>', unsafe_allow_html=True)
         table_data = {
-            "Poste": [
-                "Coûts fixes exploitation",
-                "Coûts d'équipage",
-                "Variables Charter",
-                "Variables Privé",
-                "─────────────────",
-                "TOTAL GÉNÉRAL",
+            "Line Item": [
+                "Fixed Operating Costs",
+                "Crew Costs",
+                "Charter Variable Costs",
+                "Private Variable Costs",
+                "─────────────────────",
+                "GRAND TOTAL",
             ],
-            "Montant (€)": [
-                couts["couts_fixes"],
-                couts["couts_equipe"],
-                couts["var_charter"],
-                couts["var_prive"],
+            "Amount (€)": [
+                costs["fixed_costs"],
+                costs["crew_costs"],
+                costs["var_charter"],
+                costs["var_private"],
                 None,
-                couts["total_general"],
+                costs["grand_total"],
             ],
-            "% du total": [
-                couts["couts_fixes"]   / couts["total_general"] * 100,
-                couts["couts_equipe"]  / couts["total_general"] * 100,
-                couts["var_charter"]   / couts["total_general"] * 100,
-                couts["var_prive"]     / couts["total_general"] * 100,
+            "% of Total": [
+                costs["fixed_costs"]   / costs["grand_total"] * 100,
+                costs["crew_costs"]    / costs["grand_total"] * 100,
+                costs["var_charter"]   / costs["grand_total"] * 100,
+                costs["var_private"]   / costs["grand_total"] * 100,
                 None,
                 100.0,
             ],
-            "€/heure": [
-                couts["couts_fixes"]   / max(couts["total_heures"], 1),
-                couts["couts_equipe"]  / max(couts["total_heures"], 1),
-                avion["Cout_Horaire_Charter"] if h_charter > 0 else 0,
-                avion["Cout_Horaire_Prive"]   if h_prive   > 0 else 0,
+            "€ / Hour": [
+                costs["fixed_costs"]   / max(costs["total_hours"], 1),
+                costs["crew_costs"]    / max(costs["total_hours"], 1),
+                aircraft["Cout_Horaire_Charter"] if h_charter > 0 else 0,
+                aircraft["Cout_Horaire_Prive"]   if h_private > 0 else 0,
                 None,
-                couts["cout_moyen_h"],
+                costs["avg_cost_h"],
             ],
         }
         df_table = pd.DataFrame(table_data)
-        df_table["Montant (€)"] = df_table["Montant (€)"].apply(
-            lambda x: f"{x:>12,.0f} €".replace(",", " ") if pd.notna(x) else "")
-        df_table["% du total"]  = df_table["% du total"].apply(
+        df_table["Amount (€)"] = df_table["Amount (€)"].apply(
+            lambda x: f"€ {x:>12,.0f}" if pd.notna(x) else "")
+        df_table["% of Total"] = df_table["% of Total"].apply(
             lambda x: f"{x:5.1f} %" if pd.notna(x) else "")
-        df_table["€/heure"]    = df_table["€/heure"].apply(
-            lambda x: f"{x:>8,.0f} €/h".replace(",", " ") if pd.notna(x) else "")
+        df_table["€ / Hour"]   = df_table["€ / Hour"].apply(
+            lambda x: f"€ {x:>8,.0f}/h" if pd.notna(x) else "")
         st.dataframe(df_table, use_container_width=True, hide_index=True)
-
+ 
     # ──────────────────────────────────────────────────────────────────
-    # ONGLET 2 : SIMULATION RENTABILITÉ
+    # TAB 2 : PROFITABILITY SIMULATION
     # ──────────────────────────────────────────────────────────────────
     with tab2:
-        st.markdown('<div class="section-header">Simulation de rentabilité charter</div>',
+        st.markdown('<div class="section-header">Charter Profitability Simulation</div>',
                     unsafe_allow_html=True)
-
+ 
         if h_charter == 0:
-            st.warning("⚠ Aucune heure charter configurée. Activez le slider 'Heures Charter' dans la barre latérale.")
+            st.warning("⚠ No charter hours configured. Adjust the 'Charter Hours' slider in the sidebar.")
         else:
-            # Statut global
-            solde = renta["resultat_net"]
-            tc    = renta["taux_couverture"]
-            if solde >= 0:
-                badge = '<span class="tag-ok">✓ BÉNÉFICIAIRE</span>'
-            elif tc >= 70:
-                badge = '<span class="tag-warn">⚠ QUASI-ÉQUILIBRE</span>'
+            # Global status
+            net = prof["net_result"]
+            cr  = prof["coverage_rate"]
+            if net >= 0:
+                badge = '<span class="tag-ok">✓ PROFITABLE</span>'
+            elif cr >= 70:
+                badge = '<span class="tag-warn">⚠ NEAR BREAK-EVEN</span>'
             else:
-                badge = '<span class="tag-err">✗ DÉFICITAIRE</span>'
-            st.markdown(f"**Statut :** {badge} — Taux de couverture des coûts : **{tc:.1f} %**",
+                badge = '<span class="tag-err">✗ LOSS-MAKING</span>'
+            st.markdown(f"**Status:** {badge} — Cost coverage rate: **{cr:.1f}%**",
                         unsafe_allow_html=True)
             st.markdown("")
-
-            # KPIs rentabilité
+ 
+            # Profitability KPIs
             r1, r2, r3, r4 = st.columns(4)
-            r1.metric("💵 Revenu brut charter",   fmt(renta["revenu_brut"]))
-            r2.metric("📉 Commission opérateur",  fmt(renta["commission"]))
-            r3.metric("💰 Revenu net charter",    fmt(renta["revenu_net"]))
-            delta_color = "normal" if solde >= 0 else "inverse"
-            r4.metric("📊 Résultat net", fmt(solde), delta=f"{tc:.1f}% coûts couverts")
-
+            r1.metric("💵 Gross Charter Revenue", fmt(prof["gross_revenue"]))
+            r2.metric("📉 Operator Commission",   fmt(prof["commission"]))
+            r3.metric("💰 Net Charter Revenue",   fmt(prof["net_revenue"]))
+            r4.metric("📊 Net Result", fmt(net), delta=f"{cr:.1f}% costs covered")
+ 
             st.markdown("<hr>", unsafe_allow_html=True)
-
+ 
             # Waterfall
-            st.markdown('<div class="section-header">Cascade financière</div>', unsafe_allow_html=True)
-            st.plotly_chart(graph_rentabilite(couts, renta), use_container_width=True,
+            st.markdown('<div class="section-header">Financial Waterfall</div>', unsafe_allow_html=True)
+            st.plotly_chart(chart_waterfall(costs, prof), use_container_width=True,
                             config={"displayModeBar": False})
-
-            # Hypothèses
-            with st.expander("📌 Hypothèses de calcul"):
+ 
+            # Assumptions
+            with st.expander("📌 Calculation Assumptions"):
                 hyp = {
-                    "Paramètre": [
-                        "Tarif charter base",
-                        "Heures charter",
-                        "Majoration tarifaire",
-                        "Commission opérateur",
-                        "Revenu brut",
-                        "Coûts variables totaux",
-                        "Coûts fixes totaux",
+                    "Parameter": [
+                        "Base charter rate",
+                        "Charter hours",
+                        "Rate markup",
+                        "Operator commission",
+                        "Gross revenue",
+                        "Total variable costs",
+                        "Total fixed costs",
                     ],
-                    "Valeur": [
-                        fmt(avion.get("Taux_Charter_EUR_h", 0)),
+                    "Value": [
+                        fmt(aircraft.get("Taux_Charter_EUR_h", 0)),
                         f"{h_charter} h",
-                        f"{marge_pct} %",
+                        f"{markup_pct} %",
                         f"{commission_pct} %",
-                        fmt(renta["revenu_brut"]),
-                        fmt(couts["total_variable"]),
-                        fmt(couts["total_fixe"]),
+                        fmt(prof["gross_revenue"]),
+                        fmt(costs["total_variable"]),
+                        fmt(costs["total_fixed"]),
                     ],
                 }
                 st.table(pd.DataFrame(hyp))
-
+ 
     # ──────────────────────────────────────────────────────────────────
-    # ONGLET 3 : SENSIBILITÉ
+    # TAB 3 : SENSITIVITY ANALYSIS
     # ──────────────────────────────────────────────────────────────────
     with tab3:
-        st.markdown('<div class="section-header">Analyse de sensibilité — Heures charter vs Résultat net</div>',
+        st.markdown('<div class="section-header">Sensitivity Analysis — Charter Hours vs Net Result</div>',
                     unsafe_allow_html=True)
-        st.caption(f"Heures privé fixées à {h_prive}h — Commission {commission_pct}%")
-        st.plotly_chart(graph_sensibilite(avion, h_prive, commission_pct),
+        st.caption(f"Private hours fixed at {h_private}h — Commission {commission_pct}%")
+        st.plotly_chart(chart_sensitivity(aircraft, h_private, commission_pct),
                         use_container_width=True, config={"displayModeBar": False})
-
-        # Comparaison multi-appareils
-        st.markdown('<div class="section-header">Comparaison des appareils (coût/heure)</div>',
+ 
+        # Multi-aircraft comparison
+        st.markdown('<div class="section-header">Fleet Comparison (Cost per Hour)</div>',
                     unsafe_allow_html=True)
-
-        comparaison = []
+ 
+        comparison = []
         for _, row in df.iterrows():
-            c = calculer_couts(row, h_charter, h_prive)
-            comparaison.append({
-                "Modèle":            row["Modele"],
-                "Coût total (€)":    round(c["total_general"]),
-                "Coût/heure (€)":    round(c["cout_moyen_h"]),
-                "Coûts fixes (€)":   round(c["total_fixe"]),
-                "Coûts variables (€)": round(c["total_variable"]),
+            c = calculate_costs(row, h_charter, h_private)
+            comparison.append({
+                "Model":             row["Modele"],
+                "Total Cost (€)":    round(c["grand_total"]),
+                "Cost/Hour (€)":     round(c["avg_cost_h"]),
+                "Fixed Costs (€)":   round(c["total_fixed"]),
+                "Variable Costs (€)": round(c["total_variable"]),
             })
-        df_comp = pd.DataFrame(comparaison).sort_values("Coût total (€)")
-
+        df_comp = pd.DataFrame(comparison).sort_values("Total Cost (€)")
+ 
         fig_comp = px.bar(
-            df_comp, x="Modèle", y="Coût total (€)",
-            color="Coût/heure (€)",
+            df_comp, x="Model", y="Total Cost (€)",
+            color="Cost/Hour (€)",
             color_continuous_scale=["#1A3A6E", "#4A90D9", "#C9A84C", "#E8C46A"],
             template="plotly_dark",
         )
@@ -770,52 +755,52 @@ def main():
             yaxis=dict(gridcolor="#1A3A6E", tickformat=",.0f"),
         )
         st.plotly_chart(fig_comp, use_container_width=True, config={"displayModeBar": False})
-
+ 
     # ──────────────────────────────────────────────────────────────────
-    # ONGLET 4 : DONNÉES
+    # TAB 4 : DATA
     # ──────────────────────────────────────────────────────────────────
     with tab4:
-        st.markdown('<div class="section-header">Base de données des appareils</div>', unsafe_allow_html=True)
+        st.markdown('<div class="section-header">Aircraft Database</div>', unsafe_allow_html=True)
         st.dataframe(df, use_container_width=True, hide_index=True)
-
-        st.markdown('<div class="section-header">Format requis pour votre fichier Excel</div>',
+ 
+        st.markdown('<div class="section-header">Required Excel File Format</div>',
                     unsafe_allow_html=True)
         df_format = pd.DataFrame([
-            {"Colonne": k, "Description": v, "Obligatoire": "✓"}
-            for k, v in COLONNES_REQUISES.items()
+            {"Column": k, "Description": v, "Required": "✓"}
+            for k, v in REQUIRED_COLUMNS.items()
         ] + [
-            {"Colonne": "Categorie",            "Description": "Catégorie (Light, Midsize, etc.)", "Obligatoire": "—"},
-            {"Colonne": "Autonomie_km",          "Description": "Autonomie maximale en km",         "Obligatoire": "—"},
-            {"Colonne": "Vitesse_Croisiere_km_h","Description": "Vitesse croisière en km/h",       "Obligatoire": "—"},
-            {"Colonne": "Passagers_Max",         "Description": "Nombre de passagers maximum",     "Obligatoire": "—"},
+            {"Column": "Categorie",             "Description": "Category (Light Jet, Midsize, etc.)", "Required": "—"},
+            {"Column": "Autonomie_km",           "Description": "Maximum range in km",                "Required": "—"},
+            {"Column": "Vitesse_Croisiere_km_h", "Description": "Cruise speed in km/h",              "Required": "—"},
+            {"Column": "Passagers_Max",          "Description": "Maximum number of passengers",      "Required": "—"},
         ])
         st.table(df_format)
-
-        # Téléchargement du template
+ 
+        # Download template
         @st.cache_data
         def get_template_excel() -> bytes:
             buf = BytesIO()
             template = get_default_data()
             template.to_excel(buf, index=False, sheet_name="Aviation Data")
             return buf.getvalue()
-
+ 
         st.download_button(
-            "⬇ Télécharger le template Excel",
+            "⬇ Download Excel Template",
             data=get_template_excel(),
             file_name="aviation_cost_template.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
-
-    # ── Pied de page ─────────────────────────────────────────────────
+ 
+    # ── Footer ───────────────────────────────────────────────────────────
     st.markdown("<hr>", unsafe_allow_html=True)
     st.markdown(
         '<div style="text-align:center;font-size:0.72rem;color:#4A5568;letter-spacing:0.1em">'
-        'AVIATION COST ESTIMATOR — Données indicatives à des fins de simulation uniquement'
-        ' · Valeurs basées sur des moyennes de marché (NBAA / JETNET)</div>',
+        'AVIATION COST ESTIMATOR — Figures are indicative and for simulation purposes only'
+        ' · Values based on market averages (NBAA / JETNET)</div>',
         unsafe_allow_html=True
     )
-
-
-# ─── POINT D'ENTRÉE ─────────────────────────────────────────────────────────
+ 
+ 
+# ─── ENTRY POINT ─────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     main()
