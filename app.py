@@ -1,7 +1,8 @@
 """
-✈️ Aviation Cost Estimator — Streamlit Application v2
+✈️ Aviation Cost Estimator — Streamlit Application v3
 Estimation and simulation of business aircraft operating costs.
 Includes AI-powered PDF budget import via Claude API.
+Includes Cost Master: full operational cost breakdown & financial analysis.
 """
 
 import streamlit as st
@@ -38,49 +39,24 @@ st.markdown("""
         --green:  #163A2A;
         --greentext: #4ADE80;
     }
-    .stApp {
-        background-color: var(--navy) !important;
-        color: var(--light) !important;
-        font-family: 'Segoe UI', system-ui, sans-serif;
-    }
-    [data-testid="stSidebar"] {
-        background-color: var(--deep) !important;
-        border-right: 1px solid var(--mid);
-    }
+    .stApp { background-color: var(--navy) !important; color: var(--light) !important; font-family: 'Segoe UI', system-ui, sans-serif; }
+    [data-testid="stSidebar"] { background-color: var(--deep) !important; border-right: 1px solid var(--mid); }
     [data-testid="stSidebar"] * { color: var(--light) !important; }
-    .main-title {
-        font-size: 2rem; font-weight: 700; letter-spacing: 0.08em;
-        color: var(--amber); text-transform: uppercase; margin-bottom: 0.1rem;
-    }
-    .sub-title {
-        font-size: 0.85rem; color: var(--slate); letter-spacing: 0.12em;
-        text-transform: uppercase; margin-bottom: 1.5rem;
-    }
-    .metric-card {
-        background: var(--card); border: 1px solid var(--mid);
-        border-left: 3px solid var(--gold); border-radius: 6px;
-        padding: 1rem 1.2rem; margin-bottom: 0.8rem;
-    }
+    .main-title { font-size: 2rem; font-weight: 700; letter-spacing: 0.08em; color: var(--amber); text-transform: uppercase; margin-bottom: 0.1rem; }
+    .sub-title { font-size: 0.85rem; color: var(--slate); letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 1.5rem; }
+    .metric-card { background: var(--card); border: 1px solid var(--mid); border-left: 3px solid var(--gold); border-radius: 6px; padding: 1rem 1.2rem; margin-bottom: 0.8rem; }
     .metric-label { font-size: 0.72rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--slate); margin-bottom: 0.3rem; }
     .metric-value { font-size: 1.7rem; font-weight: 700; color: var(--amber); }
     .metric-sub   { font-size: 0.78rem; color: var(--slate); margin-top: 0.1rem; }
-    .section-header {
-        font-size: 0.7rem; letter-spacing: 0.18em; text-transform: uppercase;
-        color: var(--gold); border-bottom: 1px solid var(--mid);
-        padding-bottom: 0.4rem; margin: 1.2rem 0 0.8rem 0;
-    }
+    .section-header { font-size: 0.7rem; letter-spacing: 0.18em; text-transform: uppercase; color: var(--gold); border-bottom: 1px solid var(--mid); padding-bottom: 0.4rem; margin: 1.2rem 0 0.8rem 0; }
+    .cat-header { font-size: 0.78rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--amber); background: var(--mid); border-radius: 4px; padding: 0.4rem 0.8rem; margin: 1rem 0 0.5rem 0; display: inline-block; }
     hr { border-color: var(--mid) !important; }
-    .stSelectbox label, .stSlider label, .stNumberInput label,
-    .stFileUploader label { color: var(--light) !important; font-size: 0.82rem; }
+    .stSelectbox label, .stSlider label, .stNumberInput label, .stFileUploader label { color: var(--light) !important; font-size: 0.82rem; }
     [data-testid="stMetricValue"] { color: var(--amber) !important; font-size: 1.5rem !important; }
     [data-testid="stMetricLabel"] { color: var(--slate) !important; font-size: 0.72rem !important; letter-spacing: 0.1em; }
     [data-testid="stMetricDelta"] { color: #4ADE80 !important; }
     .stAlert { background-color: var(--card) !important; border-color: var(--mid) !important; }
-    .stButton > button {
-        background: var(--mid) !important; color: var(--amber) !important;
-        border: 1px solid var(--gold) !important; border-radius: 4px;
-        letter-spacing: 0.06em; font-weight: 600;
-    }
+    .stButton > button { background: var(--mid) !important; color: var(--amber) !important; border: 1px solid var(--gold) !important; border-radius: 4px; letter-spacing: 0.06em; font-weight: 600; }
     .stButton > button:hover { background: var(--gold) !important; color: var(--navy) !important; }
     .stDataFrame { border: 1px solid var(--mid); border-radius: 6px; }
     [data-baseweb="tab-list"] { background: var(--card); border-radius: 6px; }
@@ -90,38 +66,28 @@ st.markdown("""
     .tag-ok   { background:#163A2A; color:#4ADE80; padding:2px 8px; border-radius:3px; font-size:0.75rem; }
     .tag-warn { background:#3A2A10; color:#FBBF24; padding:2px 8px; border-radius:3px; font-size:0.75rem; }
     .tag-err  { background:#3A1010; color:#F87171; padding:2px 8px; border-radius:3px; font-size:0.75rem; }
-
-    /* PDF import specific */
-    .pdf-drop-zone {
-        border: 2px dashed var(--mid); border-radius: 8px;
-        padding: 2rem; text-align: center; color: var(--slate);
-        background: var(--card); margin: 1rem 0;
-    }
-    .extracted-card {
-        background: var(--card); border: 1px solid var(--mid);
-        border-left: 3px solid var(--greentext); border-radius: 6px;
-        padding: 1rem 1.2rem; margin: 0.5rem 0;
-    }
+    .pdf-drop-zone { border: 2px dashed var(--mid); border-radius: 8px; padding: 2rem; text-align: center; color: var(--slate); background: var(--card); margin: 1rem 0; }
+    .extracted-card { background: var(--card); border: 1px solid var(--mid); border-left: 3px solid var(--greentext); border-radius: 6px; padding: 1rem 1.2rem; margin: 0.5rem 0; }
     .extracted-label { font-size: 0.7rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--slate); }
     .extracted-value { font-size: 1.1rem; font-weight: 600; color: var(--greentext); }
-    .step-badge {
-        display: inline-block; background: var(--mid); color: var(--amber);
-        border-radius: 50%; width: 24px; height: 24px; text-align: center;
-        line-height: 24px; font-size: 0.75rem; font-weight: 700;
-        margin-right: 0.5rem;
-    }
+    .step-badge { display: inline-block; background: var(--mid); color: var(--amber); border-radius: 50%; width: 24px; height: 24px; text-align: center; line-height: 24px; font-size: 0.75rem; font-weight: 700; margin-right: 0.5rem; }
+    .cost-group-card { background: var(--card); border: 1px solid var(--mid); border-radius: 8px; padding: 1.2rem 1.4rem; margin-bottom: 1rem; }
+    .cost-group-title { font-size: 0.8rem; letter-spacing: 0.15em; text-transform: uppercase; font-weight: 700; margin-bottom: 0.8rem; padding-bottom: 0.5rem; border-bottom: 1px solid var(--mid); }
+    .cg-operational { color: #60A5FA; border-left: 3px solid #60A5FA; }
+    .cg-direct { color: #F59E0B; border-left: 3px solid #F59E0B; }
+    .cg-indirect { color: #A78BFA; border-left: 3px solid #A78BFA; }
+    .total-banner { background: linear-gradient(135deg, #112244 0%, #1A3A6E 100%); border: 1px solid var(--gold); border-radius: 8px; padding: 1.5rem; text-align: center; margin: 1.5rem 0; }
 </style>
 """, unsafe_allow_html=True)
 
-# ─── SESSION STATE INIT ──────────────────────────────────────────────────────
-if "database" not in st.session_state:
-    st.session_state["database"] = None   # Will hold the live DataFrame
-if "extracted" not in st.session_state:
-    st.session_state["extracted"] = None  # Last PDF extraction result
+# ─── SESSION STATE ───────────────────────────────────────────────────────────
+for key, val in [("database", None), ("extracted", None), ("cost_master", None)]:
+    if key not in st.session_state:
+        st.session_state[key] = val
 
 # ─── DEFAULT DATASET ────────────────────────────────────────────────────────
 def get_default_data() -> pd.DataFrame:
-    """Menkor Aviation GBL — 46 aircraft database v6 (extracted from official budgets)."""
+    """Menkor Aviation GBL — 46 aircraft database v6."""
     data = [
         {"Modele": "Airbus 318", "Categorie": "ACJ / VIP Airliner", "Couts_Fixes_Annuels": 219176, "Couts_Equipe_Annuels": 450113, "Cout_Horaire_Charter": 4481, "Cout_Horaire_Prive": 3674, "Heures_Base": 350, "Taux_Charter_EUR_h": 6500, "Vitesse_Croisiere_km_h": 869, "Autonomie_km": 6862, "Passagers_Max": 19},
         {"Modele": "Airbus 319", "Categorie": "ACJ / VIP Airliner", "Couts_Fixes_Annuels": 225763, "Couts_Equipe_Annuels": 450113, "Cout_Horaire_Charter": 4338, "Cout_Horaire_Prive": 3557, "Heures_Base": 350, "Taux_Charter_EUR_h": 7000, "Vitesse_Croisiere_km_h": 869, "Autonomie_km": 11014, "Passagers_Max": 19},
@@ -173,12 +139,47 @@ def get_default_data() -> pd.DataFrame:
     return pd.DataFrame(data)
 
 def get_active_db() -> pd.DataFrame:
-    """Returns the live database (session) or the default one."""
     if st.session_state["database"] is not None:
         return st.session_state["database"]
     return get_default_data()
 
-# ─── REQUIRED COLUMNS ────────────────────────────────────────────────────────
+# ─── COST MASTER — DEFAULT VALUES ────────────────────────────────────────────
+# Per-flight defaults (operational, applied × annual flights)
+CM_DEFAULTS_OPERATIONAL_PER_FLIGHT = {
+    "Handling":        800,
+    "Ground Service":  600,
+    "Catering":        400,
+    "Hotel":           1200,
+    "ATC Charges":     900,
+    "Flight Planning": 250,
+    "Permission":      350,
+    "Miscellaneous":   300,
+}
+# Annual defaults (direct fixed costs)
+CM_DEFAULTS_DIRECT = {
+    "Maintenance":           85000,
+    "Maintenance Programs":  42000,
+    "Insurance":             38000,
+    "Hangar":                30000,
+    "Management Fee (VAT)":  55000,
+    "Government Costs":      12000,
+    "Cleaning":               8000,
+    "Flight Planning Tools":  6000,
+    "Nav Programme":          9500,
+}
+# Annual defaults (indirect / crew costs)
+CM_DEFAULTS_INDIRECT = {
+    "Crew Salaries":          180000,
+    "Total Social Costs":      54000,
+    "Training Cockpit":        18000,
+    "Training Cabin":           8000,
+    "Expense Training Crew":    5000,
+    "Communication Crew":       4500,
+    "Crew Expenses":           22000,
+    "Freelancer":              15000,
+    "Miscellaneous Crew":       6000,
+}
+
 REQUIRED_COLUMNS = {
     "Modele":               "Aircraft name",
     "Couts_Fixes_Annuels":  "Fixed costs excl. crew (€/year)",
@@ -188,7 +189,6 @@ REQUIRED_COLUMNS = {
     "Taux_Charter_EUR_h":   "Charter rate billed to client (€/h)",
 }
 
-# ─── DATA LOADING ────────────────────────────────────────────────────────────
 def load_data(file) -> tuple:
     errors = []
     try:
@@ -200,18 +200,16 @@ def load_data(file) -> tuple:
             df = pd.read_excel(file)
     except Exception as e:
         return None, [f"Cannot read file: {e}"]
-
     missing = [col for col in REQUIRED_COLUMNS if col not in df.columns]
     if missing:
         errors.append(f"Missing columns: {', '.join(missing)}. Detected: {', '.join(df.columns.tolist())}")
         return None, errors
-
     for col in [c for c in REQUIRED_COLUMNS if c != "Modele"]:
         df[col] = pd.to_numeric(df[col], errors="coerce")
     return df.dropna(subset=["Modele"]), errors
 
 # ─── COST CALCULATIONS ───────────────────────────────────────────────────────
-def calculate_costs(aircraft: pd.Series, h_charter: int, h_private: int) -> dict:
+def calculate_costs(aircraft, h_charter, h_private):
     fixed_costs    = aircraft["Couts_Fixes_Annuels"]
     crew_costs     = aircraft["Couts_Equipe_Annuels"]
     charter_rate_h = aircraft["Cout_Horaire_Charter"]
@@ -229,7 +227,7 @@ def calculate_costs(aircraft: pd.Series, h_charter: int, h_private: int) -> dict
                 grand_total=grand_total, avg_cost_h=avg_cost_h, h_charter=h_charter,
                 h_private=h_private, total_hours=total_hours, charter_tariff=charter_tariff)
 
-def calculate_profitability(costs: dict, commission_pct: float, custom_rate: float = None) -> dict:
+def calculate_profitability(costs, commission_pct, custom_rate=None):
     tariff        = custom_rate if (custom_rate is not None and custom_rate > 0) else costs["charter_tariff"]
     h_charter     = costs["h_charter"]
     gross_revenue = tariff * h_charter
@@ -245,6 +243,9 @@ def calculate_profitability(costs: dict, commission_pct: float, custom_rate: flo
 COLORS = {"fixed":"#1A3A6E","crew":"#C9A84C","charter":"#4A90D9",
           "private":"#8496B0","profit":"#4ADE80","loss":"#F87171"}
 
+LAYOUT_BASE = dict(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                   font=dict(color="#D6E4F7"), margin=dict(t=10,b=10,l=10,r=10))
+
 def chart_donut(costs):
     labels = ["Fixed Operating Costs","Crew Costs","Charter Variable","Private Variable"]
     values = [costs["fixed_costs"],costs["crew_costs"],costs["var_charter"],costs["var_private"]]
@@ -253,14 +254,11 @@ def chart_donut(costs):
         marker=dict(colors=[COLORS["fixed"],COLORS["crew"],COLORS["charter"],COLORS["private"]],
                     line=dict(color="#0B1629",width=2)),
         textinfo="label+percent", textfont=dict(size=11,color="#D6E4F7"),
-        hovertemplate="<b>%{label}</b><br>%{value:,.0f} €<br>%{percent}<extra></extra>",
-    ))
+        hovertemplate="<b>%{label}</b><br>%{value:,.0f} €<br>%{percent}<extra></extra>"))
     fig.add_annotation(text=f"<b>{costs['grand_total']/1e6:.2f}M€</b><br><span style='font-size:10px'>TOTAL</span>",
                        x=0.5,y=0.5,showarrow=False,font=dict(size=16,color="#E8C46A"),align="center")
-    fig.update_layout(paper_bgcolor="rgba(0,0,0,0)",plot_bgcolor="rgba(0,0,0,0)",
-                      font=dict(color="#D6E4F7"),height=320,
-                      legend=dict(orientation="h",yanchor="bottom",y=-0.2,bgcolor="rgba(0,0,0,0)"),
-                      margin=dict(t=10,b=10,l=10,r=10))
+    fig.update_layout(**LAYOUT_BASE, height=320,
+                      legend=dict(orientation="h",yanchor="bottom",y=-0.2,bgcolor="rgba(0,0,0,0)"))
     return fig
 
 def chart_stacked_bars(costs):
@@ -274,8 +272,7 @@ def chart_stacked_bars(costs):
         go.Bar(name="Private Variable",x=categories,marker_color=COLORS["private"],
                y=[0,costs["var_private"],costs["var_private"]]),
     ])
-    fig.update_layout(barmode="stack",paper_bgcolor="rgba(0,0,0,0)",plot_bgcolor="rgba(0,0,0,0)",
-                      font=dict(color="#D6E4F7"),height=300,
+    fig.update_layout(barmode="stack",**LAYOUT_BASE,height=300,
                       yaxis=dict(title="Cost (€)",gridcolor="#1A3A6E",tickformat=",.0f"),
                       xaxis=dict(gridcolor="rgba(0,0,0,0)"),
                       legend=dict(orientation="h",yanchor="bottom",y=-0.35,bgcolor="rgba(0,0,0,0)"),
@@ -292,13 +289,11 @@ def chart_waterfall(costs, prof):
         increasing=dict(marker_color=COLORS["profit"]),decreasing=dict(marker_color=COLORS["loss"]),
         totals=dict(marker_color=COLORS["profit"] if prof["net_result"]>=0 else COLORS["loss"]),
         texttemplate="%{y:+,.0f} €",textfont=dict(color="#D6E4F7",size=11),
-        hovertemplate="<b>%{x}</b><br>%{y:+,.0f} €<extra></extra>",
-    ))
+        hovertemplate="<b>%{x}</b><br>%{y:+,.0f} €<extra></extra>"))
     fig.add_hline(y=0,line_dash="dash",line_color="#8496B0",line_width=1)
-    fig.update_layout(paper_bgcolor="rgba(0,0,0,0)",plot_bgcolor="rgba(0,0,0,0)",
-                      font=dict(color="#D6E4F7"),height=340,
+    fig.update_layout(**LAYOUT_BASE,height=340,
                       yaxis=dict(title="€",gridcolor="#1A3A6E",tickformat=",.0f"),
-                      xaxis=dict(gridcolor="rgba(0,0,0,0)"),margin=dict(t=10,b=10,l=10,r=10))
+                      xaxis=dict(gridcolor="rgba(0,0,0,0)"))
     return fig
 
 def chart_sensitivity(aircraft, h_private, commission_pct, custom_rate=None):
@@ -317,20 +312,86 @@ def chart_sensitivity(aircraft, h_private, commission_pct, custom_rate=None):
                          annotation_text=f"Break-even ~{h_be}h",annotation_font_color="#E8C46A",
                          annotation_position="top right")
             break
-    fig.update_layout(paper_bgcolor="rgba(0,0,0,0)",plot_bgcolor="rgba(0,0,0,0)",
-                      font=dict(color="#D6E4F7"),height=300,showlegend=False,
+    fig.update_layout(**LAYOUT_BASE,height=300,showlegend=False,
                       yaxis=dict(title="Net Result (€)",gridcolor="#1A3A6E",tickformat=",.0f"),
-                      xaxis=dict(title="Charter Flight Hours",gridcolor="#1A3A6E"),
-                      margin=dict(t=10,b=10,l=10,r=10))
+                      xaxis=dict(title="Charter Flight Hours",gridcolor="#1A3A6E"))
     return fig
 
-def fmt(v: float, decimals: int = 0) -> str:
+# ─── COST MASTER CHARTS ──────────────────────────────────────────────────────
+def cm_donut(labels, values, colors, title_text):
+    total = sum(v for v in values if v > 0)
+    fig = go.Figure(go.Pie(
+        labels=labels, values=values, hole=0.54,
+        marker=dict(colors=colors, line=dict(color="#0B1629",width=2)),
+        textinfo="label+percent", textfont=dict(size=10,color="#D6E4F7"),
+        hovertemplate="<b>%{label}</b><br>%{value:,.0f} €<br>%{percent}<extra></extra>"))
+    fig.add_annotation(
+        text=f"<b>{total/1000:.0f}K€</b><br><span style='font-size:9px'>{title_text}</span>",
+        x=0.5,y=0.5,showarrow=False,font=dict(size=14,color="#E8C46A"),align="center")
+    fig.update_layout(**LAYOUT_BASE, height=300,
+                      legend=dict(orientation="h",yanchor="bottom",y=-0.3,bgcolor="rgba(0,0,0,0)",font=dict(size=9)),
+                      margin=dict(t=10,b=10,l=5,r=5))
+    return fig
+
+def cm_global_donut(op_total, direct_total, indirect_total):
+    labels = ["Operational Costs","Direct Costs","Indirect / Crew Costs"]
+    values = [op_total, direct_total, indirect_total]
+    colors = ["#60A5FA","#F59E0B","#A78BFA"]
+    total  = sum(values)
+    fig = go.Figure(go.Pie(
+        labels=labels, values=values, hole=0.56,
+        marker=dict(colors=colors, line=dict(color="#0B1629",width=2)),
+        textinfo="label+percent", textfont=dict(size=11,color="#D6E4F7"),
+        hovertemplate="<b>%{label}</b><br>%{value:,.0f} €<br>%{percent}<extra></extra>"))
+    fig.add_annotation(
+        text=f"<b>{total/1e6:.2f}M€</b><br><span style='font-size:10px'>TOTAL</span>",
+        x=0.5,y=0.5,showarrow=False,font=dict(size=16,color="#E8C46A"),align="center")
+    fig.update_layout(**LAYOUT_BASE, height=360,
+                      legend=dict(orientation="h",yanchor="bottom",y=-0.15,bgcolor="rgba(0,0,0,0)"))
+    return fig
+
+def cm_bar_breakdown(categories, values, color, title):
+    paired = sorted(zip(values, categories), reverse=True)
+    values_s, cats_s = zip(*paired) if paired else ([],[])
+    fig = go.Figure(go.Bar(
+        x=list(cats_s), y=list(values_s),
+        marker_color=color, marker_line_color="#0B1629", marker_line_width=1,
+        hovertemplate="<b>%{x}</b><br>%{y:,.0f} €<extra></extra>",
+        text=[f"€{v:,.0f}" for v in values_s], textposition="outside",
+        textfont=dict(size=9,color="#D6E4F7")))
+    fig.update_layout(**LAYOUT_BASE, height=300, title=dict(text=title,font=dict(size=11,color="#8496B0"),x=0),
+                      yaxis=dict(gridcolor="#1A3A6E",tickformat=",.0f",title="€"),
+                      xaxis=dict(tickangle=-30,gridcolor="rgba(0,0,0,0)"),
+                      margin=dict(t=30,b=60,l=10,r=10))
+    return fig
+
+def cm_waterfall_global(op, direct, indirect, charter_rev, commission_pct):
+    commission = charter_rev * commission_pct / 100
+    net_rev = charter_rev - commission
+    grand_total = op + direct + indirect
+    net = net_rev - grand_total
+    fig = go.Figure(go.Waterfall(
+        measure=["relative","relative","relative","relative","relative","total"],
+        x=["Charter Revenue","Commission","Operational","Direct Costs","Crew / Indirect","Net Result"],
+        y=[charter_rev,-commission,-op,-direct,-indirect,net],
+        connector=dict(line=dict(color="#1A3A6E",width=1.5)),
+        increasing=dict(marker_color=COLORS["profit"]),
+        decreasing=dict(marker_color=COLORS["loss"]),
+        totals=dict(marker_color=COLORS["profit"] if net>=0 else COLORS["loss"]),
+        texttemplate="%{y:+,.0f} €",textfont=dict(color="#D6E4F7",size=11),
+        hovertemplate="<b>%{x}</b><br>%{y:+,.0f} €<extra></extra>"))
+    fig.add_hline(y=0,line_dash="dash",line_color="#8496B0",line_width=1)
+    fig.update_layout(**LAYOUT_BASE, height=360,
+                      yaxis=dict(title="€",gridcolor="#1A3A6E",tickformat=",.0f"),
+                      xaxis=dict(gridcolor="rgba(0,0,0,0)"))
+    return fig
+
+def fmt(v, decimals=0):
     return f"€ {v:,.{decimals}f}"
 
 # ════════════════════════════════════════════════════════════════════════════
-# PDF EXTRACTION VIA CLAUDE API
+# PDF EXTRACTION
 # ════════════════════════════════════════════════════════════════════════════
-
 EXTRACTION_PROMPT = """You are an expert in business aviation finance. 
 Analyze this aircraft budget document and extract the key financial figures.
 
@@ -350,106 +411,75 @@ Return ONLY a valid JSON object with EXACTLY these fields (use null if not found
   "currency": "EUR",
   "notes": "Any important assumptions or notes from the document"
 }
-
 Rules:
-- All monetary values must be in EUR (convert if needed using rates in the document)
+- All monetary values must be in EUR
 - Return ONLY the JSON, no explanation, no markdown, no code blocks
 - If a value cannot be found or calculated, use null"""
 
-
-def extract_pdf_with_claude(pdf_bytes: bytes, api_key: str) -> dict:
+def extract_pdf_with_claude(pdf_bytes, api_key):
     pdf_b64 = base64.standard_b64encode(pdf_bytes).decode("utf-8")
     payload = {
-        "model": "claude-sonnet-4-6",
-        "max_tokens": 1000,
-        "messages": [
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "document",
-                        "source": {
-                            "type": "base64",
-                            "media_type": "application/pdf",
-                            "data": pdf_b64,
-                        },
-                    },
-                    {
-                        "type": "text",
-                        "text": EXTRACTION_PROMPT,
-                    },
-                ],
-            }
-        ],
+        "model": "claude-sonnet-4-6", "max_tokens": 1000,
+        "messages": [{"role": "user", "content": [
+            {"type": "document", "source": {"type": "base64", "media_type": "application/pdf", "data": pdf_b64}},
+            {"type": "text", "text": EXTRACTION_PROMPT}
+        ]}]
     }
     response = requests.post(
         "https://api.anthropic.com/v1/messages",
-        headers={
-            "Content-Type": "application/json",
-            "x-api-key": api_key,
-            "anthropic-version": "2023-06-01",
-            "anthropic-beta": "pdfs-2024-09-25",
-        },
-        json=payload,
-        timeout=60,
-    )
+        headers={"Content-Type":"application/json","x-api-key":api_key,
+                 "anthropic-version":"2023-06-01","anthropic-beta":"pdfs-2024-09-25"},
+        json=payload, timeout=60)
     if response.status_code != 200:
         raise ValueError(f"API error {response.status_code}: {response.text[:300]}")
     data = response.json()
-    raw_text = "".join(b.get("text", "") for b in data.get("content", []) if b.get("type") == "text")
+    raw_text = "".join(b.get("text","") for b in data.get("content",[]) if b.get("type")=="text")
     clean = raw_text.strip().lstrip("```json").lstrip("```").rstrip("```").strip()
     return json.loads(clean)
 
-
-def extracted_to_db_row(ext: dict) -> dict:
-    return {
-        "Modele":                ext.get("aircraft_model") or "Unknown",
-        "Categorie":             ext.get("category") or "Unknown",
-        "Couts_Fixes_Annuels":   ext.get("fixed_costs_annual"),
-        "Couts_Equipe_Annuels":  ext.get("crew_costs_annual"),
-        "Cout_Horaire_Charter":  ext.get("variable_cost_charter_per_hour"),
-        "Cout_Horaire_Prive":    ext.get("variable_cost_private_per_hour"),
-        "Heures_Base":           ext.get("base_flight_hours"),
-        "Taux_Charter_EUR_h":    ext.get("charter_rate_per_hour"),
-        "Vitesse_Croisiere_km_h": ext.get("cruise_speed_kmh"),
-        "Autonomie_km":          ext.get("range_km"),
-        "Passagers_Max":         ext.get("max_passengers"),
-    }
-
-
-def add_to_database(new_row: dict):
+def add_to_database(new_row):
     db = get_active_db().copy()
     model_name = new_row["Modele"]
     if model_name in db["Modele"].values:
         db = db[db["Modele"] != model_name]
-    new_df = pd.DataFrame([new_row])
-    st.session_state["database"] = pd.concat([db, new_df], ignore_index=True)
-
+    st.session_state["database"] = pd.concat([db, pd.DataFrame([new_row])], ignore_index=True)
 
 # ════════════════════════════════════════════════════════════════════════════
-# MAIN INTERFACE
+# COST MASTER INPUT SECTION
+# ════════════════════════════════════════════════════════════════════════════
+def cost_input_section(label, key, default, use_generic, col1, col2):
+    """Render a two-column input row with generic/custom toggle."""
+    with col1:
+        st.markdown(f'<span style="font-size:0.82rem;color:#D6E4F7">{label}</span>', unsafe_allow_html=True)
+    with col2:
+        if use_generic:
+            st.markdown(f'<span style="color:#E8C46A;font-size:0.88rem;font-weight:600">€ {default:,.0f}</span>', unsafe_allow_html=True)
+            return float(default)
+        else:
+            val = st.number_input(f"###{key}", value=float(default), min_value=0.0, step=100.0,
+                                  label_visibility="collapsed", key=key)
+            return val
+
+# ════════════════════════════════════════════════════════════════════════════
+# MAIN
 # ════════════════════════════════════════════════════════════════════════════
 def main():
+    # Header
     col_logo, col_title = st.columns([1, 6])
     with col_logo:
-        st.markdown("<div style='font-size:3rem;text-align:center;margin-top:0.3rem'>✈</div>",
-                    unsafe_allow_html=True)
+        st.markdown("<div style='font-size:3rem;text-align:center;margin-top:0.3rem'>✈</div>", unsafe_allow_html=True)
     with col_title:
         st.markdown('<div class="main-title">Aviation Cost Estimator</div>', unsafe_allow_html=True)
-        st.markdown('<div class="sub-title">Operating Cost Simulation — Business Aviation</div>',
-                    unsafe_allow_html=True)
+        st.markdown('<div class="sub-title">Operating Cost Simulation — Business Aviation</div>', unsafe_allow_html=True)
     st.markdown("<hr>", unsafe_allow_html=True)
 
     df = get_active_db()
 
+    # Sidebar
     with st.sidebar:
         st.markdown('<div class="section-header">⬆ Database</div>', unsafe_allow_html=True)
-
-        uploaded_file = st.file_uploader(
-            "Import an Excel / CSV file", type=["xlsx","xls","csv"],
-            help="Required columns: Modele, Couts_Fixes_Annuels, Couts_Equipe_Annuels, "
-                 "Cout_Horaire_Charter, Cout_Horaire_Prive, Taux_Charter_EUR_h"
-        )
+        uploaded_file = st.file_uploader("Import an Excel / CSV file", type=["xlsx","xls","csv"],
+            help="Required columns: Modele, Couts_Fixes_Annuels, Couts_Equipe_Annuels, Cout_Horaire_Charter, Cout_Horaire_Prive, Taux_Charter_EUR_h")
         if uploaded_file:
             loaded_df, errors = load_data(uploaded_file)
             if errors:
@@ -467,7 +497,6 @@ def main():
 
         st.markdown('<div class="section-header">✈ Aircraft Selection</div>', unsafe_allow_html=True)
         df = get_active_db()
-
         if "Categorie" in df.columns:
             cats = ["All"] + sorted(df["Categorie"].dropna().unique().tolist())
             cat_sel = st.selectbox("Category", cats)
@@ -479,55 +508,47 @@ def main():
         aircraft = df_filtered[df_filtered["Modele"] == aircraft_sel].iloc[0]
 
         st.markdown('<div class="section-header">🕐 Flight Hours Configuration</div>', unsafe_allow_html=True)
-        h_charter = st.slider("Charter Hours / year", 0, 800, 380, step=10,
-                              help="Commercial charter flight hours (third-party clients)")
-        h_private = st.slider("Private Hours / year",  0, 800, 120, step=10,
-                              help="Owner / private use flight hours")
+        h_charter = st.slider("Charter Hours / year", 0, 800, 380, step=10)
+        h_private = st.slider("Private Hours / year",  0, 800, 120, step=10)
         if h_charter + h_private > 800:
             st.warning(f"⚠ Total {h_charter+h_private}h exceeds regulatory ceiling (800h)")
 
         st.markdown('<div class="section-header">💰 Charter Pricing</div>', unsafe_allow_html=True)
-
         db_rate = float(aircraft.get("Taux_Charter_EUR_h", 0))
         st.caption(f"Reference rate from database: **€ {db_rate:,.0f} / h**")
-
         use_custom = st.toggle("Set a custom charter price", value=False)
-
         if use_custom:
-            custom_rate = st.number_input(
-                "Your charter price (€ / hour)",
-                min_value=0, max_value=100_000,
-                value=int(db_rate) if db_rate > 0 else 5000,
-                step=100,
-                help="The hourly rate you charge your charter clients"
-            )
+            custom_rate = st.number_input("Your charter price (€ / hour)", min_value=0, max_value=100_000,
+                                          value=int(db_rate) if db_rate > 0 else 5000, step=100)
             if db_rate > 0:
                 diff = custom_rate - db_rate
                 diff_pct = diff / db_rate * 100
                 color = "#4ADE80" if diff >= 0 else "#F87171"
                 arrow = "▲" if diff >= 0 else "▼"
-                st.markdown(f'<span style="color:{color};font-size:0.8rem">{arrow} {diff_pct:+.1f}% vs reference rate</span>',
-                            unsafe_allow_html=True)
+                st.markdown(f'<span style="color:{color};font-size:0.8rem">{arrow} {diff_pct:+.1f}% vs reference rate</span>', unsafe_allow_html=True)
         else:
             custom_rate = db_rate
 
-        commission_pct = st.slider("Operator Commission (%)", 0, 25, 10, step=1,
-                                   help="% retained by the broker / operator")
+        commission_pct = st.slider("Operator Commission (%)", 0, 25, 10, step=1)
 
     costs = calculate_costs(aircraft, h_charter, h_private)
     prof  = calculate_profitability(costs, commission_pct, custom_rate)
 
-    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+    # ════════════════════════════════════════════════════════════════════
+    # TABS
+    # ════════════════════════════════════════════════════════════════════
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
         "📊  Dashboard",
         "📈  Profitability",
         "🔍  Sensitivity",
+        "💼  Cost Master",
         "🤖  Import PDF",
         "📋  Data",
     ])
 
-    # ── TAB 1 : DASHBOARD ────────────────────────────────────────────────────
+    # ── TAB 1 : DASHBOARD ────────────────────────────────────────────────
     with tab1:
-        col_id1, col_id2, col_id3, col_id4 = st.columns(4)
+        col_id1,col_id2,col_id3,col_id4 = st.columns(4)
         with col_id1:
             st.markdown(f"""<div class="metric-card">
                 <div class="metric-label">Selected Aircraft</div>
@@ -563,7 +584,7 @@ def main():
         k4.metric("⌛ Average Cost / Hour", fmt(costs["avg_cost_h"]))
         st.markdown("<hr>", unsafe_allow_html=True)
 
-        col_g1, col_g2 = st.columns(2)
+        col_g1,col_g2 = st.columns(2)
         with col_g1:
             st.markdown('<div class="section-header">Cost Breakdown</div>', unsafe_allow_html=True)
             st.plotly_chart(chart_donut(costs), use_container_width=True, config={"displayModeBar":False})
@@ -587,7 +608,7 @@ def main():
         df_t["€ / Hour"]   = df_t["€ / Hour"].apply(lambda x: f"€ {x:>8,.0f}/h" if pd.notna(x) else "")
         st.dataframe(df_t, use_container_width=True, hide_index=True)
 
-    # ── TAB 2 : PROFITABILITY ────────────────────────────────────────────────
+    # ── TAB 2 : PROFITABILITY ────────────────────────────────────────────
     with tab2:
         st.markdown('<div class="section-header">Charter Profitability Simulation</div>', unsafe_allow_html=True)
         if h_charter == 0:
@@ -598,16 +619,13 @@ def main():
                      else '<span class="tag-warn">⚠ NEAR BREAK-EVEN</span>' if cr>=70
                      else '<span class="tag-err">✗ LOSS-MAKING</span>')
             st.markdown(f"**Status:** {badge} — Cost coverage rate: **{cr:.1f}%**", unsafe_allow_html=True)
-            st.markdown("")
-
             effective_rate = prof.get("effective_rate", custom_rate)
             st.markdown(f"""
-            <div class="metric-card" style="margin-bottom:1rem">
+            <div class="metric-card" style="margin-bottom:1rem;margin-top:0.8rem">
                 <div class="metric-label">Effective Charter Rate Applied</div>
                 <div class="metric-value">€ {effective_rate:,.0f} <span style="font-size:1rem;color:#8496B0">/ hour</span></div>
                 <div class="metric-sub">{h_charter}h × € {effective_rate:,.0f} = gross revenue € {effective_rate*h_charter:,.0f}</div>
             </div>""", unsafe_allow_html=True)
-
             r1,r2,r3,r4 = st.columns(4)
             r1.metric("💵 Gross Charter Revenue", fmt(prof["gross_revenue"]))
             r2.metric("📉 Operator Commission",   fmt(prof["commission"]))
@@ -618,192 +636,181 @@ def main():
             st.plotly_chart(chart_waterfall(costs, prof), use_container_width=True, config={"displayModeBar":False})
             with st.expander("📌 Calculation Assumptions"):
                 st.table(pd.DataFrame({
-                    "Parameter": ["Charter rate applied","Charter hours","Operator commission",
-                                  "Gross revenue","Net revenue (after commission)",
-                                  "Total variable costs","Total fixed costs"],
-                    "Value": [fmt(effective_rate) + "/h", f"{h_charter} h", f"{commission_pct} %",
-                              fmt(prof["gross_revenue"]), fmt(prof["net_revenue"]),
-                              fmt(costs["total_variable"]), fmt(costs["total_fixed"])],
+                    "Parameter": ["Charter rate applied","Charter hours","Operator commission","Gross revenue","Net revenue (after commission)","Total variable costs","Total fixed costs"],
+                    "Value": [fmt(effective_rate)+"/h",f"{h_charter} h",f"{commission_pct} %",fmt(prof["gross_revenue"]),fmt(prof["net_revenue"]),fmt(costs["total_variable"]),fmt(costs["total_fixed"])],
                 }))
 
-    # ── TAB 3 : SENSITIVITY ──────────────────────────────────────────────────
+    # ── TAB 3 : SENSITIVITY ──────────────────────────────────────────────
     with tab3:
         st.markdown('<div class="section-header">Sensitivity Analysis — Charter Hours vs Net Result</div>', unsafe_allow_html=True)
         st.caption(f"Private hours fixed at {h_private}h — Commission {commission_pct}% — Rate € {custom_rate:,.0f}/h")
         st.plotly_chart(chart_sensitivity(aircraft, h_private, commission_pct, custom_rate), use_container_width=True, config={"displayModeBar":False})
-
         st.markdown('<div class="section-header">Fleet Comparison (Cost per Hour)</div>', unsafe_allow_html=True)
         comparison = [{"Model":row["Modele"],"Total Cost (€)":round(calculate_costs(row,h_charter,h_private)["grand_total"]),
                        "Cost/Hour (€)":round(calculate_costs(row,h_charter,h_private)["avg_cost_h"])} for _,row in df.iterrows()]
         df_comp = pd.DataFrame(comparison).sort_values("Total Cost (€)")
         fig_comp = px.bar(df_comp,x="Model",y="Total Cost (€)",color="Cost/Hour (€)",
                           color_continuous_scale=["#1A3A6E","#4A90D9","#C9A84C","#E8C46A"],template="plotly_dark")
-        fig_comp.update_layout(paper_bgcolor="rgba(0,0,0,0)",plot_bgcolor="rgba(0,0,0,0)",
-                               font=dict(color="#D6E4F7"),height=350,
-                               coloraxis_colorbar=dict(title="€/h",tickformat=",.0f"),
-                               margin=dict(t=10,b=80,l=10,r=10),
+        fig_comp.update_layout(paper_bgcolor="rgba(0,0,0,0)",plot_bgcolor="rgba(0,0,0,0)",font=dict(color="#D6E4F7"),height=350,
+                               coloraxis_colorbar=dict(title="€/h",tickformat=",.0f"),margin=dict(t=10,b=80,l=10,r=10),
                                xaxis=dict(tickangle=-30),yaxis=dict(gridcolor="#1A3A6E",tickformat=",.0f"))
         st.plotly_chart(fig_comp, use_container_width=True, config={"displayModeBar":False})
 
-    # ── TAB 4 : PDF IMPORT ───────────────────────────────────────────────────
+    # ════════════════════════════════════════════════════════════════════
+    # TAB 4 : COST MASTER ★ NEW ★
+    # ════════════════════════════════════════════════════════════════════
     with tab4:
-        st.markdown('<div class="section-header">🤖 AI-Powered PDF Budget Import</div>', unsafe_allow_html=True)
-        st.markdown("""
-        Upload any annual aircraft budget PDF — Claude AI will automatically read it and
-        extract all key financial figures, then add the aircraft to your database.
-        """)
+        st.markdown('<div class="main-title" style="font-size:1.4rem">💼 Cost Master</div>', unsafe_allow_html=True)
+        st.markdown('<div class="sub-title">Full operational cost breakdown — enter your own figures or use generic benchmarks</div>', unsafe_allow_html=True)
 
-        st.markdown('<span class="step-badge">1</span> **Enter your Anthropic API Key**', unsafe_allow_html=True)
-        st.caption("Your key is never stored — it's only used for this session. Get one free at platform.anthropic.com")
-        api_key = st.text_input("Anthropic API Key", type="password", placeholder="sk-ant-...",
-                                label_visibility="collapsed")
+        # ── Config bar ───────────────────────────────────────────────
+        cfg1, cfg2, cfg3 = st.columns([2,2,2])
+        with cfg1:
+            annual_flights = st.number_input("Annual number of flights", min_value=1, max_value=2000,
+                                             value=200, step=10,
+                                             help="Total flights per year — used to scale per-flight operational costs")
+        with cfg2:
+            cm_charter_rate = st.number_input("Charter rate (€/h) for analysis",
+                                              min_value=0, max_value=200000,
+                                              value=int(custom_rate) if custom_rate > 0 else int(db_rate),
+                                              step=500)
+        with cfg3:
+            cm_commission = st.slider("Commission (%)", 0, 25, int(commission_pct), step=1,
+                                      key="cm_commission_slider")
 
+        st.markdown("<hr>", unsafe_allow_html=True)
+
+        # ═══════════════════════════════════════════════════════════
+        # INPUT FORM — 3 sections side by side
+        # ═══════════════════════════════════════════════════════════
+        st.markdown("### ✏️ Cost Input")
+        st.markdown("Choose **Generic** to use benchmark values from our database, or **Custom** to enter your own figures.")
+
+        mode_op  = st.radio("Operational Costs mode",  ["Generic", "Custom"], horizontal=True, key="mode_op",  label_visibility="collapsed")
+        mode_dir = st.radio("Direct Costs mode",       ["Generic", "Custom"], horizontal=True, key="mode_dir", label_visibility="collapsed")
+        mode_ind = st.radio("Indirect / Crew mode",    ["Generic", "Custom"], horizontal=True, key="mode_ind", label_visibility="collapsed")
+
+        # Operational Costs (per flight × annual_flights)
+        st.markdown("""<div class="cost-group-card">
+            <div class="cost-group-title cg-operational">✈ Operational Costs &nbsp;<span style="font-size:0.72rem;color:#8496B0">(per flight × annual flights)</span></div>
+        </div>""", unsafe_allow_html=True)
+
+        mode_op_val  = st.radio("Operational", ["🌐  Generic benchmark", "✏️  Custom values"], horizontal=True, key="radio_op",  label_visibility="collapsed")
+        mode_dir_val = st.radio("Direct",      ["🌐  Generic benchmark", "✏️  Custom values"], horizontal=True, key="radio_dir", label_visibility="collapsed")
+        mode_ind_val = st.radio("Indirect",    ["🌐  Generic benchmark", "✏️  Custom values"], horizontal=True, key="radio_ind", label_visibility="collapsed")
+
+        use_generic_op  = "Generic" in mode_op_val
+        use_generic_dir = "Generic" in mode_dir_val
+        use_generic_ind = "Generic" in mode_ind_val
+
+        # ── OPERATIONAL COSTS ──
+        with st.expander("✈  OPERATIONAL COSTS  (per flight)", expanded=True):
+            st.markdown(f'<div style="font-size:0.72rem;color:#60A5FA;letter-spacing:0.1em;margin-bottom:0.5rem">{"🌐 GENERIC BENCHMARK VALUES" if use_generic_op else "✏️ CUSTOM VALUES — edit below"}</div>', unsafe_allow_html=True)
+            op_vals = {}
+            op_pairs = list(CM_DEFAULTS_OPERATIONAL_PER_FLIGHT.items())
+            for i in range(0, len(op_pairs), 2):
+                c1, c2, c3, c4 = st.columns([2,1,2,1])
+                key1, def1 = op_pairs[i]
+                op_vals[key1] = def1 if use_generic_op else st.columns([2,1,2,1])[1].number_input(
+                    key1, value=float(def1), min_value=0.0, step=50.0, label_visibility="collapsed")
+                if use_generic_op:
+                    with c1: st.markdown(f'<span style="font-size:0.82rem;color:#D6E4F7">{key1}</span>', unsafe_allow_html=True)
+                    with c2: st.markdown(f'<span style="color:#E8C46A;font-size:0.88rem;font-weight:600">€ {def1:,.0f}</span>', unsafe_allow_html=True)
+                else:
+                    with c1: st.markdown(f'<span style="font-size:0.82rem;color:#D6E4F7">{key1}</span>', unsafe_allow_html=True)
+                    with c2: op_vals[key1] = st.number_input(f"op_{key1}", value=float(def1), min_value=0.0, step=50.0, label_visibility="collapsed", key=f"op_{key1}")
+
+                if i+1 < len(op_pairs):
+                    key2, def2 = op_pairs[i+1]
+                    if use_generic_op:
+                        with c3: st.markdown(f'<span style="font-size:0.82rem;color:#D6E4F7">{key2}</span>', unsafe_allow_html=True)
+                        with c4: st.markdown(f'<span style="color:#E8C46A;font-size:0.88rem;font-weight:600">€ {def2:,.0f}</span>', unsafe_allow_html=True)
+                        op_vals[key2] = def2
+                    else:
+                        with c3: st.markdown(f'<span style="font-size:0.82rem;color:#D6E4F7">{key2}</span>', unsafe_allow_html=True)
+                        with c4: op_vals[key2] = st.number_input(f"op_{key2}", value=float(def2), min_value=0.0, step=50.0, label_visibility="collapsed", key=f"op_{key2}")
+
+            op_per_flight = sum(op_vals.values())
+            op_annual     = op_per_flight * annual_flights
+            st.markdown(f'<div style="margin-top:0.5rem;padding:0.5rem 0.8rem;background:#112244;border-radius:4px;font-size:0.85rem">Per flight total: <b style="color:#60A5FA">€ {op_per_flight:,.0f}</b> &nbsp;·&nbsp; Annual total ({annual_flights} flights): <b style="color:#60A5FA">€ {op_annual:,.0f}</b></div>', unsafe_allow_html=True)
+
+        # ── DIRECT COSTS ──
+        with st.expander("🔧  DIRECT COSTS  (annual fixed)", expanded=True):
+            st.markdown(f'<div style="font-size:0.72rem;color:#F59E0B;letter-spacing:0.1em;margin-bottom:0.5rem">{"🌐 GENERIC BENCHMARK VALUES" if use_generic_dir else "✏️ CUSTOM VALUES — edit below"}</div>', unsafe_allow_html=True)
+            dir_vals = {}
+            dir_pairs = list(CM_DEFAULTS_DIRECT.items())
+            for i in range(0, len(dir_pairs), 2):
+                c1, c2, c3, c4 = st.columns([2,1,2,1])
+                key1, def1 = dir_pairs[i]
+                if use_generic_dir:
+                    with c1: st.markdown(f'<span style="font-size:0.82rem;color:#D6E4F7">{key1}</span>', unsafe_allow_html=True)
+                    with c2: st.markdown(f'<span style="color:#E8C46A;font-size:0.88rem;font-weight:600">€ {def1:,.0f}</span>', unsafe_allow_html=True)
+                    dir_vals[key1] = def1
+                else:
+                    with c1: st.markdown(f'<span style="font-size:0.82rem;color:#D6E4F7">{key1}</span>', unsafe_allow_html=True)
+                    with c2: dir_vals[key1] = st.number_input(f"dir_{key1}", value=float(def1), min_value=0.0, step=500.0, label_visibility="collapsed", key=f"dir_{key1}")
+
+                if i+1 < len(dir_pairs):
+                    key2, def2 = dir_pairs[i+1]
+                    if use_generic_dir:
+                        with c3: st.markdown(f'<span style="font-size:0.82rem;color:#D6E4F7">{key2}</span>', unsafe_allow_html=True)
+                        with c4: st.markdown(f'<span style="color:#E8C46A;font-size:0.88rem;font-weight:600">€ {def2:,.0f}</span>', unsafe_allow_html=True)
+                        dir_vals[key2] = def2
+                    else:
+                        with c3: st.markdown(f'<span style="font-size:0.82rem;color:#D6E4F7">{key2}</span>', unsafe_allow_html=True)
+                        with c4: dir_vals[key2] = st.number_input(f"dir_{key2}", value=float(def2), min_value=0.0, step=500.0, label_visibility="collapsed", key=f"dir_{key2}")
+
+            dir_total = sum(dir_vals.values())
+            st.markdown(f'<div style="margin-top:0.5rem;padding:0.5rem 0.8rem;background:#112244;border-radius:4px;font-size:0.85rem">Annual direct costs total: <b style="color:#F59E0B">€ {dir_total:,.0f}</b></div>', unsafe_allow_html=True)
+
+        # ── INDIRECT / CREW COSTS ──
+        with st.expander("👥  INDIRECT / CREW COSTS  (annual)", expanded=True):
+            st.markdown(f'<div style="font-size:0.72rem;color:#A78BFA;letter-spacing:0.1em;margin-bottom:0.5rem">{"🌐 GENERIC BENCHMARK VALUES" if use_generic_ind else "✏️ CUSTOM VALUES — edit below"}</div>', unsafe_allow_html=True)
+            ind_vals = {}
+            ind_pairs = list(CM_DEFAULTS_INDIRECT.items())
+            for i in range(0, len(ind_pairs), 2):
+                c1, c2, c3, c4 = st.columns([2,1,2,1])
+                key1, def1 = ind_pairs[i]
+                if use_generic_ind:
+                    with c1: st.markdown(f'<span style="font-size:0.82rem;color:#D6E4F7">{key1}</span>', unsafe_allow_html=True)
+                    with c2: st.markdown(f'<span style="color:#E8C46A;font-size:0.88rem;font-weight:600">€ {def1:,.0f}</span>', unsafe_allow_html=True)
+                    ind_vals[key1] = def1
+                else:
+                    with c1: st.markdown(f'<span style="font-size:0.82rem;color:#D6E4F7">{key1}</span>', unsafe_allow_html=True)
+                    with c2: ind_vals[key1] = st.number_input(f"ind_{key1}", value=float(def1), min_value=0.0, step=500.0, label_visibility="collapsed", key=f"ind_{key1}")
+
+                if i+1 < len(ind_pairs):
+                    key2, def2 = ind_pairs[i+1]
+                    if use_generic_ind:
+                        with c3: st.markdown(f'<span style="font-size:0.82rem;color:#D6E4F7">{key2}</span>', unsafe_allow_html=True)
+                        with c4: st.markdown(f'<span style="color:#E8C46A;font-size:0.88rem;font-weight:600">€ {def2:,.0f}</span>', unsafe_allow_html=True)
+                        ind_vals[key2] = def2
+                    else:
+                        with c3: st.markdown(f'<span style="font-size:0.82rem;color:#D6E4F7">{key2}</span>', unsafe_allow_html=True)
+                        with c4: ind_vals[key2] = st.number_input(f"ind_{key2}", value=float(def2), min_value=0.0, step=500.0, label_visibility="collapsed", key=f"ind_{key2}")
+
+            ind_total = sum(ind_vals.values())
+            st.markdown(f'<div style="margin-top:0.5rem;padding:0.5rem 0.8rem;background:#112244;border-radius:4px;font-size:0.85rem">Annual indirect / crew total: <b style="color:#A78BFA">€ {ind_total:,.0f}</b></div>', unsafe_allow_html=True)
+
+        # ═══════════════════════════════════════════════════════════
+        # ANALYSIS BUTTON
+        # ═══════════════════════════════════════════════════════════
         st.markdown("<br>", unsafe_allow_html=True)
+        if st.button("🚀  Generate Financial Analysis", use_container_width=True):
+            st.session_state["cost_master"] = {
+                "op_vals": op_vals, "op_annual": op_annual, "op_per_flight": op_per_flight,
+                "dir_vals": dir_vals, "dir_total": dir_total,
+                "ind_vals": ind_vals, "ind_total": ind_total,
+                "annual_flights": annual_flights,
+                "charter_rate": cm_charter_rate,
+                "commission_pct": cm_commission,
+                "h_charter": h_charter,
+                "aircraft_name": aircraft["Modele"],
+            }
 
-        st.markdown('<span class="step-badge">2</span> **Upload your budget PDF**', unsafe_allow_html=True)
-        pdf_file = st.file_uploader("Drop your aircraft budget PDF here", type=["pdf"],
-                                    label_visibility="collapsed")
-
-        if pdf_file:
-            file_size_kb = len(pdf_file.getvalue()) / 1024
-            st.markdown(f"""
-            <div style="background:#13233F;border:1px solid #1A3A6E;border-radius:6px;padding:0.8rem 1rem;margin:0.5rem 0">
-                📄 <b>{pdf_file.name}</b> &nbsp;·&nbsp;
-                <span style="color:#8496B0">{file_size_kb:.0f} KB</span>
-            </div>""", unsafe_allow_html=True)
-
-        st.markdown("<br>", unsafe_allow_html=True)
-
-        st.markdown('<span class="step-badge">3</span> **Extract data with AI**', unsafe_allow_html=True)
-
-        col_btn, col_status = st.columns([1, 3])
-        with col_btn:
-            extract_btn = st.button("🔍 Extract from PDF", disabled=(not pdf_file or not api_key))
-        with col_status:
-            if not api_key:
-                st.markdown('<span style="color:#8496B0;font-size:0.82rem">⟵ Enter your API key first</span>', unsafe_allow_html=True)
-            elif not pdf_file:
-                st.markdown('<span style="color:#8496B0;font-size:0.82rem">⟵ Upload a PDF first</span>', unsafe_allow_html=True)
-
-        if extract_btn and pdf_file and api_key:
-            with st.spinner("🤖 Claude is reading your budget document..."):
-                try:
-                    pdf_bytes = pdf_file.getvalue()
-                    extracted = extract_pdf_with_claude(pdf_bytes, api_key)
-                    st.session_state["extracted"] = extracted
-                    st.success("✓ Extraction successful!")
-                except json.JSONDecodeError as e:
-                    st.error(f"⚠ Could not parse AI response as JSON: {e}")
-                    st.session_state["extracted"] = None
-                except Exception as e:
-                    st.error(f"⚠ Extraction failed: {e}")
-                    st.session_state["extracted"] = None
-
-        if st.session_state["extracted"]:
-            ext = st.session_state["extracted"]
-
-            st.markdown("<hr>", unsafe_allow_html=True)
-            st.markdown('<span class="step-badge">4</span> **Review extracted data — edit if needed**', unsafe_allow_html=True)
-            st.caption("All fields are editable before adding to the database.")
-
-            col_a, col_b = st.columns(2)
-            with col_a:
-                model_name  = st.text_input("Aircraft Model",   value=ext.get("aircraft_model") or "")
-                category    = st.selectbox("Category", ["Light Jet","Midsize","Super Midsize","Grand Cabin","Ultra Long Range"],
-                                           index=["Light Jet","Midsize","Super Midsize","Grand Cabin","Ultra Long Range"].index(
-                                               ext.get("category","Light Jet")) if ext.get("category") in
-                                               ["Light Jet","Midsize","Super Midsize","Grand Cabin","Ultra Long Range"] else 0)
-                fixed_costs = st.number_input("Fixed Costs excl. Crew (€/year)", value=float(ext.get("fixed_costs_annual") or 0), step=1000.0)
-                crew_costs  = st.number_input("Annual Crew Costs (€/year)",      value=float(ext.get("crew_costs_annual") or 0), step=1000.0)
-                base_hours  = st.number_input("Base Flight Hours / year",         value=float(ext.get("base_flight_hours") or 500), step=10.0)
-
-            with col_b:
-                var_charter = st.number_input("Variable Cost Charter (€/h)", value=float(ext.get("variable_cost_charter_per_hour") or 0), step=10.0)
-                var_private = st.number_input("Variable Cost Private (€/h)",  value=float(ext.get("variable_cost_private_per_hour") or 0), step=10.0)
-                charter_rate= st.number_input("Charter Rate to Client (€/h)", value=float(ext.get("charter_rate_per_hour") or 0), step=100.0)
-                range_km    = st.number_input("Range (km)",        value=float(ext.get("range_km") or 0), step=100.0)
-                pax_max     = st.number_input("Max Passengers",    value=float(ext.get("max_passengers") or 0), step=1.0)
-                speed       = st.number_input("Cruise Speed (km/h)", value=float(ext.get("cruise_speed_kmh") or 0), step=10.0)
-
-            if ext.get("notes"):
-                with st.expander("📝 AI Notes from the document"):
-                    st.write(ext["notes"])
-
-            st.markdown("<br>", unsafe_allow_html=True)
-            st.markdown('<span class="step-badge">5</span> **Add to database**', unsafe_allow_html=True)
-
-            col_add, col_discard = st.columns([1, 1])
-            with col_add:
-                if st.button("✅ Add to Database", type="primary"):
-                    new_row = {
-                        "Modele":                 model_name,
-                        "Categorie":              category,
-                        "Couts_Fixes_Annuels":    fixed_costs,
-                        "Couts_Equipe_Annuels":   crew_costs,
-                        "Cout_Horaire_Charter":   var_charter,
-                        "Cout_Horaire_Prive":     var_private,
-                        "Heures_Base":            base_hours,
-                        "Taux_Charter_EUR_h":     charter_rate,
-                        "Vitesse_Croisiere_km_h": speed if speed > 0 else None,
-                        "Autonomie_km":           range_km if range_km > 0 else None,
-                        "Passagers_Max":          int(pax_max) if pax_max > 0 else None,
-                    }
-                    add_to_database(new_row)
-                    st.session_state["extracted"] = None
-                    st.success(f"✅ **{model_name}** added to the database! Switch to the Dashboard to simulate.")
-                    st.rerun()
-            with col_discard:
-                if st.button("🗑 Discard"):
-                    st.session_state["extracted"] = None
-                    st.rerun()
-
-        with st.expander("ℹ How to get a free Anthropic API key"):
-            st.markdown("""
-            1. Go to **[platform.anthropic.com](https://platform.anthropic.com)**
-            2. Create a free account
-            3. Go to **API Keys** in the left menu
-            4. Click **Create Key** → copy and paste it above
-
-            The free tier includes enough credits to extract dozens of PDF budgets.
-            Your key is only used during this browser session and is never saved.
-            """)
-
-    # ── TAB 5 : DATA ─────────────────────────────────────────────────────────
-    with tab5:
-        st.markdown('<div class="section-header">Aircraft Database</div>', unsafe_allow_html=True)
-
-        current_db = get_active_db()
-        st.dataframe(current_db, use_container_width=True, hide_index=True)
-
-        col_dl1, col_dl2 = st.columns(2)
-        with col_dl1:
-            buf = BytesIO()
-            current_db.to_excel(buf, index=False, sheet_name="Aviation Data")
-            st.download_button("⬇ Download Current Database (.xlsx)", data=buf.getvalue(),
-                               file_name="aviation_database.xlsx",
-                               mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-        with col_dl2:
-            if st.button("🔄 Reset to Default Database"):
-                st.session_state["database"] = None
-                st.session_state["extracted"] = None
-                st.rerun()
-
-        st.markdown('<div class="section-header">Required Excel File Format</div>', unsafe_allow_html=True)
-        df_format = pd.DataFrame(
-            [{"Column":k,"Description":v,"Required":"✓"} for k,v in REQUIRED_COLUMNS.items()] +
-            [{"Column":"Categorie","Description":"Category (Light Jet, Midsize, etc.)","Required":"—"},
-             {"Column":"Autonomie_km","Description":"Maximum range in km","Required":"—"},
-             {"Column":"Vitesse_Croisiere_km_h","Description":"Cruise speed in km/h","Required":"—"},
-             {"Column":"Passagers_Max","Description":"Maximum number of passengers","Required":"—"}])
-        st.table(df_format)
-
-    st.markdown("<hr>", unsafe_allow_html=True)
-    st.markdown(
-        '<div style="text-align:center;font-size:0.72rem;color:#4A5568;letter-spacing:0.1em">'
-        'AVIATION COST ESTIMATOR — Figures are indicative and for simulation purposes only'
-        ' · Values based on market averages (NBAA / JETNET)</div>',
-        unsafe_allow_html=True)
-
-
-if __name__ == "__main__":
-    main()
+        # ═══════════════════════════════════════════════════════════
+        # FINANCIAL ANALYSIS (shown after button click)
+        # ═══════════════════════════════════════════════════════════
+        if st.session_state["cost_master"]:
+            cm = st.session_state["cost_master"]
+            op_a
