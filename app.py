@@ -121,7 +121,7 @@ if "extracted" not in st.session_state:
 
 # ─── DEFAULT DATASET ────────────────────────────────────────────────────────
 def get_default_data() -> pd.DataFrame:
-    """Menkor Aviation GBL — 31 aircraft database (extracted from official budgets)."""
+    """Menkor Aviation GBL — 46 aircraft database v6 (extracted from official budgets)."""
     data = [
         {"Modele": "Airbus 318", "Categorie": "ACJ / VIP Airliner", "Couts_Fixes_Annuels": 219176, "Couts_Equipe_Annuels": 450113, "Cout_Horaire_Charter": 4481, "Cout_Horaire_Prive": 3674, "Heures_Base": 350, "Taux_Charter_EUR_h": 6500, "Vitesse_Croisiere_km_h": 869, "Autonomie_km": 6862, "Passagers_Max": 19},
         {"Modele": "Airbus 319", "Categorie": "ACJ / VIP Airliner", "Couts_Fixes_Annuels": 225763, "Couts_Equipe_Annuels": 450113, "Cout_Horaire_Charter": 4338, "Cout_Horaire_Prive": 3557, "Heures_Base": 350, "Taux_Charter_EUR_h": 7000, "Vitesse_Croisiere_km_h": 869, "Autonomie_km": 11014, "Passagers_Max": 19},
@@ -150,10 +150,25 @@ def get_default_data() -> pd.DataFrame:
         {"Modele": "Boeing BBJ", "Categorie": "ACJ / VIP Airliner", "Couts_Fixes_Annuels": 218956, "Couts_Equipe_Annuels": 469635, "Cout_Horaire_Charter": 3763, "Cout_Horaire_Prive": 3086, "Heures_Base": 350, "Taux_Charter_EUR_h": 9000, "Vitesse_Croisiere_km_h": 871, "Autonomie_km": 11100, "Passagers_Max": 19},
         {"Modele": "Boeing BBJ2", "Categorie": "ACJ / VIP Airliner", "Couts_Fixes_Annuels": 241598, "Couts_Equipe_Annuels": 469653, "Cout_Horaire_Charter": 3882, "Cout_Horaire_Prive": 3183, "Heures_Base": 350, "Taux_Charter_EUR_h": 10000, "Vitesse_Croisiere_km_h": 840, "Autonomie_km": 10191, "Passagers_Max": 19},
         {"Modele": "Boeing BBJ3", "Categorie": "ACJ / VIP Airliner", "Couts_Fixes_Annuels": 248567, "Couts_Equipe_Annuels": 470089, "Cout_Horaire_Charter": 3889, "Cout_Horaire_Prive": 3189, "Heures_Base": 350, "Taux_Charter_EUR_h": 11000, "Vitesse_Croisiere_km_h": 840, "Autonomie_km": 8649, "Passagers_Max": 19},
+        {"Modele": "Bombardier Challenger 604", "Categorie": "Large Jet", "Couts_Fixes_Annuels": 376651, "Couts_Equipe_Annuels": 237726, "Cout_Horaire_Charter": 2726, "Cout_Horaire_Prive": 2450, "Heures_Base": 350, "Taux_Charter_EUR_h": 5200, "Vitesse_Croisiere_km_h": 850, "Autonomie_km": 6786, "Passagers_Max": 10},
+        {"Modele": "Bombardier Challenger 605", "Categorie": "Large Jet", "Couts_Fixes_Annuels": 500361, "Couts_Equipe_Annuels": 346500, "Cout_Horaire_Charter": 2619, "Cout_Horaire_Prive": 2360, "Heures_Base": 350, "Taux_Charter_EUR_h": 5500, "Vitesse_Croisiere_km_h": 849, "Autonomie_km": 6856, "Passagers_Max": 10},
+        {"Modele": "Bombardier Challenger 650", "Categorie": "Large Jet", "Couts_Fixes_Annuels": 488946, "Couts_Equipe_Annuels": 333270, "Cout_Horaire_Charter": 2455, "Cout_Horaire_Prive": 2210, "Heures_Base": 350, "Taux_Charter_EUR_h": 5800, "Vitesse_Croisiere_km_h": 850, "Autonomie_km": 6795, "Passagers_Max": 10},
+        {"Modele": "Bombardier Global 5000", "Categorie": "Ultra Long Range Jet", "Couts_Fixes_Annuels": 702952, "Couts_Equipe_Annuels": 426052, "Cout_Horaire_Charter": 4051, "Cout_Horaire_Prive": 3646, "Heures_Base": 350, "Taux_Charter_EUR_h": 9000, "Vitesse_Croisiere_km_h": 904, "Autonomie_km": 9390, "Passagers_Max": 13},
+        {"Modele": "Bombardier Global Express", "Categorie": "Ultra Long Range Jet", "Couts_Fixes_Annuels": 683427, "Couts_Equipe_Annuels": 426052, "Cout_Horaire_Charter": 4471, "Cout_Horaire_Prive": 4024, "Heures_Base": 350, "Taux_Charter_EUR_h": 9500, "Vitesse_Croisiere_km_h": 904, "Autonomie_km": 10726, "Passagers_Max": 13},
+        {"Modele": "Bombardier Global Express XRS", "Categorie": "Ultra Long Range Jet", "Couts_Fixes_Annuels": 714023, "Couts_Equipe_Annuels": 426052, "Cout_Horaire_Charter": 4420, "Cout_Horaire_Prive": 3978, "Heures_Base": 350, "Taux_Charter_EUR_h": 10000, "Vitesse_Croisiere_km_h": 904, "Autonomie_km": 10934, "Passagers_Max": 13},
         {"Modele": "Challenger 300", "Categorie": "Super Midsize Jet", "Couts_Fixes_Annuels": 102295, "Couts_Equipe_Annuels": 392114, "Cout_Horaire_Charter": 2878, "Cout_Horaire_Prive": 2360, "Heures_Base": 350, "Taux_Charter_EUR_h": 3500, "Vitesse_Croisiere_km_h": 848, "Autonomie_km": 5545, "Passagers_Max": 8},
         {"Modele": "Challenger 350", "Categorie": "Super Midsize Jet", "Couts_Fixes_Annuels": 93921, "Couts_Equipe_Annuels": 394305, "Cout_Horaire_Charter": 2353, "Cout_Horaire_Prive": 1929, "Heures_Base": 350, "Taux_Charter_EUR_h": 4000, "Vitesse_Croisiere_km_h": 850, "Autonomie_km": 5784, "Passagers_Max": 8},
         {"Modele": "Challenger 600", "Categorie": "Large Jet", "Couts_Fixes_Annuels": 78406, "Couts_Equipe_Annuels": 372774, "Cout_Horaire_Charter": 4337, "Cout_Horaire_Prive": 3556, "Heures_Base": 350, "Taux_Charter_EUR_h": 4500, "Vitesse_Croisiere_km_h": 849, "Autonomie_km": 5061, "Passagers_Max": 9},
         {"Modele": "Challenger 601-1A", "Categorie": "Large Jet", "Couts_Fixes_Annuels": 84681, "Couts_Equipe_Annuels": 367240, "Cout_Horaire_Charter": 3720, "Cout_Horaire_Prive": 3050, "Heures_Base": 350, "Taux_Charter_EUR_h": 4500, "Vitesse_Croisiere_km_h": 821, "Autonomie_km": 5748, "Passagers_Max": 9},
+        {"Modele": "Dassault Falcon 10", "Categorie": "Light Jet", "Couts_Fixes_Annuels": 279536, "Couts_Equipe_Annuels": 224844, "Cout_Horaire_Charter": 2372, "Cout_Horaire_Prive": 2135, "Heures_Base": 250, "Taux_Charter_EUR_h": 2800, "Vitesse_Croisiere_km_h": 837, "Autonomie_km": 2745, "Passagers_Max": 6},
+        {"Modele": "Dassault Falcon 20C", "Categorie": "Midsize Jet", "Couts_Fixes_Annuels": 350751, "Couts_Equipe_Annuels": 278094, "Cout_Horaire_Charter": 3179, "Cout_Horaire_Prive": 2861, "Heures_Base": 250, "Taux_Charter_EUR_h": 3200, "Vitesse_Croisiere_km_h": 805, "Autonomie_km": 2167, "Passagers_Max": 9},
+        {"Modele": "Dassault Falcon 20C-5", "Categorie": "Midsize Jet", "Couts_Fixes_Annuels": 356747, "Couts_Equipe_Annuels": 278094, "Cout_Horaire_Charter": 2675, "Cout_Horaire_Prive": 2408, "Heures_Base": 250, "Taux_Charter_EUR_h": 3400, "Vitesse_Croisiere_km_h": 842, "Autonomie_km": 3684, "Passagers_Max": 9},
+        {"Modele": "Dassault Falcon 20F", "Categorie": "Midsize Jet", "Couts_Fixes_Annuels": 356077, "Couts_Equipe_Annuels": 278094, "Cout_Horaire_Charter": 2895, "Cout_Horaire_Prive": 2606, "Heures_Base": 250, "Taux_Charter_EUR_h": 3200, "Vitesse_Croisiere_km_h": 805, "Autonomie_km": 2420, "Passagers_Max": 9},
+        {"Modele": "Dassault Falcon 20F-5", "Categorie": "Midsize Jet", "Couts_Fixes_Annuels": 353308, "Couts_Equipe_Annuels": 278094, "Cout_Horaire_Charter": 2485, "Cout_Horaire_Prive": 2237, "Heures_Base": 250, "Taux_Charter_EUR_h": 3500, "Vitesse_Croisiere_km_h": 842, "Autonomie_km": 4063, "Passagers_Max": 9},
+        {"Modele": "Dassault Falcon 50", "Categorie": "Large Jet", "Couts_Fixes_Annuels": 450596, "Couts_Equipe_Annuels": 334924, "Cout_Horaire_Charter": 3352, "Cout_Horaire_Prive": 3017, "Heures_Base": 350, "Taux_Charter_EUR_h": 5000, "Vitesse_Croisiere_km_h": 799, "Autonomie_km": 5526, "Passagers_Max": 9},
+        {"Modele": "Dassault Falcon 50-40", "Categorie": "Large Jet", "Couts_Fixes_Annuels": 469453, "Couts_Equipe_Annuels": 334924, "Cout_Horaire_Charter": 3328, "Cout_Horaire_Prive": 2995, "Heures_Base": 350, "Taux_Charter_EUR_h": 5200, "Vitesse_Croisiere_km_h": 850, "Autonomie_km": 5905, "Passagers_Max": 9},
+        {"Modele": "Dassault Falcon 7X", "Categorie": "Ultra Long Range Jet", "Couts_Fixes_Annuels": 588918, "Couts_Equipe_Annuels": 377505, "Cout_Horaire_Charter": 2994, "Cout_Horaire_Prive": 2695, "Heures_Base": 350, "Taux_Charter_EUR_h": 9500, "Vitesse_Croisiere_km_h": 904, "Autonomie_km": 9924, "Passagers_Max": 12},
+        {"Modele": "Dassault Falcon 8X", "Categorie": "Ultra Long Range Jet", "Couts_Fixes_Annuels": 598153, "Couts_Equipe_Annuels": 377505, "Cout_Horaire_Charter": 2958, "Cout_Horaire_Prive": 2662, "Heures_Base": 350, "Taux_Charter_EUR_h": 10500, "Vitesse_Croisiere_km_h": 903, "Autonomie_km": 11365, "Passagers_Max": 12},
     ]
     return pd.DataFrame(data)
 
@@ -215,7 +230,6 @@ def calculate_costs(aircraft: pd.Series, h_charter: int, h_private: int) -> dict
                 h_private=h_private, total_hours=total_hours, charter_tariff=charter_tariff)
 
 def calculate_profitability(costs: dict, commission_pct: float, custom_rate: float = None) -> dict:
-    # Use custom rate if provided, otherwise fall back to database rate
     tariff        = custom_rate if (custom_rate is not None and custom_rate > 0) else costs["charter_tariff"]
     h_charter     = costs["h_charter"]
     gross_revenue = tariff * h_charter
@@ -344,13 +358,7 @@ Rules:
 
 
 def extract_pdf_with_claude(pdf_bytes: bytes, api_key: str) -> dict:
-    """
-    Sends the PDF to Claude API and extracts structured budget data.
-    Returns a dict with extracted fields or raises an exception.
-    """
-    # Encode PDF to base64
     pdf_b64 = base64.standard_b64encode(pdf_bytes).decode("utf-8")
-
     payload = {
         "model": "claude-sonnet-4-6",
         "max_tokens": 1000,
@@ -374,7 +382,6 @@ def extract_pdf_with_claude(pdf_bytes: bytes, api_key: str) -> dict:
             }
         ],
     }
-
     response = requests.post(
         "https://api.anthropic.com/v1/messages",
         headers={
@@ -386,20 +393,15 @@ def extract_pdf_with_claude(pdf_bytes: bytes, api_key: str) -> dict:
         json=payload,
         timeout=60,
     )
-
     if response.status_code != 200:
         raise ValueError(f"API error {response.status_code}: {response.text[:300]}")
-
     data = response.json()
     raw_text = "".join(b.get("text", "") for b in data.get("content", []) if b.get("type") == "text")
-
-    # Clean and parse JSON
     clean = raw_text.strip().lstrip("```json").lstrip("```").rstrip("```").strip()
     return json.loads(clean)
 
 
 def extracted_to_db_row(ext: dict) -> dict:
-    """Converts Claude's extracted dict to a database row."""
     return {
         "Modele":                ext.get("aircraft_model") or "Unknown",
         "Categorie":             ext.get("category") or "Unknown",
@@ -416,14 +418,10 @@ def extracted_to_db_row(ext: dict) -> dict:
 
 
 def add_to_database(new_row: dict):
-    """Adds or updates an aircraft row in the session database."""
     db = get_active_db().copy()
     model_name = new_row["Modele"]
-
-    # Replace if already exists, else append
     if model_name in db["Modele"].values:
         db = db[db["Modele"] != model_name]
-
     new_df = pd.DataFrame([new_row])
     st.session_state["database"] = pd.concat([db, new_df], ignore_index=True)
 
@@ -432,7 +430,6 @@ def add_to_database(new_row: dict):
 # MAIN INTERFACE
 # ════════════════════════════════════════════════════════════════════════════
 def main():
-    # ── Header ───────────────────────────────────────────────────────────
     col_logo, col_title = st.columns([1, 6])
     with col_logo:
         st.markdown("<div style='font-size:3rem;text-align:center;margin-top:0.3rem'>✈</div>",
@@ -443,7 +440,6 @@ def main():
                     unsafe_allow_html=True)
     st.markdown("<hr>", unsafe_allow_html=True)
 
-    # ── Sidebar ──────────────────────────────────────────────────────────
     df = get_active_db()
 
     with st.sidebar:
@@ -492,11 +488,9 @@ def main():
 
         st.markdown('<div class="section-header">💰 Charter Pricing</div>', unsafe_allow_html=True)
 
-        # Show the database rate as reference
         db_rate = float(aircraft.get("Taux_Charter_EUR_h", 0))
         st.caption(f"Reference rate from database: **€ {db_rate:,.0f} / h**")
 
-        # Toggle: use custom price or database price
         use_custom = st.toggle("Set a custom charter price", value=False)
 
         if use_custom:
@@ -507,7 +501,6 @@ def main():
                 step=100,
                 help="The hourly rate you charge your charter clients"
             )
-            # Show difference vs database rate
             if db_rate > 0:
                 diff = custom_rate - db_rate
                 diff_pct = diff / db_rate * 100
@@ -524,9 +517,6 @@ def main():
     costs = calculate_costs(aircraft, h_charter, h_private)
     prof  = calculate_profitability(costs, commission_pct, custom_rate)
 
-    # ════════════════════════════════════════════════════════════════════
-    # TABS
-    # ════════════════════════════════════════════════════════════════════
     tab1, tab2, tab3, tab4, tab5 = st.tabs([
         "📊  Dashboard",
         "📈  Profitability",
@@ -535,9 +525,7 @@ def main():
         "📋  Data",
     ])
 
-    # ──────────────────────────────────────────────────────────────────
-    # TAB 1 : DASHBOARD
-    # ──────────────────────────────────────────────────────────────────
+    # ── TAB 1 : DASHBOARD ────────────────────────────────────────────────────
     with tab1:
         col_id1, col_id2, col_id3, col_id4 = st.columns(4)
         with col_id1:
@@ -599,9 +587,7 @@ def main():
         df_t["€ / Hour"]   = df_t["€ / Hour"].apply(lambda x: f"€ {x:>8,.0f}/h" if pd.notna(x) else "")
         st.dataframe(df_t, use_container_width=True, hide_index=True)
 
-    # ──────────────────────────────────────────────────────────────────
-    # TAB 2 : PROFITABILITY
-    # ──────────────────────────────────────────────────────────────────
+    # ── TAB 2 : PROFITABILITY ────────────────────────────────────────────────
     with tab2:
         st.markdown('<div class="section-header">Charter Profitability Simulation</div>', unsafe_allow_html=True)
         if h_charter == 0:
@@ -614,7 +600,6 @@ def main():
             st.markdown(f"**Status:** {badge} — Cost coverage rate: **{cr:.1f}%**", unsafe_allow_html=True)
             st.markdown("")
 
-            # Show effective rate prominently
             effective_rate = prof.get("effective_rate", custom_rate)
             st.markdown(f"""
             <div class="metric-card" style="margin-bottom:1rem">
@@ -641,9 +626,7 @@ def main():
                               fmt(costs["total_variable"]), fmt(costs["total_fixed"])],
                 }))
 
-    # ──────────────────────────────────────────────────────────────────
-    # TAB 3 : SENSITIVITY
-    # ──────────────────────────────────────────────────────────────────
+    # ── TAB 3 : SENSITIVITY ──────────────────────────────────────────────────
     with tab3:
         st.markdown('<div class="section-header">Sensitivity Analysis — Charter Hours vs Net Result</div>', unsafe_allow_html=True)
         st.caption(f"Private hours fixed at {h_private}h — Commission {commission_pct}% — Rate € {custom_rate:,.0f}/h")
@@ -662,9 +645,7 @@ def main():
                                xaxis=dict(tickangle=-30),yaxis=dict(gridcolor="#1A3A6E",tickformat=",.0f"))
         st.plotly_chart(fig_comp, use_container_width=True, config={"displayModeBar":False})
 
-    # ──────────────────────────────────────────────────────────────────
-    # TAB 4 : PDF IMPORT  ★ NEW ★
-    # ──────────────────────────────────────────────────────────────────
+    # ── TAB 4 : PDF IMPORT ───────────────────────────────────────────────────
     with tab4:
         st.markdown('<div class="section-header">🤖 AI-Powered PDF Budget Import</div>', unsafe_allow_html=True)
         st.markdown("""
@@ -672,7 +653,6 @@ def main():
         extract all key financial figures, then add the aircraft to your database.
         """)
 
-        # ── Step 1: API Key ───────────────────────────────────────────
         st.markdown('<span class="step-badge">1</span> **Enter your Anthropic API Key**', unsafe_allow_html=True)
         st.caption("Your key is never stored — it's only used for this session. Get one free at platform.anthropic.com")
         api_key = st.text_input("Anthropic API Key", type="password", placeholder="sk-ant-...",
@@ -680,7 +660,6 @@ def main():
 
         st.markdown("<br>", unsafe_allow_html=True)
 
-        # ── Step 2: Upload PDF ────────────────────────────────────────
         st.markdown('<span class="step-badge">2</span> **Upload your budget PDF**', unsafe_allow_html=True)
         pdf_file = st.file_uploader("Drop your aircraft budget PDF here", type=["pdf"],
                                     label_visibility="collapsed")
@@ -695,7 +674,6 @@ def main():
 
         st.markdown("<br>", unsafe_allow_html=True)
 
-        # ── Step 3: Extract ───────────────────────────────────────────
         st.markdown('<span class="step-badge">3</span> **Extract data with AI**', unsafe_allow_html=True)
 
         col_btn, col_status = st.columns([1, 3])
@@ -721,7 +699,6 @@ def main():
                     st.error(f"⚠ Extraction failed: {e}")
                     st.session_state["extracted"] = None
 
-        # ── Step 4: Review & Confirm ─────────────────────────────────
         if st.session_state["extracted"]:
             ext = st.session_state["extracted"]
 
@@ -780,7 +757,6 @@ def main():
                     st.session_state["extracted"] = None
                     st.rerun()
 
-        # ── How to get API key ────────────────────────────────────────
         with st.expander("ℹ How to get a free Anthropic API key"):
             st.markdown("""
             1. Go to **[platform.anthropic.com](https://platform.anthropic.com)**
@@ -792,9 +768,7 @@ def main():
             Your key is only used during this browser session and is never saved.
             """)
 
-    # ──────────────────────────────────────────────────────────────────
-    # TAB 5 : DATA
-    # ──────────────────────────────────────────────────────────────────
+    # ── TAB 5 : DATA ─────────────────────────────────────────────────────────
     with tab5:
         st.markdown('<div class="section-header">Aircraft Database</div>', unsafe_allow_html=True)
 
@@ -803,14 +777,12 @@ def main():
 
         col_dl1, col_dl2 = st.columns(2)
         with col_dl1:
-            # Download current database
             buf = BytesIO()
             current_db.to_excel(buf, index=False, sheet_name="Aviation Data")
             st.download_button("⬇ Download Current Database (.xlsx)", data=buf.getvalue(),
                                file_name="aviation_database.xlsx",
                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
         with col_dl2:
-            # Reset database
             if st.button("🔄 Reset to Default Database"):
                 st.session_state["database"] = None
                 st.session_state["extracted"] = None
@@ -825,7 +797,6 @@ def main():
              {"Column":"Passagers_Max","Description":"Maximum number of passengers","Required":"—"}])
         st.table(df_format)
 
-    # ── Footer ───────────────────────────────────────────────────────────
     st.markdown("<hr>", unsafe_allow_html=True)
     st.markdown(
         '<div style="text-align:center;font-size:0.72rem;color:#4A5568;letter-spacing:0.1em">'
