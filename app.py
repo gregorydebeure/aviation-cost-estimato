@@ -265,7 +265,8 @@ def chart_stacked_bars(costs):
         go.Bar(name="Private Variable",x=categories,marker_color=COLORS["private"],
                y=[0,costs["var_private"],costs["var_private"]]),
     ])
-    fig.update_layout(barmode="stack",paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font=dict(color="#D6E4F7"), margin=dict(t=10,b=10,l=10,r=10),height=300,
+    fig.update_layout(barmode="stack", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font=dict(color="#D6E4F7"),
+                      height=300,
                       yaxis=dict(title="Cost (€)",gridcolor="#1A3A6E",tickformat=",.0f"),
                       xaxis=dict(gridcolor="rgba(0,0,0,0)"),
                       legend=dict(orientation="h",yanchor="bottom",y=-0.35,bgcolor="rgba(0,0,0,0)"),
@@ -321,7 +322,7 @@ def cm_donut(labels, values, colors, title_text):
     fig.add_annotation(
         text=f"<b>{total/1000:.0f}K€</b><br><span style='font-size:9px'>{title_text}</span>",
         x=0.5,y=0.5,showarrow=False,font=dict(size=14,color="#E8C46A"),align="center")
-    fig.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font=dict(color="#D6E4F7"), margin=dict(t=10,b=10,l=10,r=10), height=300,
+    fig.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font=dict(color="#D6E4F7"), height=300,
                       legend=dict(orientation="h",yanchor="bottom",y=-0.3,bgcolor="rgba(0,0,0,0)",font=dict(size=9)),
                       margin=dict(t=10,b=10,l=5,r=5))
     return fig
@@ -352,7 +353,8 @@ def cm_bar_breakdown(categories, values, color, title):
         hovertemplate="<b>%{x}</b><br>%{y:,.0f} €<extra></extra>",
         text=[f"€{v:,.0f}" for v in values_s], textposition="outside",
         textfont=dict(size=9,color="#D6E4F7")))
-    fig.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font=dict(color="#D6E4F7"), margin=dict(t=10,b=10,l=10,r=10), height=300, title=dict(text=title,font=dict(size=11,color="#8496B0"),x=0),
+    fig.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font=dict(color="#D6E4F7"), height=300,
+                      title=dict(text=title,font=dict(size=11,color="#8496B0"),x=0),
                       yaxis=dict(gridcolor="#1A3A6E",tickformat=",.0f",title="€"),
                       xaxis=dict(tickangle=-30,gridcolor="rgba(0,0,0,0)"),
                       margin=dict(t=30,b=60,l=10,r=10))
