@@ -80,11 +80,6 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# ─── SESSION STATE ───────────────────────────────────────────────────────────
-for key, val in [("database", None), ("extracted", None), ("cost_master", None)]:
-    if key not in st.session_state:
-        st.session_state[key] = val
-
 # ─── DEFAULT DATASET ────────────────────────────────────────────────────────
 def get_default_data() -> pd.DataFrame:
     """Menkor Aviation GBL — 46 aircraft database v6."""
@@ -464,6 +459,11 @@ def cost_input_section(label, key, default, use_generic, col1, col2):
 # MAIN
 # ════════════════════════════════════════════════════════════════════════════
 def main():
+    # ── Session state init ───────────────────────────────────────────────
+    for _key, _val in [("database", None), ("extracted", None), ("cost_master", None)]:
+        if _key not in st.session_state:
+            st.session_state[_key] = _val
+
     # Header
     col_logo, col_title = st.columns([1, 6])
     with col_logo:
