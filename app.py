@@ -238,8 +238,6 @@ def calculate_profitability(costs, commission_pct, custom_rate=None):
 COLORS = {"fixed":"#1A3A6E","crew":"#C9A84C","charter":"#4A90D9",
           "private":"#8496B0","profit":"#4ADE80","loss":"#F87171"}
 
-LAYOUT_BASE = dict(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-                   font=dict(color="#D6E4F7"), margin=dict(t=10,b=10,l=10,r=10))
 
 def chart_donut(costs):
     labels = ["Fixed Operating Costs","Crew Costs","Charter Variable","Private Variable"]
@@ -252,7 +250,7 @@ def chart_donut(costs):
         hovertemplate="<b>%{label}</b><br>%{value:,.0f} €<br>%{percent}<extra></extra>"))
     fig.add_annotation(text=f"<b>{costs['grand_total']/1e6:.2f}M€</b><br><span style='font-size:10px'>TOTAL</span>",
                        x=0.5,y=0.5,showarrow=False,font=dict(size=16,color="#E8C46A"),align="center")
-    fig.update_layout(**LAYOUT_BASE, height=320,
+    fig.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font=dict(color="#D6E4F7"), margin=dict(t=10,b=10,l=10,r=10), height=320,
                       legend=dict(orientation="h",yanchor="bottom",y=-0.2,bgcolor="rgba(0,0,0,0)"))
     return fig
 
@@ -267,7 +265,7 @@ def chart_stacked_bars(costs):
         go.Bar(name="Private Variable",x=categories,marker_color=COLORS["private"],
                y=[0,costs["var_private"],costs["var_private"]]),
     ])
-    fig.update_layout(barmode="stack",**LAYOUT_BASE,height=300,
+    fig.update_layout(barmode="stack",paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font=dict(color="#D6E4F7"), margin=dict(t=10,b=10,l=10,r=10),height=300,
                       yaxis=dict(title="Cost (€)",gridcolor="#1A3A6E",tickformat=",.0f"),
                       xaxis=dict(gridcolor="rgba(0,0,0,0)"),
                       legend=dict(orientation="h",yanchor="bottom",y=-0.35,bgcolor="rgba(0,0,0,0)"),
@@ -286,7 +284,7 @@ def chart_waterfall(costs, prof):
         texttemplate="%{y:+,.0f} €",textfont=dict(color="#D6E4F7",size=11),
         hovertemplate="<b>%{x}</b><br>%{y:+,.0f} €<extra></extra>"))
     fig.add_hline(y=0,line_dash="dash",line_color="#8496B0",line_width=1)
-    fig.update_layout(**LAYOUT_BASE,height=340,
+    fig.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font=dict(color="#D6E4F7"), margin=dict(t=10,b=10,l=10,r=10),height=340,
                       yaxis=dict(title="€",gridcolor="#1A3A6E",tickformat=",.0f"),
                       xaxis=dict(gridcolor="rgba(0,0,0,0)"))
     return fig
@@ -307,7 +305,7 @@ def chart_sensitivity(aircraft, h_private, commission_pct, custom_rate=None):
                          annotation_text=f"Break-even ~{h_be}h",annotation_font_color="#E8C46A",
                          annotation_position="top right")
             break
-    fig.update_layout(**LAYOUT_BASE,height=300,showlegend=False,
+    fig.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font=dict(color="#D6E4F7"), margin=dict(t=10,b=10,l=10,r=10),height=300,showlegend=False,
                       yaxis=dict(title="Net Result (€)",gridcolor="#1A3A6E",tickformat=",.0f"),
                       xaxis=dict(title="Charter Flight Hours",gridcolor="#1A3A6E"))
     return fig
@@ -323,7 +321,7 @@ def cm_donut(labels, values, colors, title_text):
     fig.add_annotation(
         text=f"<b>{total/1000:.0f}K€</b><br><span style='font-size:9px'>{title_text}</span>",
         x=0.5,y=0.5,showarrow=False,font=dict(size=14,color="#E8C46A"),align="center")
-    fig.update_layout(**LAYOUT_BASE, height=300,
+    fig.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font=dict(color="#D6E4F7"), margin=dict(t=10,b=10,l=10,r=10), height=300,
                       legend=dict(orientation="h",yanchor="bottom",y=-0.3,bgcolor="rgba(0,0,0,0)",font=dict(size=9)),
                       margin=dict(t=10,b=10,l=5,r=5))
     return fig
@@ -341,7 +339,7 @@ def cm_global_donut(op_total, direct_total, indirect_total):
     fig.add_annotation(
         text=f"<b>{total/1e6:.2f}M€</b><br><span style='font-size:10px'>TOTAL</span>",
         x=0.5,y=0.5,showarrow=False,font=dict(size=16,color="#E8C46A"),align="center")
-    fig.update_layout(**LAYOUT_BASE, height=360,
+    fig.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font=dict(color="#D6E4F7"), margin=dict(t=10,b=10,l=10,r=10), height=360,
                       legend=dict(orientation="h",yanchor="bottom",y=-0.15,bgcolor="rgba(0,0,0,0)"))
     return fig
 
@@ -354,7 +352,7 @@ def cm_bar_breakdown(categories, values, color, title):
         hovertemplate="<b>%{x}</b><br>%{y:,.0f} €<extra></extra>",
         text=[f"€{v:,.0f}" for v in values_s], textposition="outside",
         textfont=dict(size=9,color="#D6E4F7")))
-    fig.update_layout(**LAYOUT_BASE, height=300, title=dict(text=title,font=dict(size=11,color="#8496B0"),x=0),
+    fig.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font=dict(color="#D6E4F7"), margin=dict(t=10,b=10,l=10,r=10), height=300, title=dict(text=title,font=dict(size=11,color="#8496B0"),x=0),
                       yaxis=dict(gridcolor="#1A3A6E",tickformat=",.0f",title="€"),
                       xaxis=dict(tickangle=-30,gridcolor="rgba(0,0,0,0)"),
                       margin=dict(t=30,b=60,l=10,r=10))
@@ -376,7 +374,7 @@ def cm_waterfall_global(op, direct, indirect, charter_rev, commission_pct):
         texttemplate="%{y:+,.0f} €",textfont=dict(color="#D6E4F7",size=11),
         hovertemplate="<b>%{x}</b><br>%{y:+,.0f} €<extra></extra>"))
     fig.add_hline(y=0,line_dash="dash",line_color="#8496B0",line_width=1)
-    fig.update_layout(**LAYOUT_BASE, height=360,
+    fig.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font=dict(color="#D6E4F7"), margin=dict(t=10,b=10,l=10,r=10), height=360,
                       yaxis=dict(title="€",gridcolor="#1A3A6E",tickformat=",.0f"),
                       xaxis=dict(gridcolor="rgba(0,0,0,0)"))
     return fig
