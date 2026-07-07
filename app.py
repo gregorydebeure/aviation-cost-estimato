@@ -494,7 +494,233 @@ PURPLE= HexColor("#A78BFA")
 GREEN = HexColor("#16A34A")
 RED   = HexColor("#DC2626")
 
-def _b64_to_imgbuf(b64_str):
+# ════════════════════════════════════════════════════════════════════════════
+# AUTH & STRIPE
+# ════════════════════════════════════════════════════════════════════════════
+import hashlib
+import re as _re
+
+def _hash(pw):
+    return hashlib.sha256(pw.encode()).hexdigest()
+
+def _get_users():
+    if "_users_db" not in st.session_state:
+        try:
+            import json as _j
+            st.session_state["_users_db"] = _j.loads(st.secrets.get("USERS_DB","{}"))
+        except Exception:
+            st.session_state["_users_db"] = {}
+    return st.session_state["_users_db"]
+
+def _save_users(u):
+    st.session_state["_users_db"] = u
+
+def _register(email, pwd):
+    email = email.strip().lower()
+    if not _re.match(r"[^@]+@[^@]+\.[^@]+", email):
+        return False, "Invalid email."
+    if len(pwd) < 6:
+        return False, "Password must be at least 6 characters."
+    u = _get_users()
+    if email in u:
+        return False, "Account already exists."
+    u[email] = {"pwd_hash": _hash(pwd), "stripe_cid": None, "active": False}
+    _save_users(u)
+    return True, "Account created!"
+
+def _login(email, pwd):
+    email = email.strip().lower()
+    u = _get_users()
+    rec = u.get(email)
+    if not rec or rec["pwd_hash"] != _hash(pwd):
+        return False, "Incorrect email or password."
+    return True, rec
+
+def _check_subscription(email):
+    try:
+        import stripe
+        stripe.api_key = st.secrets["STRIPE_SECRET_KEY"]
+        u = _get_users()
+        cid = u.get(email, {}).get("stripe_cid")
+        if not cid:
+            customers = stripe.Customer.list(email=email, limit=1)
+            if not customers.data:
+                return False
+            cid = customers.data[0].id
+            u[email]["stripe_cid"] = cid
+            _save_users(u)
+        subs = stripe.Subscription.list(customer=cid, status="active", limit=1)
+        active = len(subs.data) > 0
+        u[email]["active"] = active
+        _save_users(u)
+        return active
+    except Exception:
+        return False
+
+def _checkout_url(email):
+    try:
+        import stripe
+        stripe.api_key = st.secrets["STRIPE_SECRET_KEY"]
+        s = stripe.checkout.Session.create(
+            payment_method_types=["card"],
+            mode="subscription",
+            customer_email=email,
+            line_items=[{"price": st.secrets["STRIPE_PRICE_ID"], "quantity": 1}],
+            success_url="https://aviation-cost-estimato-6uj3ptpc57onofwlavwhfn.streamlit.app/?subscribed=1",
+            cancel_url="https://aviation-cost-estimato-6uj3ptpc57onofwlavwhfn.streamlit.app/?cancelled=1",
+        )
+        return s.url
+    except Exception:
+        return None
+
+def _sub_button(email):
+    url = _checkout_url(email)
+    if url:
+        st.markdown(f"""<div style="text-align:center;margin-top:0.6rem">
+        <a href="{url}" target="_blank" style="background:#C9A84C;color:#0B1629;
+           padding:0.5rem 1.2rem;border-radius:5px;font-weight:700;
+           text-decoration:none;font-size:0.85rem">⭐ Subscribe — 10€/month</a>
+        </div>""", unsafe_allow_html=True)
+
+def render_auth_wall():
+    """Sidebar auth widget. Returns True if user is premium."""
+    for k, v in [("auth_email", None), ("auth_premium", False)]:
+        if k not in st.session_state:
+            st.session_state[k] = v
+
+    email = st.session_state["auth_email"]
+    is_admin = st.session_state.get("auth_is_admin", False)
+
+    with st.sidebar:
+        st.markdown("---")
+        if email:
+            premium = st.session_state["auth_premium"]
+
+            # ── Admin badge ──────────────────────────────────────────────
+            if is_admin:
+                st.markdown('<div style="font-size:0.78rem;color:#F59E0B;font-weight:700;margin-bottom:0.2rem">👑 ADMIN — Menkor Aviation</div>',
+                            unsafe_allow_html=True)
+                st.markdown('<div style="font-size:0.7rem;color:#4ADE80;margin-bottom:0.5rem">Full access — all features unlocked</div>',
+                            unsafe_allow_html=True)
+
+                # Admin panel — list users
+                with st.expander("👥 User Management"):
+                    users = _get_users()
+                    if users:
+                        for u_email, u_data in users.items():
+                            active = u_data.get("active", False)
+                            color  = "#4ADE80" if active else "#F87171"
+                            status = "✓ Active" if active else "✗ Inactive"
+                            st.markdown(
+                                f'<div style="font-size:0.75rem;padding:0.3rem 0;border-bottom:1px solid #1A3A6E">'
+                                f'<b>{u_email}</b><br>'
+                                f'<span style="color:{color}">{status}</span>'
+                                f'</div>', unsafe_allow_html=True)
+                        st.caption(f"{len(users)} registered user(s)")
+                    else:
+                        st.caption("No users registered yet.")
+
+                    if st.button("🔄 Refresh user list", use_container_width=True, key="admin_refresh"):
+                        # Re-check all subscriptions
+                        for u_email in list(users.keys()):
+                            users[u_email]["active"] = _check_subscription(u_email)
+                        _save_users(users)
+                        st.rerun()
+
+            else:
+                st.markdown(f'<div style="font-size:0.78rem;color:#4ADE80;margin-bottom:0.2rem">✓ {email}</div>',
+                            unsafe_allow_html=True)
+                if premium:
+                    st.markdown('<div style="font-size:0.72rem;color:#C9A84C">⭐ Premium subscriber</div>',
+                                unsafe_allow_html=True)
+                else:
+                    st.markdown('<div style="font-size:0.72rem;color:#F87171;margin-bottom:0.4rem">⚠ No active subscription</div>',
+                                unsafe_allow_html=True)
+                    _sub_button(email)
+                    if st.button("🔄 Check subscription", use_container_width=True, key="chk_sub"):
+                        active = _check_subscription(email)
+                        st.session_state["auth_premium"] = active
+                        st.rerun()
+
+            if st.button("🚪 Log out", use_container_width=True, key="btn_logout"):
+                st.session_state["auth_email"]    = None
+                st.session_state["auth_premium"]  = False
+                st.session_state["auth_is_admin"] = False
+                st.rerun()
+            return premium
+        else:
+            st.markdown('<div class="section-header">🔐 Account</div>', unsafe_allow_html=True)
+            view = st.radio("", ["Login", "Register"], horizontal=True,
+                            key="auth_view", label_visibility="collapsed")
+            if view == "Login":
+                em = st.text_input("Email", key="li_em", placeholder="your@email.com")
+                pw = st.text_input("Password", key="li_pw", type="password")
+                if st.button("Login", use_container_width=True, key="btn_login"):
+                    if em and pw:
+                        # ── Admin bypass ─────────────────────────────────
+                        admin_email = st.secrets.get("ADMIN_EMAIL", "")
+                        admin_pwd   = st.secrets.get("ADMIN_PASSWORD", "")
+                        if em.strip().lower() == admin_email.lower() and pw == admin_pwd:
+                            st.session_state["auth_email"]   = em.strip().lower()
+                            st.session_state["auth_premium"] = True
+                            st.session_state["auth_is_admin"] = True
+                            st.rerun()
+                        else:
+                            ok, result = _login(em, pw)
+                            if ok:
+                                st.session_state["auth_email"]    = em.strip().lower()
+                                st.session_state["auth_premium"]  = _check_subscription(em.strip().lower())
+                                st.session_state["auth_is_admin"] = False
+                                st.rerun()
+                            else:
+                                st.error(result)
+                    else:
+                        st.warning("Fill in all fields.")
+            else:
+                em = st.text_input("Email", key="rg_em", placeholder="your@email.com")
+                pw = st.text_input("Password (min 6 chars)", key="rg_pw", type="password")
+                pw2 = st.text_input("Confirm password", key="rg_pw2", type="password")
+                if st.button("Create account", use_container_width=True, key="btn_reg"):
+                    if pw != pw2:
+                        st.error("Passwords do not match.")
+                    elif em and pw:
+                        ok, msg = _register(em, pw)
+                        if ok:
+                            st.success(msg)
+                            _sub_button(em.strip().lower())
+                        else:
+                            st.error(msg)
+                    else:
+                        st.warning("Fill in all fields.")
+            st.markdown('<div style="font-size:0.7rem;color:#8496B0;text-align:center;margin-top:0.4rem">Dashboard is free · Full access 10€/month</div>',
+                        unsafe_allow_html=True)
+            return False
+
+def premium_gate():
+    email = st.session_state.get("auth_email")
+    st.markdown("""
+    <div style="background:linear-gradient(135deg,#112244 0%,#1A3A6E 100%);
+         border:1px solid #C9A84C;border-radius:12px;padding:2.5rem;
+         text-align:center;margin:2rem 0">
+        <div style="font-size:2rem;margin-bottom:0.8rem">🔒</div>
+        <div style="font-size:1.3rem;font-weight:700;color:#E8C46A;margin-bottom:0.5rem">
+            Premium Feature
+        </div>
+        <div style="font-size:0.9rem;color:#8496B0;margin-bottom:1.5rem">
+            Full access requires a subscription.<br>
+            <b style="color:#C9A84C">€10/month</b> — cancel anytime.
+        </div>
+        <div style="font-size:0.82rem;color:#D6E4F7">
+            ✓ Profitability &nbsp;·&nbsp; ✓ Sensitivity &nbsp;·&nbsp;
+            ✓ Cost Master &nbsp;·&nbsp; ✓ PDF Reports
+        </div>
+    </div>""", unsafe_allow_html=True)
+    if not email:
+        st.info("👈 Create a free account in the sidebar to get started.")
+    else:
+        _sub_button(email)
+
+
     return BytesIO(base64.b64decode(b64_str))
 
 def generate_pdf_report(cm, aircraft_row, annual_flights):
@@ -694,9 +920,14 @@ def generate_pdf_report(cm, aircraft_row, annual_flights):
 # ════════════════════════════════════════════════════════════════════════════
 def main():
     # ── Session state init ───────────────────────────────────────────────
-    for _key, _val in [("database", None), ("cost_master", None), ("pdf_report", None)]:
+    for _key, _val in [("database", None), ("cost_master", None), ("pdf_report", None),
+                       ("auth_email", None), ("auth_premium", False),
+                       ("auth_is_admin", False), ("_users_db", {}), ("auth_view", "Login")]:
         if _key not in st.session_state:
             st.session_state[_key] = _val
+
+    # ── Auth wall (sidebar login/subscribe) ──────────────────────────────
+    is_premium = render_auth_wall()
 
     # Header
     col_logo, col_title = st.columns([1, 6])
@@ -842,6 +1073,9 @@ def main():
 
     # ── TAB 2 : PROFITABILITY ────────────────────────────────────────────
     with tab2:
+        if not is_premium:
+            premium_gate()
+            st.stop()
         st.markdown('<div class="section-header">Charter Profitability Simulation</div>', unsafe_allow_html=True)
         if h_charter == 0:
             st.warning("⚠ No charter hours configured. Adjust the 'Charter Hours' slider in the sidebar.")
@@ -874,6 +1108,9 @@ def main():
 
     # ── TAB 3 : SENSITIVITY ──────────────────────────────────────────────
     with tab3:
+        if not is_premium:
+            premium_gate()
+            st.stop()
         st.markdown('<div class="section-header">Sensitivity Analysis — Charter Hours vs Net Result</div>', unsafe_allow_html=True)
         st.caption(f"Private hours fixed at {h_private}h — Commission {commission_pct}% — Rate € {custom_rate:,.0f}/h")
         st.plotly_chart(chart_sensitivity(aircraft, h_private, commission_pct, custom_rate), use_container_width=True, config={"displayModeBar":False})
@@ -893,6 +1130,9 @@ def main():
     # TAB 4 : COST MASTER
     # ════════════════════════════════════════════════════════════════════
     with tab4:
+        if not is_premium:
+            premium_gate()
+            st.stop()
         st.markdown('<div class="main-title" style="font-size:1.4rem">💼 Cost Master</div>', unsafe_allow_html=True)
         st.markdown('<div class="sub-title">Full operational cost breakdown — Generic benchmarks or your own figures</div>', unsafe_allow_html=True)
 
