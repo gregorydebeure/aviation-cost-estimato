@@ -501,7 +501,7 @@ def generate_pdf_report(cm, aircraft_row, annual_flights):
     """Builds a branded Menkor Aviation PDF cost-master report and returns bytes."""
     buf = BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=A4,
-                             topMargin=18*mm, bottomMargin=16*mm,
+                             topMargin=28*mm, bottomMargin=22*mm,
                              leftMargin=18*mm, rightMargin=18*mm)
     styles = getSampleStyleSheet()
 
@@ -538,16 +538,7 @@ def generate_pdf_report(cm, aircraft_row, annual_flights):
     story.append(Paragraph(f"{aircraft_row.get('Categorie','')}", style_sub))
     story.append(Spacer(1, 8*mm))
 
-    category = aircraft_row.get("Categorie", "Light Jet")
-    ac_b64 = AIRCRAFT_IMAGE_BY_CATEGORY.get(category, AC_LIGHT_B64)
-    ac_buf = _b64_to_imgbuf(ac_b64)
-    ac_img = RLImage(ac_buf, width=150*mm, height=67.5*mm, kind="proportional")
-    ac_img.hAlign = "CENTER"
-    story.append(ac_img)
-    story.append(Spacer(1, 4*mm))
-    story.append(Paragraph("Generic aircraft silhouette — for illustration purposes only", style_small))
-    story.append(Spacer(1, 10*mm))
-
+    story.append(Spacer(1, 20*mm))
     story.append(HRFlowable(width="100%", thickness=1, color=GOLD, spaceAfter=8))
     from datetime import date
     story.append(Paragraph(f"Report generated on {date.today().strftime('%d %B %Y')}", style_sub))
@@ -670,7 +661,31 @@ def generate_pdf_report(cm, aircraft_row, annual_flights):
         "This report is generated automatically based on user-provided and benchmark data.",
         style_small))
 
-    doc.build(story)
+    # ── Logo header + footer sur chaque page via canvas callbacks ──────
+    page_w, page_h = A4
+    logo_data = base64.b64decode(LOGO_B64)
+    from reportlab.lib.utils import ImageReader
+
+    def _draw_header_footer(canvas_obj, doc_obj):
+        canvas_obj.saveState()
+        # Header: logo Menkor à gauche + ligne gold
+        logo_io = ImageReader(BytesIO(logo_data))
+        canvas_obj.drawImage(logo_io, 18*mm, page_h - 22*mm, width=38*mm, height=14*mm,
+                              preserveAspectRatio=True, mask="auto")
+        canvas_obj.setStrokeColor(GOLD)
+        canvas_obj.setLineWidth(0.8)
+        canvas_obj.line(18*mm, page_h - 23*mm, page_w - 18*mm, page_h - 23*mm)
+        # Footer: ligne gold + texte centré + numéro de page
+        canvas_obj.line(18*mm, 14*mm, page_w - 18*mm, 14*mm)
+        canvas_obj.setFont("Helvetica", 7)
+        canvas_obj.setFillColor(HexColor("#8496B0"))
+        canvas_obj.drawCentredString(page_w / 2, 9*mm,
+            "Menkor Aviation GBL — Confidential — Operating Cost Simulation")
+        canvas_obj.drawRightString(page_w - 18*mm, 9*mm,
+            f"Page {canvas_obj.getPageNumber()}")
+        canvas_obj.restoreState()
+
+    doc.build(story, onFirstPage=_draw_header_footer, onLaterPages=_draw_header_footer)
     buf.seek(0)
     return buf.getvalue()
 
@@ -756,12 +771,11 @@ def main():
     # ════════════════════════════════════════════════════════════════════
     # TABS
     # ════════════════════════════════════════════════════════════════════
-    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+    tab1, tab2, tab3, tab4 = st.tabs([
         "📊  Dashboard",
         "📈  Profitability",
         "🔍  Sensitivity",
         "💼  Cost Master",
-        "📋  Data",
     ])
 
     # ── TAB 1 : DASHBOARD ────────────────────────────────────────────────
@@ -770,7 +784,7 @@ def main():
         with col_id1:
             st.markdown(f"""<div class="metric-card">
                 <div class="metric-label">Selected Aircraft</div>
-                <div class="metric-value" style="font-size:1.2rem">{aircraft['Modele']}</div>
+                <div class="metric-value" style="font-size:1.2rem;color:#000000">{aircraft['Modele']}</div>
                 <div class="metric-sub">{aircraft.get('Categorie','—')}</div>
             </div>""", unsafe_allow_html=True)
         with col_id2:
@@ -1102,25 +1116,6 @@ def main():
                 st.download_button("⬇ Download PDF Report", data=st.session_state["pdf_report"],
                                    file_name=f"Menkor_Cost_Report_{cm['aircraft_name'].replace(' ', '_')}.pdf",
                                    mime="application/pdf", use_container_width=True)
-
-    # ── TAB 5 : DATA ─────────────────────────────────────────────────────
-    with tab5:
-        st.markdown('<div class="section-header">Aircraft Database</div>', unsafe_allow_html=True)
-        current_db = get_active_db()
-        st.dataframe(current_db, use_container_width=True, hide_index=True)
-        if st.button("🔄 Reset to Default Database"):
-            st.session_state["database"]    = None
-            st.session_state["cost_master"] = None
-            st.session_state["pdf_report"]  = None
-            st.rerun()
-        st.markdown('<div class="section-header">Required Excel File Format</div>', unsafe_allow_html=True)
-        df_format = pd.DataFrame(
-            [{"Column": k, "Description": v, "Required": "✓"} for k, v in REQUIRED_COLUMNS.items()] +
-            [{"Column": "Categorie",            "Description": "Category (Light Jet, Midsize…)", "Required": "—"},
-             {"Column": "Autonomie_km",          "Description": "Maximum range in km",           "Required": "—"},
-             {"Column": "Vitesse_Croisiere_km_h","Description": "Cruise speed in km/h",          "Required": "—"},
-             {"Column": "Passagers_Max",         "Description": "Maximum number of passengers",  "Required": "—"}])
-        st.table(df_format)
 
     st.markdown("<hr>", unsafe_allow_html=True)
     st.markdown('<div style="text-align:center;font-size:0.72rem;color:#4A5568;letter-spacing:0.1em">AVIATION COST ESTIMATOR — Figures are indicative and for simulation purposes only · Values based on market averages (NBAA / JETNET)</div>', unsafe_allow_html=True)
