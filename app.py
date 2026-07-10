@@ -28,23 +28,37 @@ except ImportError:
     REPORTLAB_OK = False
 warnings.filterwarnings("ignore")
 
-# ─── ASSETS (loaded from files — no large base64 in code) ──────────────────
-import os as _os
+# ─── LOGO (embedded directly — no external file needed) ─────────────────────
+import base64 as _b64
 
-def _load_asset(filename):
-    """Load an asset file relative to this script."""
+def _load_logo_from_url():
+    """Load Menkor logo from GitHub raw URL."""
+    try:
+        import urllib.request
+        url = "https://raw.githubusercontent.com/gregorydebeure/aviation-cost-estimato/main/assets/menkor_logo.png"
+        with urllib.request.urlopen(url, timeout=5) as r:
+            return _b64.b64encode(r.read()).decode()
+    except Exception:
+        return ""
+
+# Try local file first, then URL, then empty
+import os as _os
+def _load_asset_smart(filename):
+    """Try multiple locations for the asset file."""
     try:
         base = _os.path.dirname(_os.path.abspath(__file__))
-        path = _os.path.join(base, "assets", filename)
-        if _os.path.exists(path):
-            import base64 as _b64
-            with open(path, "rb") as _f:
-                return _b64.b64encode(_f.read()).decode()
+        for subdir in ["assets", ".", ""]:
+            path = _os.path.join(base, subdir, filename) if subdir else _os.path.join(base, filename)
+            if _os.path.exists(path):
+                with open(path, "rb") as _f:
+                    return _b64.b64encode(_f.read()).decode()
     except Exception:
         pass
     return ""
 
-LOGO_B64        = _load_asset("menkor_logo.png")
+LOGO_B64 = _load_asset_smart("menkor_logo.png")
+if not LOGO_B64:
+    LOGO_B64 = _load_logo_from_url()
 
 
 
