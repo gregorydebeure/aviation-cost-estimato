@@ -1516,7 +1516,7 @@ def main():
                             st.markdown(f'<span style="color:#E8C46A;font-size:0.88rem;font-weight:600">€ {d1:,.0f}</span>', unsafe_allow_html=True)
                             vals[k1] = float(d1)
                         else:
-                            vals[k1] = st.number_input("x", value=float(d1), min_value=0.0, step=step,
+                            vals[k1] = st.number_input(k1, value=float(d1), min_value=0.0, step=step,
                                                        label_visibility="collapsed", key=f"{prefix}_{k1}")
                     if i + 1 < len(pairs):
                         k2, d2 = pairs[i + 1]
@@ -1527,7 +1527,7 @@ def main():
                                 st.markdown(f'<span style="color:#E8C46A;font-size:0.88rem;font-weight:600">€ {d2:,.0f}</span>', unsafe_allow_html=True)
                                 vals[k2] = float(d2)
                             else:
-                                vals[k2] = st.number_input("x", value=float(d2), min_value=0.0, step=step,
+                                vals[k2] = st.number_input(k2, value=float(d2), min_value=0.0, step=step,
                                                            label_visibility="collapsed", key=f"{prefix}_{k2}")
             return vals
 
