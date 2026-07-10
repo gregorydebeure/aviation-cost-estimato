@@ -723,6 +723,9 @@ def premium_gate():
 
     return BytesIO(base64.b64decode(b64_str))
 
+def _b64_to_imgbuf(b64_str):
+    return BytesIO(base64.b64decode(b64_str))
+
 def generate_pdf_report(cm, aircraft_row, annual_flights):
     """Builds a branded Menkor Aviation PDF cost-master report and returns bytes."""
     buf = BytesIO()
