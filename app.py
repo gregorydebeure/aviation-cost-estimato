@@ -35,6 +35,227 @@ LOGO_B64 = "iVBORw0KGgoAAAANSUhEUgAABG0AAAK7CAYAAABI2XLPAAAABGdBTUEAALGOfPtRkwAA
 def _b64_to_imgbuf(b64_str):
     return BytesIO(base64.b64decode(b64_str))
 
+# ─── DATABASE ────────────────────────────────────────────────────────────────
+def get_default_data():
+    data = [
+        {"Modele":"Airbus 318","Categorie":"ACJ / VIP Airliner","Couts_Fixes_Annuels":219176,"Couts_Equipe_Annuels":450113,"Cout_Horaire_Charter":4481,"Cout_Horaire_Prive":3674,"Heures_Base":350,"Taux_Charter_EUR_h":6500,"Vitesse_Croisiere_km_h":869,"Autonomie_km":6862,"Passagers_Max":19},
+        {"Modele":"Airbus 319","Categorie":"ACJ / VIP Airliner","Couts_Fixes_Annuels":225763,"Couts_Equipe_Annuels":450113,"Cout_Horaire_Charter":4338,"Cout_Horaire_Prive":3557,"Heures_Base":350,"Taux_Charter_EUR_h":7000,"Vitesse_Croisiere_km_h":869,"Autonomie_km":11014,"Passagers_Max":19},
+        {"Modele":"Airbus 320","Categorie":"ACJ / VIP Airliner","Couts_Fixes_Annuels":253951,"Couts_Equipe_Annuels":361286,"Cout_Horaire_Charter":5000,"Cout_Horaire_Prive":4100,"Heures_Base":100,"Taux_Charter_EUR_h":8500,"Vitesse_Croisiere_km_h":869,"Autonomie_km":8938,"Passagers_Max":150},
+        {"Modele":"Airbus 321","Categorie":"ACJ / VIP Airliner","Couts_Fixes_Annuels":277688,"Couts_Equipe_Annuels":450113,"Cout_Horaire_Charter":5331,"Cout_Horaire_Prive":4371,"Heures_Base":350,"Taux_Charter_EUR_h":9000,"Vitesse_Croisiere_km_h":822,"Autonomie_km":8288,"Passagers_Max":19},
+        {"Modele":"Airbus 340","Categorie":"ACJ / VIP Airliner","Couts_Fixes_Annuels":360066,"Couts_Equipe_Annuels":471643,"Cout_Horaire_Charter":11019,"Cout_Horaire_Prive":9036,"Heures_Base":100,"Taux_Charter_EUR_h":28000,"Vitesse_Croisiere_km_h":835,"Autonomie_km":12640,"Passagers_Max":400},
+        {"Modele":"Airbus ACJ319neo","Categorie":"ACJ / VIP Airliner","Couts_Fixes_Annuels":279335,"Couts_Equipe_Annuels":376048,"Cout_Horaire_Charter":3817,"Cout_Horaire_Prive":3130,"Heures_Base":350,"Taux_Charter_EUR_h":9500,"Vitesse_Croisiere_km_h":869,"Autonomie_km":12501,"Passagers_Max":19},
+        {"Modele":"Airbus ACJ320neo","Categorie":"ACJ / VIP Airliner","Couts_Fixes_Annuels":310659,"Couts_Equipe_Annuels":376048,"Cout_Horaire_Charter":3833,"Cout_Horaire_Prive":3143,"Heures_Base":350,"Taux_Charter_EUR_h":10000,"Vitesse_Croisiere_km_h":869,"Autonomie_km":11299,"Passagers_Max":19},
+        {"Modele":"BAE RJ-70","Categorie":"Regional Jet / VIP","Couts_Fixes_Annuels":222678,"Couts_Equipe_Annuels":372857,"Cout_Horaire_Charter":4357,"Cout_Horaire_Prive":3573,"Heures_Base":100,"Taux_Charter_EUR_h":4500,"Vitesse_Croisiere_km_h":755,"Autonomie_km":3250,"Passagers_Max":20},
+        {"Modele":"BAE RJ-85","Categorie":"Regional Jet / VIP","Couts_Fixes_Annuels":271095,"Couts_Equipe_Annuels":372857,"Cout_Horaire_Charter":4033,"Cout_Horaire_Prive":3307,"Heures_Base":100,"Taux_Charter_EUR_h":4800,"Vitesse_Croisiere_km_h":755,"Autonomie_km":3366,"Passagers_Max":20},
+        {"Modele":"Beechcraft Beechjet 400","Categorie":"Light Jet","Couts_Fixes_Annuels":34901,"Couts_Equipe_Annuels":245619,"Cout_Horaire_Charter":1823,"Cout_Horaire_Prive":1495,"Heures_Base":250,"Taux_Charter_EUR_h":2200,"Vitesse_Croisiere_km_h":826,"Autonomie_km":2061,"Passagers_Max":7},
+        {"Modele":"Beechcraft Beechjet 400A","Categorie":"Light Jet","Couts_Fixes_Annuels":36260,"Couts_Equipe_Annuels":245619,"Cout_Horaire_Charter":1568,"Cout_Horaire_Prive":1286,"Heures_Base":250,"Taux_Charter_EUR_h":2300,"Vitesse_Croisiere_km_h":832,"Autonomie_km":2133,"Passagers_Max":7},
+        {"Modele":"Beechcraft Premier I","Categorie":"Light Jet","Couts_Fixes_Annuels":35998,"Couts_Equipe_Annuels":136880,"Cout_Horaire_Charter":1254,"Cout_Horaire_Prive":1028,"Heures_Base":250,"Taux_Charter_EUR_h":1800,"Vitesse_Croisiere_km_h":789,"Autonomie_km":1536,"Passagers_Max":7},
+        {"Modele":"Beechcraft Premier IA","Categorie":"Light Jet","Couts_Fixes_Annuels":41947,"Couts_Equipe_Annuels":136880,"Cout_Horaire_Charter":1236,"Cout_Horaire_Prive":1013,"Heures_Base":250,"Taux_Charter_EUR_h":1900,"Vitesse_Croisiere_km_h":789,"Autonomie_km":1536,"Passagers_Max":7},
+        {"Modele":"Boeing 737-500","Categorie":"VIP Airliner / BBJ","Couts_Fixes_Annuels":242553,"Couts_Equipe_Annuels":419143,"Cout_Horaire_Charter":5456,"Cout_Horaire_Prive":4474,"Heures_Base":100,"Taux_Charter_EUR_h":7500,"Vitesse_Croisiere_km_h":839,"Autonomie_km":5424,"Passagers_Max":150},
+        {"Modele":"Boeing 737-600","Categorie":"VIP Airliner / BBJ","Couts_Fixes_Annuels":231007,"Couts_Equipe_Annuels":419143,"Cout_Horaire_Charter":4544,"Cout_Horaire_Prive":3726,"Heures_Base":100,"Taux_Charter_EUR_h":7800,"Vitesse_Croisiere_km_h":837,"Autonomie_km":7073,"Passagers_Max":119},
+        {"Modele":"Boeing 737-700","Categorie":"VIP Airliner / BBJ","Couts_Fixes_Annuels":225028,"Couts_Equipe_Annuels":419143,"Cout_Horaire_Charter":4669,"Cout_Horaire_Prive":3829,"Heures_Base":100,"Taux_Charter_EUR_h":8000,"Vitesse_Croisiere_km_h":838,"Autonomie_km":7226,"Passagers_Max":140},
+        {"Modele":"Boeing 747-100","Categorie":"VIP Wide-Body","Couts_Fixes_Annuels":273066,"Couts_Equipe_Annuels":471643,"Cout_Horaire_Charter":19415,"Cout_Horaire_Prive":15920,"Heures_Base":100,"Taux_Charter_EUR_h":55000,"Vitesse_Croisiere_km_h":890,"Autonomie_km":11195,"Passagers_Max":400},
+        {"Modele":"Boeing 747-200","Categorie":"VIP Wide-Body","Couts_Fixes_Annuels":289890,"Couts_Equipe_Annuels":471643,"Cout_Horaire_Charter":18520,"Cout_Horaire_Prive":15186,"Heures_Base":100,"Taux_Charter_EUR_h":58000,"Vitesse_Croisiere_km_h":890,"Autonomie_km":12640,"Passagers_Max":350},
+        {"Modele":"Boeing 747-400","Categorie":"VIP Wide-Body","Couts_Fixes_Annuels":276703,"Couts_Equipe_Annuels":471643,"Cout_Horaire_Charter":15263,"Cout_Horaire_Prive":12516,"Heures_Base":100,"Taux_Charter_EUR_h":65000,"Vitesse_Croisiere_km_h":913,"Autonomie_km":14626,"Passagers_Max":420},
+        {"Modele":"Boeing 747SP","Categorie":"VIP Wide-Body","Couts_Fixes_Annuels":239780,"Couts_Equipe_Annuels":471643,"Cout_Horaire_Charter":15953,"Cout_Horaire_Prive":13081,"Heures_Base":100,"Taux_Charter_EUR_h":60000,"Vitesse_Croisiere_km_h":902,"Autonomie_km":13723,"Passagers_Max":331},
+        {"Modele":"Boeing 757-200ER","Categorie":"VIP Airliner / BBJ","Couts_Fixes_Annuels":274945,"Couts_Equipe_Annuels":471643,"Cout_Horaire_Charter":5939,"Cout_Horaire_Prive":4870,"Heures_Base":100,"Taux_Charter_EUR_h":12000,"Vitesse_Croisiere_km_h":850,"Autonomie_km":11159,"Passagers_Max":200},
+        {"Modele":"Boeing 767-200ER","Categorie":"VIP Wide-Body","Couts_Fixes_Annuels":384835,"Couts_Equipe_Annuels":471643,"Cout_Horaire_Charter":6537,"Cout_Horaire_Prive":5360,"Heures_Base":100,"Taux_Charter_EUR_h":15000,"Vitesse_Croisiere_km_h":850,"Autonomie_km":13145,"Passagers_Max":181},
+        {"Modele":"Boeing 767-300ER","Categorie":"VIP Wide-Body","Couts_Fixes_Annuels":380439,"Couts_Equipe_Annuels":471643,"Cout_Horaire_Charter":8352,"Cout_Horaire_Prive":6849,"Heures_Base":100,"Taux_Charter_EUR_h":18000,"Vitesse_Croisiere_km_h":850,"Autonomie_km":12474,"Passagers_Max":218},
+        {"Modele":"Boeing 787-8","Categorie":"VIP Wide-Body","Couts_Fixes_Annuels":358241,"Couts_Equipe_Annuels":521978,"Cout_Horaire_Charter":7925,"Cout_Horaire_Prive":6498,"Heures_Base":100,"Taux_Charter_EUR_h":20000,"Vitesse_Croisiere_km_h":930,"Autonomie_km":14538,"Passagers_Max":381},
+        {"Modele":"Boeing BBJ","Categorie":"ACJ / VIP Airliner","Couts_Fixes_Annuels":218956,"Couts_Equipe_Annuels":469635,"Cout_Horaire_Charter":3763,"Cout_Horaire_Prive":3086,"Heures_Base":350,"Taux_Charter_EUR_h":9000,"Vitesse_Croisiere_km_h":871,"Autonomie_km":11100,"Passagers_Max":19},
+        {"Modele":"Boeing BBJ2","Categorie":"ACJ / VIP Airliner","Couts_Fixes_Annuels":241598,"Couts_Equipe_Annuels":469653,"Cout_Horaire_Charter":3882,"Cout_Horaire_Prive":3183,"Heures_Base":350,"Taux_Charter_EUR_h":10000,"Vitesse_Croisiere_km_h":840,"Autonomie_km":10191,"Passagers_Max":19},
+        {"Modele":"Boeing BBJ3","Categorie":"ACJ / VIP Airliner","Couts_Fixes_Annuels":248567,"Couts_Equipe_Annuels":470089,"Cout_Horaire_Charter":3889,"Cout_Horaire_Prive":3189,"Heures_Base":350,"Taux_Charter_EUR_h":11000,"Vitesse_Croisiere_km_h":840,"Autonomie_km":8649,"Passagers_Max":19},
+        {"Modele":"Bombardier Challenger 604","Categorie":"Large Jet","Couts_Fixes_Annuels":376651,"Couts_Equipe_Annuels":237726,"Cout_Horaire_Charter":2726,"Cout_Horaire_Prive":2450,"Heures_Base":350,"Taux_Charter_EUR_h":5200,"Vitesse_Croisiere_km_h":850,"Autonomie_km":6786,"Passagers_Max":10},
+        {"Modele":"Bombardier Challenger 605","Categorie":"Large Jet","Couts_Fixes_Annuels":500361,"Couts_Equipe_Annuels":346500,"Cout_Horaire_Charter":2619,"Cout_Horaire_Prive":2360,"Heures_Base":350,"Taux_Charter_EUR_h":5500,"Vitesse_Croisiere_km_h":849,"Autonomie_km":6856,"Passagers_Max":10},
+        {"Modele":"Bombardier Challenger 650","Categorie":"Large Jet","Couts_Fixes_Annuels":488946,"Couts_Equipe_Annuels":333270,"Cout_Horaire_Charter":2455,"Cout_Horaire_Prive":2210,"Heures_Base":350,"Taux_Charter_EUR_h":5800,"Vitesse_Croisiere_km_h":850,"Autonomie_km":6795,"Passagers_Max":10},
+        {"Modele":"Bombardier Global 5000","Categorie":"Ultra Long Range Jet","Couts_Fixes_Annuels":702952,"Couts_Equipe_Annuels":426052,"Cout_Horaire_Charter":4051,"Cout_Horaire_Prive":3646,"Heures_Base":350,"Taux_Charter_EUR_h":9000,"Vitesse_Croisiere_km_h":904,"Autonomie_km":9390,"Passagers_Max":13},
+        {"Modele":"Bombardier Global Express","Categorie":"Ultra Long Range Jet","Couts_Fixes_Annuels":683427,"Couts_Equipe_Annuels":426052,"Cout_Horaire_Charter":4471,"Cout_Horaire_Prive":4024,"Heures_Base":350,"Taux_Charter_EUR_h":9500,"Vitesse_Croisiere_km_h":904,"Autonomie_km":10726,"Passagers_Max":13},
+        {"Modele":"Bombardier Global Express XRS","Categorie":"Ultra Long Range Jet","Couts_Fixes_Annuels":714023,"Couts_Equipe_Annuels":426052,"Cout_Horaire_Charter":4420,"Cout_Horaire_Prive":3978,"Heures_Base":350,"Taux_Charter_EUR_h":10000,"Vitesse_Croisiere_km_h":904,"Autonomie_km":10934,"Passagers_Max":13},
+        {"Modele":"Challenger 300","Categorie":"Super Midsize Jet","Couts_Fixes_Annuels":102295,"Couts_Equipe_Annuels":392114,"Cout_Horaire_Charter":2878,"Cout_Horaire_Prive":2360,"Heures_Base":350,"Taux_Charter_EUR_h":3500,"Vitesse_Croisiere_km_h":848,"Autonomie_km":5545,"Passagers_Max":8},
+        {"Modele":"Challenger 350","Categorie":"Super Midsize Jet","Couts_Fixes_Annuels":93921,"Couts_Equipe_Annuels":394305,"Cout_Horaire_Charter":2353,"Cout_Horaire_Prive":1929,"Heures_Base":350,"Taux_Charter_EUR_h":4000,"Vitesse_Croisiere_km_h":850,"Autonomie_km":5784,"Passagers_Max":8},
+        {"Modele":"Challenger 600","Categorie":"Large Jet","Couts_Fixes_Annuels":78406,"Couts_Equipe_Annuels":372774,"Cout_Horaire_Charter":4337,"Cout_Horaire_Prive":3556,"Heures_Base":350,"Taux_Charter_EUR_h":4500,"Vitesse_Croisiere_km_h":849,"Autonomie_km":5061,"Passagers_Max":9},
+        {"Modele":"Challenger 601-1A","Categorie":"Large Jet","Couts_Fixes_Annuels":84681,"Couts_Equipe_Annuels":367240,"Cout_Horaire_Charter":3720,"Cout_Horaire_Prive":3050,"Heures_Base":350,"Taux_Charter_EUR_h":4500,"Vitesse_Croisiere_km_h":821,"Autonomie_km":5748,"Passagers_Max":9},
+        {"Modele":"Dassault Falcon 10","Categorie":"Light Jet","Couts_Fixes_Annuels":279536,"Couts_Equipe_Annuels":224844,"Cout_Horaire_Charter":2372,"Cout_Horaire_Prive":2135,"Heures_Base":250,"Taux_Charter_EUR_h":2800,"Vitesse_Croisiere_km_h":837,"Autonomie_km":2745,"Passagers_Max":6},
+        {"Modele":"Dassault Falcon 20C","Categorie":"Midsize Jet","Couts_Fixes_Annuels":350751,"Couts_Equipe_Annuels":278094,"Cout_Horaire_Charter":3179,"Cout_Horaire_Prive":2861,"Heures_Base":250,"Taux_Charter_EUR_h":3200,"Vitesse_Croisiere_km_h":805,"Autonomie_km":2167,"Passagers_Max":9},
+        {"Modele":"Dassault Falcon 20C-5","Categorie":"Midsize Jet","Couts_Fixes_Annuels":356747,"Couts_Equipe_Annuels":278094,"Cout_Horaire_Charter":2675,"Cout_Horaire_Prive":2408,"Heures_Base":250,"Taux_Charter_EUR_h":3400,"Vitesse_Croisiere_km_h":842,"Autonomie_km":3684,"Passagers_Max":9},
+        {"Modele":"Dassault Falcon 20F","Categorie":"Midsize Jet","Couts_Fixes_Annuels":356077,"Couts_Equipe_Annuels":278094,"Cout_Horaire_Charter":2895,"Cout_Horaire_Prive":2606,"Heures_Base":250,"Taux_Charter_EUR_h":3200,"Vitesse_Croisiere_km_h":805,"Autonomie_km":2420,"Passagers_Max":9},
+        {"Modele":"Dassault Falcon 20F-5","Categorie":"Midsize Jet","Couts_Fixes_Annuels":353308,"Couts_Equipe_Annuels":278094,"Cout_Horaire_Charter":2485,"Cout_Horaire_Prive":2237,"Heures_Base":250,"Taux_Charter_EUR_h":3500,"Vitesse_Croisiere_km_h":842,"Autonomie_km":4063,"Passagers_Max":9},
+        {"Modele":"Dassault Falcon 50","Categorie":"Large Jet","Couts_Fixes_Annuels":450596,"Couts_Equipe_Annuels":334924,"Cout_Horaire_Charter":3352,"Cout_Horaire_Prive":3017,"Heures_Base":350,"Taux_Charter_EUR_h":5000,"Vitesse_Croisiere_km_h":799,"Autonomie_km":5526,"Passagers_Max":9},
+        {"Modele":"Dassault Falcon 50-40","Categorie":"Large Jet","Couts_Fixes_Annuels":469453,"Couts_Equipe_Annuels":334924,"Cout_Horaire_Charter":3328,"Cout_Horaire_Prive":2995,"Heures_Base":350,"Taux_Charter_EUR_h":5200,"Vitesse_Croisiere_km_h":850,"Autonomie_km":5905,"Passagers_Max":9},
+        {"Modele":"Dassault Falcon 7X","Categorie":"Ultra Long Range Jet","Couts_Fixes_Annuels":588918,"Couts_Equipe_Annuels":377505,"Cout_Horaire_Charter":2994,"Cout_Horaire_Prive":2695,"Heures_Base":350,"Taux_Charter_EUR_h":9500,"Vitesse_Croisiere_km_h":904,"Autonomie_km":9924,"Passagers_Max":12},
+        {"Modele":"Dassault Falcon 8X","Categorie":"Ultra Long Range Jet","Couts_Fixes_Annuels":598153,"Couts_Equipe_Annuels":377505,"Cout_Horaire_Charter":2958,"Cout_Horaire_Prive":2662,"Heures_Base":350,"Taux_Charter_EUR_h":10500,"Vitesse_Croisiere_km_h":903,"Autonomie_km":11365,"Passagers_Max":12},
+    ]
+    return pd.DataFrame(data)
+
+def get_active_db():
+    if st.session_state.get("database") is not None:
+        return st.session_state["database"]
+    return get_default_data()
+
+def fmt(v, decimals=0):
+    return f"€ {v:,.{decimals}f}"
+
+def calculate_costs(aircraft, h_charter, h_private):
+    fc = aircraft["Couts_Fixes_Annuels"]; cc = aircraft["Couts_Equipe_Annuels"]
+    ch = aircraft["Cout_Horaire_Charter"]; ph = aircraft["Cout_Horaire_Prive"]
+    tariff = float(aircraft.get("Taux_Charter_EUR_h", 0))
+    th = h_charter + h_private
+    vc = h_charter * ch; vp = h_private * ph
+    tv = vc + vp; tf = fc + cc; gt = tf + tv
+    return dict(fixed_costs=fc, crew_costs=cc, total_fixed=tf,
+                var_charter=vc, var_private=vp, total_variable=tv,
+                grand_total=gt, avg_cost_h=gt/th if th>0 else 0,
+                h_charter=h_charter, h_private=h_private, total_hours=th,
+                charter_tariff=tariff)
+
+def calculate_profitability(costs, commission_pct, custom_rate=None):
+    tariff = custom_rate if (custom_rate is not None and custom_rate > 0) else costs["charter_tariff"]
+    gr = tariff * costs["h_charter"]
+    comm = gr * commission_pct / 100
+    nr = gr - comm
+    net = nr - costs["grand_total"]
+    cov = (nr / costs["grand_total"] * 100) if costs["grand_total"] > 0 else 0
+    return dict(gross_revenue=gr, commission=comm, net_revenue=nr,
+                net_result=net, coverage_rate=cov, effective_rate=tariff)
+
+# ─── CHART HELPERS ───────────────────────────────────────────────────────────
+COLORS = {"fixed":"#1A3A6E","crew":"#C9A84C","charter":"#4A90D9","private":"#8496B0",
+          "profit":"#4ADE80","loss":"#F87171"}
+_LO = dict(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+           font=dict(color="#D6E4F7"), margin=dict(t=10,b=10,l=10,r=10))
+
+def chart_donut(costs):
+    lbl = ["Fixed Op","Crew","Charter Var","Private Var"]
+    val = [costs["fixed_costs"],costs["crew_costs"],costs["var_charter"],costs["var_private"]]
+    fig = go.Figure(go.Pie(labels=lbl, values=val, hole=0.56,
+        marker=dict(colors=[COLORS["fixed"],COLORS["crew"],COLORS["charter"],COLORS["private"]],
+                    line=dict(color="#0B1629",width=2)),
+        textinfo="label+percent", textfont=dict(size=11,color="#D6E4F7"),
+        hovertemplate="<b>%{label}</b><br>%{value:,.0f} €<br>%{percent}<extra></extra>"))
+    fig.add_annotation(text=f"<b>{costs['grand_total']/1e6:.2f}M€</b><br><span style='font-size:10px'>TOTAL</span>",
+                       x=0.5,y=0.5,showarrow=False,font=dict(size=16,color="#E8C46A"),align="center")
+    fig.update_layout(**_LO, height=320,
+                      legend=dict(orientation="h",yanchor="bottom",y=-0.2,bgcolor="rgba(0,0,0,0)"))
+    return fig
+
+def chart_stacked_bars(costs):
+    cats = ["Charter","Private","Total"]; th = max(costs["total_hours"],1)
+    fig = go.Figure(data=[
+        go.Bar(name="Fixed",x=cats,marker_color=COLORS["fixed"],
+               y=[costs["total_fixed"]*(costs["h_charter"]/th),costs["total_fixed"]*(costs["h_private"]/th),costs["total_fixed"]]),
+        go.Bar(name="Charter Var",x=cats,marker_color=COLORS["charter"],y=[costs["var_charter"],0,costs["var_charter"]]),
+        go.Bar(name="Private Var",x=cats,marker_color=COLORS["private"],y=[0,costs["var_private"],costs["var_private"]]),
+    ])
+    fig.update_layout(barmode="stack",**_LO,height=300,
+                      yaxis=dict(title="Cost (€)",gridcolor="#1A3A6E",tickformat=",.0f"),
+                      xaxis=dict(gridcolor="rgba(0,0,0,0)"),
+                      legend=dict(orientation="h",yanchor="bottom",y=-0.35,bgcolor="rgba(0,0,0,0)"),
+                      margin=dict(t=10,b=40,l=10,r=10))
+    return fig
+
+def chart_waterfall(costs, prof):
+    fig = go.Figure(go.Waterfall(
+        measure=["relative","relative","relative","relative","total"],
+        x=["Gross Revenue","Commission","Variable","Fixed","Net Result"],
+        y=[prof["gross_revenue"],-prof["commission"],-costs["total_variable"],-costs["total_fixed"],prof["net_result"]],
+        connector=dict(line=dict(color="#1A3A6E",width=1.5)),
+        increasing=dict(marker_color=COLORS["profit"]),decreasing=dict(marker_color=COLORS["loss"]),
+        totals=dict(marker_color=COLORS["profit"] if prof["net_result"]>=0 else COLORS["loss"]),
+        texttemplate="%{y:+,.0f} €",textfont=dict(color="#D6E4F7",size=11),
+        hovertemplate="<b>%{x}</b><br>%{y:+,.0f} €<extra></extra>"))
+    fig.add_hline(y=0,line_dash="dash",line_color="#8496B0",line_width=1)
+    fig.update_layout(**_LO,height=340,
+                      yaxis=dict(title="€",gridcolor="#1A3A6E",tickformat=",.0f"),
+                      xaxis=dict(gridcolor="rgba(0,0,0,0)"))
+    return fig
+
+def chart_sensitivity(aircraft, h_private, commission_pct, custom_rate=None):
+    hrs = list(range(0,801,25))
+    res = [calculate_profitability(calculate_costs(aircraft,h,h_private),commission_pct,custom_rate)["net_result"] for h in hrs]
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=hrs,y=res,mode="lines",
+                             line=dict(color=COLORS["charter"],width=2.5),
+                             fill="tozeroy",fillcolor="rgba(74,144,217,0.12)",
+                             hovertemplate="<b>%{x}h</b><br>%{y:+,.0f} €<extra></extra>"))
+    fig.add_hline(y=0,line_dash="dash",line_color="#C9A84C",line_width=1.5)
+    for i in range(1,len(res)):
+        if res[i-1]<0<=res[i]:
+            fig.add_vline(x=hrs[i],line_dash="dot",line_color="#E8C46A",line_width=1.5,
+                         annotation_text=f"Break-even ~{hrs[i]}h",annotation_font_color="#E8C46A",
+                         annotation_position="top right")
+            break
+    fig.update_layout(**_LO,height=300,showlegend=False,
+                      yaxis=dict(title="Net Result (€)",gridcolor="#1A3A6E",tickformat=",.0f"),
+                      xaxis=dict(title="Charter Hours",gridcolor="#1A3A6E"))
+    return fig
+
+def cm_global_donut(op, direct, indirect):
+    lbl=["Operational","Direct","Indirect/Crew"]; val=[op,direct,indirect]
+    clr=["#60A5FA","#F59E0B","#A78BFA"]; total=sum(val)
+    fig=go.Figure(go.Pie(labels=lbl,values=val,hole=0.56,
+        marker=dict(colors=clr,line=dict(color="#0B1629",width=2)),
+        textinfo="label+percent",textfont=dict(size=11,color="#D6E4F7"),
+        hovertemplate="<b>%{label}</b><br>%{value:,.0f} €<extra></extra>"))
+    fig.add_annotation(text=f"<b>{total/1e6:.2f}M€</b><br><span style='font-size:10px'>TOTAL</span>",
+                       x=0.5,y=0.5,showarrow=False,font=dict(size=16,color="#E8C46A"),align="center")
+    fig.update_layout(**_LO,height=360,legend=dict(orientation="h",yanchor="bottom",y=-0.15,bgcolor="rgba(0,0,0,0)"))
+    return fig
+
+def cm_waterfall_global(op, direct, indirect, charter_rev, commission_pct):
+    comm=charter_rev*commission_pct/100; nr=charter_rev-comm; gt=op+direct+indirect; net=nr-gt
+    fig=go.Figure(go.Waterfall(
+        measure=["relative","relative","relative","relative","relative","total"],
+        x=["Charter Revenue","Commission","Operational","Direct","Crew/Indirect","Net Result"],
+        y=[charter_rev,-comm,-op,-direct,-indirect,net],
+        connector=dict(line=dict(color="#1A3A6E",width=1.5)),
+        increasing=dict(marker_color=COLORS["profit"]),decreasing=dict(marker_color=COLORS["loss"]),
+        totals=dict(marker_color=COLORS["profit"] if net>=0 else COLORS["loss"]),
+        texttemplate="%{y:+,.0f} €",textfont=dict(color="#D6E4F7",size=11),
+        hovertemplate="<b>%{x}</b><br>%{y:+,.0f} €<extra></extra>"))
+    fig.add_hline(y=0,line_dash="dash",line_color="#8496B0",line_width=1)
+    fig.update_layout(**_LO,height=360,yaxis=dict(title="€",gridcolor="#1A3A6E",tickformat=",.0f"),xaxis=dict(gridcolor="rgba(0,0,0,0)"))
+    return fig
+
+def cm_donut(labels, values, colors, title_text):
+    total=sum(v for v in values if v>0)
+    fig=go.Figure(go.Pie(labels=labels,values=values,hole=0.54,
+        marker=dict(colors=colors,line=dict(color="#0B1629",width=2)),
+        textinfo="label+percent",textfont=dict(size=10,color="#D6E4F7"),
+        hovertemplate="<b>%{label}</b><br>%{value:,.0f} €<extra></extra>"))
+    fig.add_annotation(text=f"<b>{total/1000:.0f}K€</b><br><span style='font-size:9px'>{title_text}</span>",
+                       x=0.5,y=0.5,showarrow=False,font=dict(size=14,color="#E8C46A"),align="center")
+    fig.update_layout(**_LO,height=300,legend=dict(orientation="h",yanchor="bottom",y=-0.3,bgcolor="rgba(0,0,0,0)",font=dict(size=9)),margin=dict(t=10,b=10,l=5,r=5))
+    return fig
+
+def cm_bar_breakdown(categories, values, color, title):
+    paired=sorted(zip(values,categories),reverse=True)
+    vs,cs=zip(*paired) if paired else ([],[])
+    fig=go.Figure(go.Bar(x=list(cs),y=list(vs),marker_color=color,
+        hovertemplate="<b>%{x}</b><br>%{y:,.0f} €<extra></extra>",
+        text=[f"€{v:,.0f}" for v in vs],textposition="outside",textfont=dict(size=9,color="#D6E4F7")))
+    fig.update_layout(**_LO,height=300,title=dict(text=title,font=dict(size=11,color="#8496B0"),x=0),
+                      yaxis=dict(gridcolor="#1A3A6E",tickformat=",.0f",title="€"),
+                      xaxis=dict(tickangle=-30,gridcolor="rgba(0,0,0,0)"),
+                      margin=dict(t=30,b=60,l=10,r=10))
+    return fig
+
+# Cost Master defaults
+CM_DEFAULTS_OPERATIONAL_PER_FLIGHT = {
+    "Handling":800,"Ground Service":600,"Catering":400,"Hotel":1200,
+    "ATC Charges":900,"Flight Planning":250,"Permission":350,"Miscellaneous":300,
+}
+CM_DEFAULTS_DIRECT = {
+    "Maintenance":85000,"Maintenance Programs":42000,"Insurance":38000,"Hangar":30000,
+    "Management Fee (VAT)":55000,"Government Costs":12000,"Cleaning":8000,
+    "Flight Planning Tools":6000,"Nav Programme":9500,
+}
+CM_DEFAULTS_INDIRECT = {
+    "Crew Salaries":180000,"Total Social Costs":54000,"Training Cockpit":18000,
+    "Training Cabin":8000,"Expense Training Crew":5000,"Communication Crew":4500,
+    "Crew Expenses":22000,"Freelancer":15000,"Miscellaneous Crew":6000,
+}
+
+
 def generate_pdf_report(cm, aircraft_row, annual_flights):
     """Builds a branded Menkor Aviation PDF cost-master report and returns bytes."""
     if not REPORTLAB_OK:
