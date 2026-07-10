@@ -721,8 +721,6 @@ def premium_gate():
         _sub_button(email)
 
 
-    return BytesIO(base64.b64decode(b64_str))
-
 def _b64_to_imgbuf(b64_str):
     return BytesIO(base64.b64decode(b64_str))
 
