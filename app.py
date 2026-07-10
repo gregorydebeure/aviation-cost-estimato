@@ -28,720 +28,9 @@ except ImportError:
     REPORTLAB_OK = False
 warnings.filterwarnings("ignore")
 
-# ─── LOGO (embedded directly — no external file needed) ─────────────────────
-import base64 as _b64
 
-def _load_logo_from_url():
-    """Load Menkor logo from GitHub raw URL."""
-    try:
-        import urllib.request
-        url = "https://raw.githubusercontent.com/gregorydebeure/aviation-cost-estimato/main/assets/menkor_logo.png"
-        with urllib.request.urlopen(url, timeout=5) as r:
-            return _b64.b64encode(r.read()).decode()
-    except Exception:
-        return ""
-
-# Try local file first, then URL, then empty
-import os as _os
-def _load_asset_smart(filename):
-    """Try multiple locations for the asset file."""
-    try:
-        base = _os.path.dirname(_os.path.abspath(__file__))
-        for subdir in ["assets", ".", ""]:
-            path = _os.path.join(base, subdir, filename) if subdir else _os.path.join(base, filename)
-            if _os.path.exists(path):
-                with open(path, "rb") as _f:
-                    return _b64.b64encode(_f.read()).decode()
-    except Exception:
-        pass
-    return ""
-
-LOGO_B64 = _load_asset_smart("menkor_logo.png")
-if not LOGO_B64:
-    LOGO_B64 = _load_logo_from_url()
-
-
-
-
-# ─── PAGE CONFIG ────────────────────────────────────────────────────────────
-st.set_page_config(
-    page_title="Aviation Cost Estimator",
-    page_icon="✈",
-    layout="wide",
-    initial_sidebar_state="expanded",
-)
-
-# ─── CSS STYLES ─────────────────────────────────────────────────────────────
-st.markdown("""
-<style>
-    :root {
-        --navy:   #0B1629;
-        --deep:   #112244;
-        --mid:    #1A3A6E;
-        --gold:   #C9A84C;
-        --amber:  #E8C46A;
-        --slate:  #8496B0;
-        --light:  #D6E4F7;
-        --card:   #13233F;
-        --green:  #163A2A;
-        --greentext: #4ADE80;
-    }
-    .stApp { background-color: var(--navy) !important; color: var(--light) !important; font-family: 'Segoe UI', system-ui, sans-serif; }
-    [data-testid="stSidebar"] { background-color: var(--deep) !important; border-right: 1px solid var(--mid); }
-    [data-testid="stSidebar"] * { color: var(--light) !important; }
-    .main-title { font-size: 2rem; font-weight: 700; letter-spacing: 0.08em; color: var(--amber); text-transform: uppercase; margin-bottom: 0.1rem; }
-    .sub-title { font-size: 0.85rem; color: var(--slate); letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 1.5rem; }
-    .metric-card { background: var(--card); border: 1px solid var(--mid); border-left: 3px solid var(--gold); border-radius: 6px; padding: 1rem 1.2rem; margin-bottom: 0.8rem; }
-    .metric-label { font-size: 0.72rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--slate); margin-bottom: 0.3rem; }
-    .metric-value { font-size: 1.7rem; font-weight: 700; color: var(--amber); }
-    .metric-sub   { font-size: 0.78rem; color: var(--slate); margin-top: 0.1rem; }
-    .section-header { font-size: 0.7rem; letter-spacing: 0.18em; text-transform: uppercase; color: var(--gold); border-bottom: 1px solid var(--mid); padding-bottom: 0.4rem; margin: 1.2rem 0 0.8rem 0; }
-    .cat-header { font-size: 0.78rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--amber); background: var(--mid); border-radius: 4px; padding: 0.4rem 0.8rem; margin: 1rem 0 0.5rem 0; display: inline-block; }
-    hr { border-color: var(--mid) !important; }
-    .stSelectbox label, .stSlider label, .stNumberInput label, .stFileUploader label { color: var(--light) !important; font-size: 0.82rem; }
-    [data-testid="stMetricValue"] { color: var(--amber) !important; font-size: 1.5rem !important; }
-    [data-testid="stMetricLabel"] { color: var(--slate) !important; font-size: 0.72rem !important; letter-spacing: 0.1em; }
-    [data-testid="stMetricDelta"] { color: #4ADE80 !important; }
-    .stAlert { background-color: var(--card) !important; border-color: var(--mid) !important; }
-    .stButton > button { background: var(--mid) !important; color: var(--amber) !important; border: 1px solid var(--gold) !important; border-radius: 4px; letter-spacing: 0.06em; font-weight: 600; }
-    .stButton > button:hover { background: var(--gold) !important; color: var(--navy) !important; }
-    .stDataFrame { border: 1px solid var(--mid); border-radius: 6px; }
-    [data-baseweb="tab-list"] { background: var(--card); border-radius: 6px; }
-    [data-baseweb="tab"] { color: var(--slate) !important; }
-    [aria-selected="true"] { color: var(--amber) !important; border-bottom-color: var(--gold) !important; }
-    [data-testid="stExpander"] { background: var(--card); border: 1px solid var(--mid); border-radius: 6px; }
-    .tag-ok   { background:#163A2A; color:#4ADE80; padding:2px 8px; border-radius:3px; font-size:0.75rem; }
-    .tag-warn { background:#3A2A10; color:#FBBF24; padding:2px 8px; border-radius:3px; font-size:0.75rem; }
-    .tag-err  { background:#3A1010; color:#F87171; padding:2px 8px; border-radius:3px; font-size:0.75rem; }
-    .pdf-drop-zone { border: 2px dashed var(--mid); border-radius: 8px; padding: 2rem; text-align: center; color: var(--slate); background: var(--card); margin: 1rem 0; }
-    .extracted-card { background: var(--card); border: 1px solid var(--mid); border-left: 3px solid var(--greentext); border-radius: 6px; padding: 1rem 1.2rem; margin: 0.5rem 0; }
-    .extracted-label { font-size: 0.7rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--slate); }
-    .extracted-value { font-size: 1.1rem; font-weight: 600; color: var(--greentext); }
-    .step-badge { display: inline-block; background: var(--mid); color: var(--amber); border-radius: 50%; width: 24px; height: 24px; text-align: center; line-height: 24px; font-size: 0.75rem; font-weight: 700; margin-right: 0.5rem; }
-    .cost-group-card { background: var(--card); border: 1px solid var(--mid); border-radius: 8px; padding: 1.2rem 1.4rem; margin-bottom: 1rem; }
-    .cost-group-title { font-size: 0.8rem; letter-spacing: 0.15em; text-transform: uppercase; font-weight: 700; margin-bottom: 0.8rem; padding-bottom: 0.5rem; border-bottom: 1px solid var(--mid); }
-    .cg-operational { color: #60A5FA; border-left: 3px solid #60A5FA; }
-    .cg-direct { color: #F59E0B; border-left: 3px solid #F59E0B; }
-    .cg-indirect { color: #A78BFA; border-left: 3px solid #A78BFA; }
-    .total-banner { background: linear-gradient(135deg, #112244 0%, #1A3A6E 100%); border: 1px solid var(--gold); border-radius: 8px; padding: 1.5rem; text-align: center; margin: 1.5rem 0; }
-</style>
-""", unsafe_allow_html=True)
-
-# ─── DEFAULT DATASET ────────────────────────────────────────────────────────
-def get_default_data() -> pd.DataFrame:
-    """Menkor Aviation GBL — 46 aircraft database v6."""
-    data = [
-        {"Modele": "Airbus 318", "Categorie": "ACJ / VIP Airliner", "Couts_Fixes_Annuels": 219176, "Couts_Equipe_Annuels": 450113, "Cout_Horaire_Charter": 4481, "Cout_Horaire_Prive": 3674, "Heures_Base": 350, "Taux_Charter_EUR_h": 6500, "Vitesse_Croisiere_km_h": 869, "Autonomie_km": 6862, "Passagers_Max": 19},
-        {"Modele": "Airbus 319", "Categorie": "ACJ / VIP Airliner", "Couts_Fixes_Annuels": 225763, "Couts_Equipe_Annuels": 450113, "Cout_Horaire_Charter": 4338, "Cout_Horaire_Prive": 3557, "Heures_Base": 350, "Taux_Charter_EUR_h": 7000, "Vitesse_Croisiere_km_h": 869, "Autonomie_km": 11014, "Passagers_Max": 19},
-        {"Modele": "Airbus 320", "Categorie": "ACJ / VIP Airliner", "Couts_Fixes_Annuels": 253951, "Couts_Equipe_Annuels": 361286, "Cout_Horaire_Charter": 5000, "Cout_Horaire_Prive": 4100, "Heures_Base": 100, "Taux_Charter_EUR_h": 8500, "Vitesse_Croisiere_km_h": 869, "Autonomie_km": 8938, "Passagers_Max": 150},
-        {"Modele": "Airbus 321", "Categorie": "ACJ / VIP Airliner", "Couts_Fixes_Annuels": 277688, "Couts_Equipe_Annuels": 450113, "Cout_Horaire_Charter": 5331, "Cout_Horaire_Prive": 4371, "Heures_Base": 350, "Taux_Charter_EUR_h": 9000, "Vitesse_Croisiere_km_h": 822, "Autonomie_km": 8288, "Passagers_Max": 19},
-        {"Modele": "Airbus 340", "Categorie": "ACJ / VIP Airliner", "Couts_Fixes_Annuels": 360066, "Couts_Equipe_Annuels": 471643, "Cout_Horaire_Charter": 11019, "Cout_Horaire_Prive": 9036, "Heures_Base": 100, "Taux_Charter_EUR_h": 28000, "Vitesse_Croisiere_km_h": 835, "Autonomie_km": 12640, "Passagers_Max": 400},
-        {"Modele": "Airbus ACJ319neo", "Categorie": "ACJ / VIP Airliner", "Couts_Fixes_Annuels": 279335, "Couts_Equipe_Annuels": 376048, "Cout_Horaire_Charter": 3817, "Cout_Horaire_Prive": 3130, "Heures_Base": 350, "Taux_Charter_EUR_h": 9500, "Vitesse_Croisiere_km_h": 869, "Autonomie_km": 12501, "Passagers_Max": 19},
-        {"Modele": "Airbus ACJ320neo", "Categorie": "ACJ / VIP Airliner", "Couts_Fixes_Annuels": 310659, "Couts_Equipe_Annuels": 376048, "Cout_Horaire_Charter": 3833, "Cout_Horaire_Prive": 3143, "Heures_Base": 350, "Taux_Charter_EUR_h": 10000, "Vitesse_Croisiere_km_h": 869, "Autonomie_km": 11299, "Passagers_Max": 19},
-        {"Modele": "BAE RJ-70", "Categorie": "Regional Jet / VIP", "Couts_Fixes_Annuels": 222678, "Couts_Equipe_Annuels": 372857, "Cout_Horaire_Charter": 4357, "Cout_Horaire_Prive": 3573, "Heures_Base": 100, "Taux_Charter_EUR_h": 4500, "Vitesse_Croisiere_km_h": 755, "Autonomie_km": 3250, "Passagers_Max": 20},
-        {"Modele": "BAE RJ-85", "Categorie": "Regional Jet / VIP", "Couts_Fixes_Annuels": 271095, "Couts_Equipe_Annuels": 372857, "Cout_Horaire_Charter": 4033, "Cout_Horaire_Prive": 3307, "Heures_Base": 100, "Taux_Charter_EUR_h": 4800, "Vitesse_Croisiere_km_h": 755, "Autonomie_km": 3366, "Passagers_Max": 20},
-        {"Modele": "Beechcraft Beechjet 400", "Categorie": "Light Jet", "Couts_Fixes_Annuels": 34901, "Couts_Equipe_Annuels": 245619, "Cout_Horaire_Charter": 1823, "Cout_Horaire_Prive": 1495, "Heures_Base": 250, "Taux_Charter_EUR_h": 2200, "Vitesse_Croisiere_km_h": 826, "Autonomie_km": 2061, "Passagers_Max": 7},
-        {"Modele": "Beechcraft Beechjet 400A", "Categorie": "Light Jet", "Couts_Fixes_Annuels": 36260, "Couts_Equipe_Annuels": 245619, "Cout_Horaire_Charter": 1568, "Cout_Horaire_Prive": 1286, "Heures_Base": 250, "Taux_Charter_EUR_h": 2300, "Vitesse_Croisiere_km_h": 832, "Autonomie_km": 2133, "Passagers_Max": 7},
-        {"Modele": "Beechcraft Premier I", "Categorie": "Light Jet", "Couts_Fixes_Annuels": 35998, "Couts_Equipe_Annuels": 136880, "Cout_Horaire_Charter": 1254, "Cout_Horaire_Prive": 1028, "Heures_Base": 250, "Taux_Charter_EUR_h": 1800, "Vitesse_Croisiere_km_h": 789, "Autonomie_km": 1536, "Passagers_Max": 7},
-        {"Modele": "Beechcraft Premier IA", "Categorie": "Light Jet", "Couts_Fixes_Annuels": 41947, "Couts_Equipe_Annuels": 136880, "Cout_Horaire_Charter": 1236, "Cout_Horaire_Prive": 1013, "Heures_Base": 250, "Taux_Charter_EUR_h": 1900, "Vitesse_Croisiere_km_h": 789, "Autonomie_km": 1536, "Passagers_Max": 7},
-        {"Modele": "Boeing 737-500", "Categorie": "VIP Airliner / BBJ", "Couts_Fixes_Annuels": 242553, "Couts_Equipe_Annuels": 419143, "Cout_Horaire_Charter": 5456, "Cout_Horaire_Prive": 4474, "Heures_Base": 100, "Taux_Charter_EUR_h": 7500, "Vitesse_Croisiere_km_h": 839, "Autonomie_km": 5424, "Passagers_Max": 150},
-        {"Modele": "Boeing 737-600", "Categorie": "VIP Airliner / BBJ", "Couts_Fixes_Annuels": 231007, "Couts_Equipe_Annuels": 419143, "Cout_Horaire_Charter": 4544, "Cout_Horaire_Prive": 3726, "Heures_Base": 100, "Taux_Charter_EUR_h": 7800, "Vitesse_Croisiere_km_h": 837, "Autonomie_km": 7073, "Passagers_Max": 119},
-        {"Modele": "Boeing 737-700", "Categorie": "VIP Airliner / BBJ", "Couts_Fixes_Annuels": 225028, "Couts_Equipe_Annuels": 419143, "Cout_Horaire_Charter": 4669, "Cout_Horaire_Prive": 3829, "Heures_Base": 100, "Taux_Charter_EUR_h": 8000, "Vitesse_Croisiere_km_h": 838, "Autonomie_km": 7226, "Passagers_Max": 140},
-        {"Modele": "Boeing 747-100", "Categorie": "VIP Wide-Body", "Couts_Fixes_Annuels": 273066, "Couts_Equipe_Annuels": 471643, "Cout_Horaire_Charter": 19415, "Cout_Horaire_Prive": 15920, "Heures_Base": 100, "Taux_Charter_EUR_h": 55000, "Vitesse_Croisiere_km_h": 890, "Autonomie_km": 11195, "Passagers_Max": 400},
-        {"Modele": "Boeing 747-200", "Categorie": "VIP Wide-Body", "Couts_Fixes_Annuels": 289890, "Couts_Equipe_Annuels": 471643, "Cout_Horaire_Charter": 18520, "Cout_Horaire_Prive": 15186, "Heures_Base": 100, "Taux_Charter_EUR_h": 58000, "Vitesse_Croisiere_km_h": 890, "Autonomie_km": 12640, "Passagers_Max": 350},
-        {"Modele": "Boeing 747-400", "Categorie": "VIP Wide-Body", "Couts_Fixes_Annuels": 276703, "Couts_Equipe_Annuels": 471643, "Cout_Horaire_Charter": 15263, "Cout_Horaire_Prive": 12516, "Heures_Base": 100, "Taux_Charter_EUR_h": 65000, "Vitesse_Croisiere_km_h": 913, "Autonomie_km": 14626, "Passagers_Max": 420},
-        {"Modele": "Boeing 747SP", "Categorie": "VIP Wide-Body", "Couts_Fixes_Annuels": 239780, "Couts_Equipe_Annuels": 471643, "Cout_Horaire_Charter": 15953, "Cout_Horaire_Prive": 13081, "Heures_Base": 100, "Taux_Charter_EUR_h": 60000, "Vitesse_Croisiere_km_h": 902, "Autonomie_km": 13723, "Passagers_Max": 331},
-        {"Modele": "Boeing 757-200ER", "Categorie": "VIP Airliner / BBJ", "Couts_Fixes_Annuels": 274945, "Couts_Equipe_Annuels": 471643, "Cout_Horaire_Charter": 5939, "Cout_Horaire_Prive": 4870, "Heures_Base": 100, "Taux_Charter_EUR_h": 12000, "Vitesse_Croisiere_km_h": 850, "Autonomie_km": 11159, "Passagers_Max": 200},
-        {"Modele": "Boeing 767-200ER", "Categorie": "VIP Wide-Body", "Couts_Fixes_Annuels": 384835, "Couts_Equipe_Annuels": 471643, "Cout_Horaire_Charter": 6537, "Cout_Horaire_Prive": 5360, "Heures_Base": 100, "Taux_Charter_EUR_h": 15000, "Vitesse_Croisiere_km_h": 850, "Autonomie_km": 13145, "Passagers_Max": 181},
-        {"Modele": "Boeing 767-300ER", "Categorie": "VIP Wide-Body", "Couts_Fixes_Annuels": 380439, "Couts_Equipe_Annuels": 471643, "Cout_Horaire_Charter": 8352, "Cout_Horaire_Prive": 6849, "Heures_Base": 100, "Taux_Charter_EUR_h": 18000, "Vitesse_Croisiere_km_h": 850, "Autonomie_km": 12474, "Passagers_Max": 218},
-        {"Modele": "Boeing 787-8", "Categorie": "VIP Wide-Body", "Couts_Fixes_Annuels": 358241, "Couts_Equipe_Annuels": 521978, "Cout_Horaire_Charter": 7925, "Cout_Horaire_Prive": 6498, "Heures_Base": 100, "Taux_Charter_EUR_h": 20000, "Vitesse_Croisiere_km_h": 930, "Autonomie_km": 14538, "Passagers_Max": 381},
-        {"Modele": "Boeing BBJ", "Categorie": "ACJ / VIP Airliner", "Couts_Fixes_Annuels": 218956, "Couts_Equipe_Annuels": 469635, "Cout_Horaire_Charter": 3763, "Cout_Horaire_Prive": 3086, "Heures_Base": 350, "Taux_Charter_EUR_h": 9000, "Vitesse_Croisiere_km_h": 871, "Autonomie_km": 11100, "Passagers_Max": 19},
-        {"Modele": "Boeing BBJ2", "Categorie": "ACJ / VIP Airliner", "Couts_Fixes_Annuels": 241598, "Couts_Equipe_Annuels": 469653, "Cout_Horaire_Charter": 3882, "Cout_Horaire_Prive": 3183, "Heures_Base": 350, "Taux_Charter_EUR_h": 10000, "Vitesse_Croisiere_km_h": 840, "Autonomie_km": 10191, "Passagers_Max": 19},
-        {"Modele": "Boeing BBJ3", "Categorie": "ACJ / VIP Airliner", "Couts_Fixes_Annuels": 248567, "Couts_Equipe_Annuels": 470089, "Cout_Horaire_Charter": 3889, "Cout_Horaire_Prive": 3189, "Heures_Base": 350, "Taux_Charter_EUR_h": 11000, "Vitesse_Croisiere_km_h": 840, "Autonomie_km": 8649, "Passagers_Max": 19},
-        {"Modele": "Bombardier Challenger 604", "Categorie": "Large Jet", "Couts_Fixes_Annuels": 376651, "Couts_Equipe_Annuels": 237726, "Cout_Horaire_Charter": 2726, "Cout_Horaire_Prive": 2450, "Heures_Base": 350, "Taux_Charter_EUR_h": 5200, "Vitesse_Croisiere_km_h": 850, "Autonomie_km": 6786, "Passagers_Max": 10},
-        {"Modele": "Bombardier Challenger 605", "Categorie": "Large Jet", "Couts_Fixes_Annuels": 500361, "Couts_Equipe_Annuels": 346500, "Cout_Horaire_Charter": 2619, "Cout_Horaire_Prive": 2360, "Heures_Base": 350, "Taux_Charter_EUR_h": 5500, "Vitesse_Croisiere_km_h": 849, "Autonomie_km": 6856, "Passagers_Max": 10},
-        {"Modele": "Bombardier Challenger 650", "Categorie": "Large Jet", "Couts_Fixes_Annuels": 488946, "Couts_Equipe_Annuels": 333270, "Cout_Horaire_Charter": 2455, "Cout_Horaire_Prive": 2210, "Heures_Base": 350, "Taux_Charter_EUR_h": 5800, "Vitesse_Croisiere_km_h": 850, "Autonomie_km": 6795, "Passagers_Max": 10},
-        {"Modele": "Bombardier Global 5000", "Categorie": "Ultra Long Range Jet", "Couts_Fixes_Annuels": 702952, "Couts_Equipe_Annuels": 426052, "Cout_Horaire_Charter": 4051, "Cout_Horaire_Prive": 3646, "Heures_Base": 350, "Taux_Charter_EUR_h": 9000, "Vitesse_Croisiere_km_h": 904, "Autonomie_km": 9390, "Passagers_Max": 13},
-        {"Modele": "Bombardier Global Express", "Categorie": "Ultra Long Range Jet", "Couts_Fixes_Annuels": 683427, "Couts_Equipe_Annuels": 426052, "Cout_Horaire_Charter": 4471, "Cout_Horaire_Prive": 4024, "Heures_Base": 350, "Taux_Charter_EUR_h": 9500, "Vitesse_Croisiere_km_h": 904, "Autonomie_km": 10726, "Passagers_Max": 13},
-        {"Modele": "Bombardier Global Express XRS", "Categorie": "Ultra Long Range Jet", "Couts_Fixes_Annuels": 714023, "Couts_Equipe_Annuels": 426052, "Cout_Horaire_Charter": 4420, "Cout_Horaire_Prive": 3978, "Heures_Base": 350, "Taux_Charter_EUR_h": 10000, "Vitesse_Croisiere_km_h": 904, "Autonomie_km": 10934, "Passagers_Max": 13},
-        {"Modele": "Challenger 300", "Categorie": "Super Midsize Jet", "Couts_Fixes_Annuels": 102295, "Couts_Equipe_Annuels": 392114, "Cout_Horaire_Charter": 2878, "Cout_Horaire_Prive": 2360, "Heures_Base": 350, "Taux_Charter_EUR_h": 3500, "Vitesse_Croisiere_km_h": 848, "Autonomie_km": 5545, "Passagers_Max": 8},
-        {"Modele": "Challenger 350", "Categorie": "Super Midsize Jet", "Couts_Fixes_Annuels": 93921, "Couts_Equipe_Annuels": 394305, "Cout_Horaire_Charter": 2353, "Cout_Horaire_Prive": 1929, "Heures_Base": 350, "Taux_Charter_EUR_h": 4000, "Vitesse_Croisiere_km_h": 850, "Autonomie_km": 5784, "Passagers_Max": 8},
-        {"Modele": "Challenger 600", "Categorie": "Large Jet", "Couts_Fixes_Annuels": 78406, "Couts_Equipe_Annuels": 372774, "Cout_Horaire_Charter": 4337, "Cout_Horaire_Prive": 3556, "Heures_Base": 350, "Taux_Charter_EUR_h": 4500, "Vitesse_Croisiere_km_h": 849, "Autonomie_km": 5061, "Passagers_Max": 9},
-        {"Modele": "Challenger 601-1A", "Categorie": "Large Jet", "Couts_Fixes_Annuels": 84681, "Couts_Equipe_Annuels": 367240, "Cout_Horaire_Charter": 3720, "Cout_Horaire_Prive": 3050, "Heures_Base": 350, "Taux_Charter_EUR_h": 4500, "Vitesse_Croisiere_km_h": 821, "Autonomie_km": 5748, "Passagers_Max": 9},
-        {"Modele": "Dassault Falcon 10", "Categorie": "Light Jet", "Couts_Fixes_Annuels": 279536, "Couts_Equipe_Annuels": 224844, "Cout_Horaire_Charter": 2372, "Cout_Horaire_Prive": 2135, "Heures_Base": 250, "Taux_Charter_EUR_h": 2800, "Vitesse_Croisiere_km_h": 837, "Autonomie_km": 2745, "Passagers_Max": 6},
-        {"Modele": "Dassault Falcon 20C", "Categorie": "Midsize Jet", "Couts_Fixes_Annuels": 350751, "Couts_Equipe_Annuels": 278094, "Cout_Horaire_Charter": 3179, "Cout_Horaire_Prive": 2861, "Heures_Base": 250, "Taux_Charter_EUR_h": 3200, "Vitesse_Croisiere_km_h": 805, "Autonomie_km": 2167, "Passagers_Max": 9},
-        {"Modele": "Dassault Falcon 20C-5", "Categorie": "Midsize Jet", "Couts_Fixes_Annuels": 356747, "Couts_Equipe_Annuels": 278094, "Cout_Horaire_Charter": 2675, "Cout_Horaire_Prive": 2408, "Heures_Base": 250, "Taux_Charter_EUR_h": 3400, "Vitesse_Croisiere_km_h": 842, "Autonomie_km": 3684, "Passagers_Max": 9},
-        {"Modele": "Dassault Falcon 20F", "Categorie": "Midsize Jet", "Couts_Fixes_Annuels": 356077, "Couts_Equipe_Annuels": 278094, "Cout_Horaire_Charter": 2895, "Cout_Horaire_Prive": 2606, "Heures_Base": 250, "Taux_Charter_EUR_h": 3200, "Vitesse_Croisiere_km_h": 805, "Autonomie_km": 2420, "Passagers_Max": 9},
-        {"Modele": "Dassault Falcon 20F-5", "Categorie": "Midsize Jet", "Couts_Fixes_Annuels": 353308, "Couts_Equipe_Annuels": 278094, "Cout_Horaire_Charter": 2485, "Cout_Horaire_Prive": 2237, "Heures_Base": 250, "Taux_Charter_EUR_h": 3500, "Vitesse_Croisiere_km_h": 842, "Autonomie_km": 4063, "Passagers_Max": 9},
-        {"Modele": "Dassault Falcon 50", "Categorie": "Large Jet", "Couts_Fixes_Annuels": 450596, "Couts_Equipe_Annuels": 334924, "Cout_Horaire_Charter": 3352, "Cout_Horaire_Prive": 3017, "Heures_Base": 350, "Taux_Charter_EUR_h": 5000, "Vitesse_Croisiere_km_h": 799, "Autonomie_km": 5526, "Passagers_Max": 9},
-        {"Modele": "Dassault Falcon 50-40", "Categorie": "Large Jet", "Couts_Fixes_Annuels": 469453, "Couts_Equipe_Annuels": 334924, "Cout_Horaire_Charter": 3328, "Cout_Horaire_Prive": 2995, "Heures_Base": 350, "Taux_Charter_EUR_h": 5200, "Vitesse_Croisiere_km_h": 850, "Autonomie_km": 5905, "Passagers_Max": 9},
-        {"Modele": "Dassault Falcon 7X", "Categorie": "Ultra Long Range Jet", "Couts_Fixes_Annuels": 588918, "Couts_Equipe_Annuels": 377505, "Cout_Horaire_Charter": 2994, "Cout_Horaire_Prive": 2695, "Heures_Base": 350, "Taux_Charter_EUR_h": 9500, "Vitesse_Croisiere_km_h": 904, "Autonomie_km": 9924, "Passagers_Max": 12},
-        {"Modele": "Dassault Falcon 8X", "Categorie": "Ultra Long Range Jet", "Couts_Fixes_Annuels": 598153, "Couts_Equipe_Annuels": 377505, "Cout_Horaire_Charter": 2958, "Cout_Horaire_Prive": 2662, "Heures_Base": 350, "Taux_Charter_EUR_h": 10500, "Vitesse_Croisiere_km_h": 903, "Autonomie_km": 11365, "Passagers_Max": 12},
-    ]
-    return pd.DataFrame(data)
-
-def get_active_db() -> pd.DataFrame:
-    if st.session_state["database"] is not None:
-        return st.session_state["database"]
-    return get_default_data()
-
-# ─── COST MASTER — DEFAULT VALUES ────────────────────────────────────────────
-# Per-flight defaults (operational, applied × annual flights)
-CM_DEFAULTS_OPERATIONAL_PER_FLIGHT = {
-    "Handling":        800,
-    "Ground Service":  600,
-    "Catering":        400,
-    "Hotel":           1200,
-    "ATC Charges":     900,
-    "Flight Planning": 250,
-    "Permission":      350,
-    "Miscellaneous":   300,
-}
-# Annual defaults (direct fixed costs)
-CM_DEFAULTS_DIRECT = {
-    "Maintenance":           85000,
-    "Maintenance Programs":  42000,
-    "Insurance":             38000,
-    "Hangar":                30000,
-    "Management Fee (VAT)":  55000,
-    "Government Costs":      12000,
-    "Cleaning":               8000,
-    "Flight Planning Tools":  6000,
-    "Nav Programme":          9500,
-}
-# Annual defaults (indirect / crew costs)
-CM_DEFAULTS_INDIRECT = {
-    "Crew Salaries":          180000,
-    "Total Social Costs":      54000,
-    "Training Cockpit":        18000,
-    "Training Cabin":           8000,
-    "Expense Training Crew":    5000,
-    "Communication Crew":       4500,
-    "Crew Expenses":           22000,
-    "Freelancer":              15000,
-    "Miscellaneous Crew":       6000,
-}
-
-REQUIRED_COLUMNS = {
-    "Modele":               "Aircraft name",
-    "Couts_Fixes_Annuels":  "Fixed costs excl. crew (€/year)",
-    "Couts_Equipe_Annuels": "Annual crew costs (€/year)",
-    "Cout_Horaire_Charter": "Variable charter hourly cost (€/h)",
-    "Cout_Horaire_Prive":   "Variable private hourly cost (€/h)",
-    "Taux_Charter_EUR_h":   "Charter rate billed to client (€/h)",
-}
-
-def load_data(file) -> tuple:
-    errors = []
-    try:
-        if file.name.endswith(".csv"):
-            df = pd.read_csv(file)
-        elif file.name.endswith(".xls"):
-            df = pd.read_excel(file, engine="xlrd")
-        else:
-            df = pd.read_excel(file)
-    except Exception as e:
-        return None, [f"Cannot read file: {e}"]
-    missing = [col for col in REQUIRED_COLUMNS if col not in df.columns]
-    if missing:
-        errors.append(f"Missing columns: {', '.join(missing)}. Detected: {', '.join(df.columns.tolist())}")
-        return None, errors
-    for col in [c for c in REQUIRED_COLUMNS if c != "Modele"]:
-        df[col] = pd.to_numeric(df[col], errors="coerce")
-    return df.dropna(subset=["Modele"]), errors
-
-# ─── COST CALCULATIONS ───────────────────────────────────────────────────────
-def calculate_costs(aircraft, h_charter, h_private):
-    fixed_costs    = aircraft["Couts_Fixes_Annuels"]
-    crew_costs     = aircraft["Couts_Equipe_Annuels"]
-    charter_rate_h = aircraft["Cout_Horaire_Charter"]
-    private_rate_h = aircraft["Cout_Horaire_Prive"]
-    charter_tariff = aircraft.get("Taux_Charter_EUR_h", 0)
-    total_hours    = h_charter + h_private
-    var_charter    = h_charter * charter_rate_h
-    var_private    = h_private * private_rate_h
-    total_variable = var_charter + var_private
-    total_fixed    = fixed_costs + crew_costs
-    grand_total    = total_fixed + total_variable
-    avg_cost_h     = grand_total / total_hours if total_hours > 0 else 0
-    return dict(fixed_costs=fixed_costs, crew_costs=crew_costs, total_fixed=total_fixed,
-                var_charter=var_charter, var_private=var_private, total_variable=total_variable,
-                grand_total=grand_total, avg_cost_h=avg_cost_h, h_charter=h_charter,
-                h_private=h_private, total_hours=total_hours, charter_tariff=charter_tariff)
-
-def calculate_profitability(costs, commission_pct, custom_rate=None):
-    tariff        = custom_rate if (custom_rate is not None and custom_rate > 0) else costs["charter_tariff"]
-    h_charter     = costs["h_charter"]
-    gross_revenue = tariff * h_charter
-    commission    = gross_revenue * commission_pct / 100
-    net_revenue   = gross_revenue - commission
-    net_result    = net_revenue - costs["grand_total"]
-    coverage_rate = (net_revenue / costs["grand_total"] * 100) if costs["grand_total"] > 0 else 0
-    return dict(gross_revenue=gross_revenue, commission=commission,
-                net_revenue=net_revenue, net_result=net_result, coverage_rate=coverage_rate,
-                effective_rate=tariff)
-
-# ─── CHARTS ──────────────────────────────────────────────────────────────────
-COLORS = {"fixed":"#1A3A6E","crew":"#C9A84C","charter":"#4A90D9",
-          "private":"#8496B0","profit":"#4ADE80","loss":"#F87171"}
-
-
-def chart_donut(costs):
-    labels = ["Fixed Operating Costs","Crew Costs","Charter Variable","Private Variable"]
-    values = [costs["fixed_costs"],costs["crew_costs"],costs["var_charter"],costs["var_private"]]
-    fig = go.Figure(go.Pie(
-        labels=labels, values=values, hole=0.56,
-        marker=dict(colors=[COLORS["fixed"],COLORS["crew"],COLORS["charter"],COLORS["private"]],
-                    line=dict(color="#0B1629",width=2)),
-        textinfo="label+percent", textfont=dict(size=11,color="#D6E4F7"),
-        hovertemplate="<b>%{label}</b><br>%{value:,.0f} €<br>%{percent}<extra></extra>"))
-    fig.add_annotation(text=f"<b>{costs['grand_total']/1e6:.2f}M€</b><br><span style='font-size:10px'>TOTAL</span>",
-                       x=0.5,y=0.5,showarrow=False,font=dict(size=16,color="#E8C46A"),align="center")
-    fig.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font=dict(color="#D6E4F7"), margin=dict(t=10,b=10,l=10,r=10), height=320,
-                      legend=dict(orientation="h",yanchor="bottom",y=-0.2,bgcolor="rgba(0,0,0,0)"))
-    return fig
-
-def chart_stacked_bars(costs):
-    categories = ["Charter","Private","Total"]
-    th = max(costs["total_hours"],1)
-    fig = go.Figure(data=[
-        go.Bar(name="Fixed Costs",x=categories,marker_color=COLORS["fixed"],
-               y=[costs["total_fixed"]*(costs["h_charter"]/th),costs["total_fixed"]*(costs["h_private"]/th),costs["total_fixed"]]),
-        go.Bar(name="Charter Variable",x=categories,marker_color=COLORS["charter"],
-               y=[costs["var_charter"],0,costs["var_charter"]]),
-        go.Bar(name="Private Variable",x=categories,marker_color=COLORS["private"],
-               y=[0,costs["var_private"],costs["var_private"]]),
-    ])
-    fig.update_layout(barmode="stack", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font=dict(color="#D6E4F7"),
-                      height=300,
-                      yaxis=dict(title="Cost (€)",gridcolor="#1A3A6E",tickformat=",.0f"),
-                      xaxis=dict(gridcolor="rgba(0,0,0,0)"),
-                      legend=dict(orientation="h",yanchor="bottom",y=-0.35,bgcolor="rgba(0,0,0,0)"),
-                      margin=dict(t=10,b=40,l=10,r=10))
-    return fig
-
-def chart_waterfall(costs, prof):
-    measures = ["relative","relative","relative","relative","total"]
-    x = ["Gross Charter Revenue","Operator Commission","Variable Costs","Fixed Costs","Net Result"]
-    y = [prof["gross_revenue"],-prof["commission"],-costs["total_variable"],-costs["total_fixed"],prof["net_result"]]
-    fig = go.Figure(go.Waterfall(
-        measure=measures,x=x,y=y,
-        connector=dict(line=dict(color="#1A3A6E",width=1.5)),
-        increasing=dict(marker_color=COLORS["profit"]),decreasing=dict(marker_color=COLORS["loss"]),
-        totals=dict(marker_color=COLORS["profit"] if prof["net_result"]>=0 else COLORS["loss"]),
-        texttemplate="%{y:+,.0f} €",textfont=dict(color="#D6E4F7",size=11),
-        hovertemplate="<b>%{x}</b><br>%{y:+,.0f} €<extra></extra>"))
-    fig.add_hline(y=0,line_dash="dash",line_color="#8496B0",line_width=1)
-    fig.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font=dict(color="#D6E4F7"), margin=dict(t=10,b=10,l=10,r=10),height=340,
-                      yaxis=dict(title="€",gridcolor="#1A3A6E",tickformat=",.0f"),
-                      xaxis=dict(gridcolor="rgba(0,0,0,0)"))
-    return fig
-
-def chart_sensitivity(aircraft, h_private, commission_pct, custom_rate=None):
-    hours_range = list(range(0,801,25))
-    results = [calculate_profitability(calculate_costs(aircraft,h,h_private),commission_pct,custom_rate)["net_result"] for h in hours_range]
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(x=hours_range,y=results,mode="lines",
-                             line=dict(color=COLORS["charter"],width=2.5),
-                             fill="tozeroy",fillcolor="rgba(74,144,217,0.12)",
-                             hovertemplate="<b>%{x}h charter</b><br>%{y:+,.0f} €<extra></extra>"))
-    fig.add_hline(y=0,line_dash="dash",line_color="#C9A84C",line_width=1.5)
-    for i in range(1,len(results)):
-        if results[i-1]<0<=results[i]:
-            h_be=hours_range[i]
-            fig.add_vline(x=h_be,line_dash="dot",line_color="#E8C46A",line_width=1.5,
-                         annotation_text=f"Break-even ~{h_be}h",annotation_font_color="#E8C46A",
-                         annotation_position="top right")
-            break
-    fig.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font=dict(color="#D6E4F7"), margin=dict(t=10,b=10,l=10,r=10),height=300,showlegend=False,
-                      yaxis=dict(title="Net Result (€)",gridcolor="#1A3A6E",tickformat=",.0f"),
-                      xaxis=dict(title="Charter Flight Hours",gridcolor="#1A3A6E"))
-    return fig
-
-# ─── COST MASTER CHARTS ──────────────────────────────────────────────────────
-def cm_donut(labels, values, colors, title_text):
-    total = sum(v for v in values if v > 0)
-    fig = go.Figure(go.Pie(
-        labels=labels, values=values, hole=0.54,
-        marker=dict(colors=colors, line=dict(color="#0B1629",width=2)),
-        textinfo="label+percent", textfont=dict(size=10,color="#D6E4F7"),
-        hovertemplate="<b>%{label}</b><br>%{value:,.0f} €<br>%{percent}<extra></extra>"))
-    fig.add_annotation(
-        text=f"<b>{total/1000:.0f}K€</b><br><span style='font-size:9px'>{title_text}</span>",
-        x=0.5,y=0.5,showarrow=False,font=dict(size=14,color="#E8C46A"),align="center")
-    fig.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font=dict(color="#D6E4F7"), height=300,
-                      legend=dict(orientation="h",yanchor="bottom",y=-0.3,bgcolor="rgba(0,0,0,0)",font=dict(size=9)),
-                      margin=dict(t=10,b=10,l=5,r=5))
-    return fig
-
-def cm_global_donut(op_total, direct_total, indirect_total):
-    labels = ["Operational Costs","Direct Costs","Indirect / Crew Costs"]
-    values = [op_total, direct_total, indirect_total]
-    colors = ["#60A5FA","#F59E0B","#A78BFA"]
-    total  = sum(values)
-    fig = go.Figure(go.Pie(
-        labels=labels, values=values, hole=0.56,
-        marker=dict(colors=colors, line=dict(color="#0B1629",width=2)),
-        textinfo="label+percent", textfont=dict(size=11,color="#D6E4F7"),
-        hovertemplate="<b>%{label}</b><br>%{value:,.0f} €<br>%{percent}<extra></extra>"))
-    fig.add_annotation(
-        text=f"<b>{total/1e6:.2f}M€</b><br><span style='font-size:10px'>TOTAL</span>",
-        x=0.5,y=0.5,showarrow=False,font=dict(size=16,color="#E8C46A"),align="center")
-    fig.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font=dict(color="#D6E4F7"), margin=dict(t=10,b=10,l=10,r=10), height=360,
-                      legend=dict(orientation="h",yanchor="bottom",y=-0.15,bgcolor="rgba(0,0,0,0)"))
-    return fig
-
-def cm_bar_breakdown(categories, values, color, title):
-    paired = sorted(zip(values, categories), reverse=True)
-    values_s, cats_s = zip(*paired) if paired else ([],[])
-    fig = go.Figure(go.Bar(
-        x=list(cats_s), y=list(values_s),
-        marker_color=color, marker_line_color="#0B1629", marker_line_width=1,
-        hovertemplate="<b>%{x}</b><br>%{y:,.0f} €<extra></extra>",
-        text=[f"€{v:,.0f}" for v in values_s], textposition="outside",
-        textfont=dict(size=9,color="#D6E4F7")))
-    fig.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font=dict(color="#D6E4F7"), height=300,
-                      title=dict(text=title,font=dict(size=11,color="#8496B0"),x=0),
-                      yaxis=dict(gridcolor="#1A3A6E",tickformat=",.0f",title="€"),
-                      xaxis=dict(tickangle=-30,gridcolor="rgba(0,0,0,0)"),
-                      margin=dict(t=30,b=60,l=10,r=10))
-    return fig
-
-def cm_waterfall_global(op, direct, indirect, charter_rev, commission_pct):
-    commission = charter_rev * commission_pct / 100
-    net_rev = charter_rev - commission
-    grand_total = op + direct + indirect
-    net = net_rev - grand_total
-    fig = go.Figure(go.Waterfall(
-        measure=["relative","relative","relative","relative","relative","total"],
-        x=["Charter Revenue","Commission","Operational","Direct Costs","Crew / Indirect","Net Result"],
-        y=[charter_rev,-commission,-op,-direct,-indirect,net],
-        connector=dict(line=dict(color="#1A3A6E",width=1.5)),
-        increasing=dict(marker_color=COLORS["profit"]),
-        decreasing=dict(marker_color=COLORS["loss"]),
-        totals=dict(marker_color=COLORS["profit"] if net>=0 else COLORS["loss"]),
-        texttemplate="%{y:+,.0f} €",textfont=dict(color="#D6E4F7",size=11),
-        hovertemplate="<b>%{x}</b><br>%{y:+,.0f} €<extra></extra>"))
-    fig.add_hline(y=0,line_dash="dash",line_color="#8496B0",line_width=1)
-    fig.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font=dict(color="#D6E4F7"), margin=dict(t=10,b=10,l=10,r=10), height=360,
-                      yaxis=dict(title="€",gridcolor="#1A3A6E",tickformat=",.0f"),
-                      xaxis=dict(gridcolor="rgba(0,0,0,0)"))
-    return fig
-
-def fmt(v, decimals=0):
-    return f"€ {v:,.{decimals}f}"
-
-# ════════════════════════════════════════════════════════════════════════════
-# PDF EXTRACTION
-# ════════════════════════════════════════════════════════════════════════════
-EXTRACTION_PROMPT = """You are an expert in business aviation finance. 
-Analyze this aircraft budget document and extract the key financial figures.
-
-Return ONLY a valid JSON object with EXACTLY these fields (use null if not found):
-{
-  "aircraft_model": "Aircraft name and variant (e.g. Falcon 900EX)",
-  "category": "Category (Light Jet / Midsize / Super Midsize / Grand Cabin / Ultra Long Range)",
-  "fixed_costs_annual": <number in EUR, excluding crew>,
-  "crew_costs_annual": <total annual crew costs in EUR>,
-  "variable_cost_charter_per_hour": <variable cost per flight hour in charter mode, EUR>,
-  "variable_cost_private_per_hour": <variable cost per flight hour in private/owner mode, EUR>,
-  "base_flight_hours": <annual flight hours assumed in the budget>,
-  "charter_rate_per_hour": <revenue rate charged to charter clients per hour, EUR>,
-  "cruise_speed_kmh": <cruise speed in km/h or null>,
-  "range_km": <maximum range in km or null>,
-  "max_passengers": <maximum passenger capacity or null>,
-  "currency": "EUR",
-  "notes": "Any important assumptions or notes from the document"
-}
-Rules:
-- All monetary values must be in EUR
-- Return ONLY the JSON, no explanation, no markdown, no code blocks
-- If a value cannot be found or calculated, use null"""
-
-def extract_pdf_with_claude(pdf_bytes, api_key):
-    pdf_b64 = base64.standard_b64encode(pdf_bytes).decode("utf-8")
-    payload = {
-        "model": "claude-sonnet-4-6", "max_tokens": 1000,
-        "messages": [{"role": "user", "content": [
-            {"type": "document", "source": {"type": "base64", "media_type": "application/pdf", "data": pdf_b64}},
-            {"type": "text", "text": EXTRACTION_PROMPT}
-        ]}]
-    }
-    response = requests.post(
-        "https://api.anthropic.com/v1/messages",
-        headers={"Content-Type":"application/json","x-api-key":api_key,
-                 "anthropic-version":"2023-06-01","anthropic-beta":"pdfs-2024-09-25"},
-        json=payload, timeout=60)
-    if response.status_code != 200:
-        raise ValueError(f"API error {response.status_code}: {response.text[:300]}")
-    data = response.json()
-    raw_text = "".join(b.get("text","") for b in data.get("content",[]) if b.get("type")=="text")
-    clean = raw_text.strip().lstrip("```json").lstrip("```").rstrip("```").strip()
-    return json.loads(clean)
-
-def add_to_database(new_row):
-    db = get_active_db().copy()
-    model_name = new_row["Modele"]
-    if model_name in db["Modele"].values:
-        db = db[db["Modele"] != model_name]
-    st.session_state["database"] = pd.concat([db, pd.DataFrame([new_row])], ignore_index=True)
-
-# ════════════════════════════════════════════════════════════════════════════
-# COST MASTER INPUT SECTION
-# ════════════════════════════════════════════════════════════════════════════
-def cost_input_section(label, key, default, use_generic, col1, col2):
-    """Render a two-column input row with generic/custom toggle."""
-    with col1:
-        st.markdown(f'<span style="font-size:0.82rem;color:#D6E4F7">{label}</span>', unsafe_allow_html=True)
-    with col2:
-        if use_generic:
-            st.markdown(f'<span style="color:#E8C46A;font-size:0.88rem;font-weight:600">€ {default:,.0f}</span>', unsafe_allow_html=True)
-            return float(default)
-        else:
-            val = st.number_input(f"###{key}", value=float(default), min_value=0.0, step=100.0,
-                                  label_visibility="collapsed", key=key)
-            return val
-
-# ════════════════════════════════════════════════════════════════════════════
-# PDF REPORT GENERATION (Menkor branded — logo + generic aircraft cover)
-# ════════════════════════════════════════════════════════════════════════════
-NAVY  = HexColor("#112244")
-GOLD  = HexColor("#C9A84C")
-SLATE = HexColor("#5A6B85")
-LIGHT = HexColor("#F4F6FA")
-BLUE  = HexColor("#60A5FA")
-AMBER = HexColor("#F59E0B")
-PURPLE= HexColor("#A78BFA")
-GREEN = HexColor("#16A34A")
-RED   = HexColor("#DC2626")
-
-# ════════════════════════════════════════════════════════════════════════════
-# AUTH & STRIPE
-# ════════════════════════════════════════════════════════════════════════════
-import hashlib
-import re as _re
-
-def _hash(pw):
-    return hashlib.sha256(pw.encode()).hexdigest()
-
-def _get_users():
-    if "_users_db" not in st.session_state:
-        try:
-            import json as _j
-            st.session_state["_users_db"] = _j.loads(st.secrets.get("USERS_DB","{}"))
-        except Exception:
-            st.session_state["_users_db"] = {}
-    return st.session_state["_users_db"]
-
-def _save_users(u):
-    st.session_state["_users_db"] = u
-
-def _register(email, pwd):
-    email = email.strip().lower()
-    if not _re.match(r"[^@]+@[^@]+\.[^@]+", email):
-        return False, "Invalid email."
-    if len(pwd) < 6:
-        return False, "Password must be at least 6 characters."
-    u = _get_users()
-    if email in u:
-        return False, "Account already exists."
-    u[email] = {"pwd_hash": _hash(pwd), "stripe_cid": None, "active": False}
-    _save_users(u)
-    return True, "Account created!"
-
-def _login(email, pwd):
-    email = email.strip().lower()
-    u = _get_users()
-    rec = u.get(email)
-    if not rec or rec["pwd_hash"] != _hash(pwd):
-        return False, "Incorrect email or password."
-    return True, rec
-
-def _check_subscription(email):
-    try:
-        import stripe
-        stripe.api_key = st.secrets["STRIPE_SECRET_KEY"]
-        u = _get_users()
-        cid = u.get(email, {}).get("stripe_cid")
-        if not cid:
-            customers = stripe.Customer.list(email=email, limit=1)
-            if not customers.data:
-                return False
-            cid = customers.data[0].id
-            u[email]["stripe_cid"] = cid
-            _save_users(u)
-        subs = stripe.Subscription.list(customer=cid, status="active", limit=1)
-        active = len(subs.data) > 0
-        u[email]["active"] = active
-        _save_users(u)
-        return active
-    except Exception:
-        return False
-
-def _checkout_url(email):
-    try:
-        import stripe
-        stripe.api_key = st.secrets["STRIPE_SECRET_KEY"]
-        s = stripe.checkout.Session.create(
-            payment_method_types=["card"],
-            mode="subscription",
-            customer_email=email,
-            line_items=[{"price": st.secrets["STRIPE_PRICE_ID"], "quantity": 1}],
-            success_url="https://aviation-cost-estimato-6uj3ptpc57onofwlavwhfn.streamlit.app/?subscribed=1",
-            cancel_url="https://aviation-cost-estimato-6uj3ptpc57onofwlavwhfn.streamlit.app/?cancelled=1",
-        )
-        return s.url
-    except Exception:
-        return None
-
-def _sub_button(email):
-    url = _checkout_url(email)
-    if url:
-        st.markdown(f"""<div style="text-align:center;margin-top:0.6rem">
-        <a href="{url}" target="_blank" style="background:#C9A84C;color:#0B1629;
-           padding:0.5rem 1.2rem;border-radius:5px;font-weight:700;
-           text-decoration:none;font-size:0.85rem">⭐ Subscribe — 10€/month</a>
-        </div>""", unsafe_allow_html=True)
-
-def render_auth_wall():
-    """Sidebar auth widget. Returns True if user is premium."""
-    for k, v in [("auth_email", None), ("auth_premium", False)]:
-        if k not in st.session_state:
-            st.session_state[k] = v
-
-    email = st.session_state["auth_email"]
-    is_admin = st.session_state.get("auth_is_admin", False)
-
-    with st.sidebar:
-        st.markdown("---")
-        if email:
-            premium = st.session_state["auth_premium"]
-
-            # ── Admin badge ──────────────────────────────────────────────
-            if is_admin:
-                st.markdown('<div style="font-size:0.78rem;color:#F59E0B;font-weight:700;margin-bottom:0.2rem">👑 ADMIN — Menkor Aviation</div>',
-                            unsafe_allow_html=True)
-                st.markdown('<div style="font-size:0.7rem;color:#4ADE80;margin-bottom:0.5rem">Full access — all features unlocked</div>',
-                            unsafe_allow_html=True)
-
-                # Admin panel — list users
-                with st.expander("👥 User Management"):
-                    users = _get_users()
-                    if users:
-                        for u_email, u_data in users.items():
-                            active = u_data.get("active", False)
-                            color  = "#4ADE80" if active else "#F87171"
-                            status = "✓ Active" if active else "✗ Inactive"
-                            st.markdown(
-                                f'<div style="font-size:0.75rem;padding:0.3rem 0;border-bottom:1px solid #1A3A6E">'
-                                f'<b>{u_email}</b><br>'
-                                f'<span style="color:{color}">{status}</span>'
-                                f'</div>', unsafe_allow_html=True)
-                        st.caption(f"{len(users)} registered user(s)")
-                    else:
-                        st.caption("No users registered yet.")
-
-                    if st.button("🔄 Refresh user list", use_container_width=True, key="admin_refresh"):
-                        # Re-check all subscriptions
-                        for u_email in list(users.keys()):
-                            users[u_email]["active"] = _check_subscription(u_email)
-                        _save_users(users)
-                        st.rerun()
-
-            else:
-                st.markdown(f'<div style="font-size:0.78rem;color:#4ADE80;margin-bottom:0.2rem">✓ {email}</div>',
-                            unsafe_allow_html=True)
-                if premium:
-                    st.markdown('<div style="font-size:0.72rem;color:#C9A84C">⭐ Premium subscriber</div>',
-                                unsafe_allow_html=True)
-                else:
-                    st.markdown('<div style="font-size:0.72rem;color:#F87171;margin-bottom:0.4rem">⚠ No active subscription</div>',
-                                unsafe_allow_html=True)
-                    _sub_button(email)
-                    if st.button("🔄 Check subscription", use_container_width=True, key="chk_sub"):
-                        active = _check_subscription(email)
-                        st.session_state["auth_premium"] = active
-                        st.rerun()
-
-            if st.button("🚪 Log out", use_container_width=True, key="btn_logout"):
-                st.session_state["auth_email"]    = None
-                st.session_state["auth_premium"]  = False
-                st.session_state["auth_is_admin"] = False
-                st.rerun()
-        else:
-            st.markdown('<div class="section-header">🔐 Account</div>', unsafe_allow_html=True)
-            view = st.radio("Account", ["Login", "Register"], horizontal=True,
-                            key="auth_view", label_visibility="collapsed")
-            if view == "Login":
-                em = st.text_input("Email", key="li_em", placeholder="your@email.com")
-                pw = st.text_input("Password", key="li_pw", type="password")
-                if st.button("Login", use_container_width=True, key="btn_login"):
-                    if em and pw:
-                        # ── Admin bypass ─────────────────────────────────
-                        admin_email = st.secrets.get("ADMIN_EMAIL", "")
-                        admin_pwd   = st.secrets.get("ADMIN_PASSWORD", "")
-                        if em.strip().lower() == admin_email.lower() and pw == admin_pwd:
-                            st.session_state["auth_email"]   = em.strip().lower()
-                            st.session_state["auth_premium"] = True
-                            st.session_state["auth_is_admin"] = True
-                            st.rerun()
-                        else:
-                            ok, result = _login(em, pw)
-                            if ok:
-                                st.session_state["auth_email"]    = em.strip().lower()
-                                st.session_state["auth_premium"]  = _check_subscription(em.strip().lower())
-                                st.session_state["auth_is_admin"] = False
-                                st.rerun()
-                            else:
-                                st.error(result)
-                    else:
-                        st.warning("Fill in all fields.")
-            else:
-                em = st.text_input("Email", key="rg_em", placeholder="your@email.com")
-                pw = st.text_input("Password (min 6 chars)", key="rg_pw", type="password")
-                pw2 = st.text_input("Confirm password", key="rg_pw2", type="password")
-                if st.button("Create account", use_container_width=True, key="btn_reg"):
-                    if pw != pw2:
-                        st.error("Passwords do not match.")
-                    elif em and pw:
-                        ok, msg = _register(em, pw)
-                        if ok:
-                            st.success(msg)
-                            _sub_button(em.strip().lower())
-                        else:
-                            st.error(msg)
-                    else:
-                        st.warning("Fill in all fields.")
-            st.markdown('<div style="font-size:0.7rem;color:#8496B0;text-align:center;margin-top:0.4rem">Dashboard is free · Full access 10€/month</div>',
-                        unsafe_allow_html=True)
-
-    # Return OUTSIDE sidebar context
-    return st.session_state.get("auth_premium", False)
-
-def premium_gate():
-    email = st.session_state.get("auth_email")
-    st.markdown("""
-    <div style="background:linear-gradient(135deg,#112244 0%,#1A3A6E 100%);
-         border:1px solid #C9A84C;border-radius:12px;padding:2.5rem;
-         text-align:center;margin:2rem 0">
-        <div style="font-size:2rem;margin-bottom:0.8rem">🔒</div>
-        <div style="font-size:1.3rem;font-weight:700;color:#E8C46A;margin-bottom:0.5rem">
-            Premium Feature
-        </div>
-        <div style="font-size:0.9rem;color:#8496B0;margin-bottom:1.5rem">
-            Full access requires a subscription.<br>
-            <b style="color:#C9A84C">€10/month</b> — cancel anytime.
-        </div>
-        <div style="font-size:0.82rem;color:#D6E4F7">
-            ✓ Profitability &nbsp;·&nbsp; ✓ Sensitivity &nbsp;·&nbsp;
-            ✓ Cost Master &nbsp;·&nbsp; ✓ PDF Reports
-        </div>
-    </div>""", unsafe_allow_html=True)
-    if not email:
-        st.info("👈 Create a free account in the sidebar to get started.")
-    else:
-        _sub_button(email)
-
+# ─── LOGO ───────────────────────────────────────────────────────────────────
+LOGO_B64 = "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"
 
 def _b64_to_imgbuf(b64_str):
     return BytesIO(base64.b64decode(b64_str))
@@ -1263,6 +552,210 @@ def generate_quotation_pdf(qr: dict, aircraft_row) -> bytes:
 # ════════════════════════════════════════════════════════════════════════════
 # MAIN
 # ════════════════════════════════════════════════════════════════════════════
+# ════════════════════════════════════════════════════════════════════════════
+# AUTH & STRIPE
+# ════════════════════════════════════════════════════════════════════════════
+import hashlib
+import re as _re
+
+def _hash(pw):
+    return hashlib.sha256(pw.encode()).hexdigest()
+
+def _get_users():
+    if "_users_db" not in st.session_state:
+        try:
+            import json as _j
+            st.session_state["_users_db"] = _j.loads(st.secrets.get("USERS_DB","{}"))
+        except Exception:
+            st.session_state["_users_db"] = {}
+    return st.session_state["_users_db"]
+
+def _save_users(u):
+    st.session_state["_users_db"] = u
+
+def _register(email, pwd):
+    email = email.strip().lower()
+    if not _re.match(r"[^@]+@[^@]+\.[^@]+", email):
+        return False, "Invalid email."
+    if len(pwd) < 6:
+        return False, "Password must be at least 6 characters."
+    u = _get_users()
+    if email in u:
+        return False, "Account already exists."
+    u[email] = {"pwd_hash": _hash(pwd), "stripe_cid": None, "active": False}
+    _save_users(u)
+    return True, "Account created!"
+
+def _login(email, pwd):
+    email = email.strip().lower()
+    u = _get_users()
+    rec = u.get(email)
+    if not rec or rec["pwd_hash"] != _hash(pwd):
+        return False, "Incorrect email or password."
+    return True, rec
+
+def _check_subscription(email):
+    try:
+        import stripe
+        stripe.api_key = st.secrets["STRIPE_SECRET_KEY"]
+        u = _get_users()
+        cid = u.get(email, {}).get("stripe_cid")
+        if not cid:
+            customers = stripe.Customer.list(email=email, limit=1)
+            if not customers.data:
+                return False
+            cid = customers.data[0].id
+            u[email]["stripe_cid"] = cid
+            _save_users(u)
+        subs = stripe.Subscription.list(customer=cid, status="active", limit=1)
+        active = len(subs.data) > 0
+        u[email]["active"] = active
+        _save_users(u)
+        return active
+    except Exception:
+        return False
+
+def _checkout_url(email):
+    try:
+        import stripe
+        stripe.api_key = st.secrets["STRIPE_SECRET_KEY"]
+        s = stripe.checkout.Session.create(
+            payment_method_types=["card"],
+            mode="subscription",
+            customer_email=email,
+            line_items=[{"price": st.secrets["STRIPE_PRICE_ID"], "quantity": 1}],
+            success_url="https://aviation-cost-estimato-6uj3ptpc57onofwlavwhfn.streamlit.app/?subscribed=1",
+            cancel_url="https://aviation-cost-estimato-6uj3ptpc57onofwlavwhfn.streamlit.app/?cancelled=1",
+        )
+        return s.url
+    except Exception:
+        return None
+
+def _sub_button(email):
+    url = _checkout_url(email)
+    if url:
+        st.markdown(f'''<div style="text-align:center;margin-top:0.6rem">
+        <a href="{url}" target="_blank" style="background:#C9A84C;color:#0B1629;
+           padding:0.5rem 1.2rem;border-radius:5px;font-weight:700;
+           text-decoration:none;font-size:0.85rem">⭐ Subscribe — 10€/month</a>
+        </div>''', unsafe_allow_html=True)
+
+def render_auth_wall():
+    """Sidebar auth. Returns True if premium."""
+    for k, v in [("auth_email",None),("auth_premium",False),("auth_is_admin",False)]:
+        if k not in st.session_state:
+            st.session_state[k] = v
+
+    email    = st.session_state["auth_email"]
+    is_admin = st.session_state["auth_is_admin"]
+
+    with st.sidebar:
+        st.markdown("---")
+        if email:
+            if is_admin:
+                st.markdown('<div style="font-size:0.78rem;color:#F59E0B;font-weight:700">👑 ADMIN — Menkor Aviation</div>', unsafe_allow_html=True)
+                st.markdown('<div style="font-size:0.7rem;color:#4ADE80;margin-bottom:0.5rem">Full access unlocked</div>', unsafe_allow_html=True)
+                with st.expander("👥 User Management"):
+                    users = _get_users()
+                    if users:
+                        for ue, ud in users.items():
+                            active = ud.get("active", False)
+                            col = "#4ADE80" if active else "#F87171"
+                            st.markdown(f'<div style="font-size:0.75rem;padding:0.2rem 0;border-bottom:1px solid #1A3A6E"><b>{ue}</b> <span style="color:{col}">{"✓ Active" if active else "✗ Inactive"}</span></div>', unsafe_allow_html=True)
+                        st.caption(f"{len(users)} user(s)")
+                    else:
+                        st.caption("No users yet.")
+                    if st.button("🔄 Refresh", use_container_width=True, key="admin_refresh"):
+                        for ue in list(users.keys()):
+                            users[ue]["active"] = _check_subscription(ue)
+                        _save_users(users)
+                        st.rerun()
+            else:
+                premium = st.session_state["auth_premium"]
+                st.markdown(f'<div style="font-size:0.78rem;color:#4ADE80">✓ {email}</div>', unsafe_allow_html=True)
+                if premium:
+                    st.markdown('<div style="font-size:0.72rem;color:#C9A84C">⭐ Premium</div>', unsafe_allow_html=True)
+                else:
+                    st.markdown('<div style="font-size:0.72rem;color:#F87171;margin-bottom:0.4rem">⚠ No subscription</div>', unsafe_allow_html=True)
+                    _sub_button(email)
+                    if st.button("🔄 Check subscription", use_container_width=True, key="chk_sub"):
+                        st.session_state["auth_premium"] = _check_subscription(email)
+                        st.rerun()
+            if st.button("🚪 Log out", use_container_width=True, key="btn_logout"):
+                st.session_state["auth_email"] = None
+                st.session_state["auth_premium"] = False
+                st.session_state["auth_is_admin"] = False
+                st.rerun()
+        else:
+            st.markdown('<div class="section-header">🔐 Account</div>', unsafe_allow_html=True)
+            view = st.radio("Account", ["Login", "Register"], horizontal=True,
+                            key="auth_view", label_visibility="collapsed")
+            if view == "Login":
+                em = st.text_input("Email", key="li_em", placeholder="your@email.com")
+                pw = st.text_input("Password", key="li_pw", type="password")
+                if st.button("Login", use_container_width=True, key="btn_login"):
+                    if em and pw:
+                        try:
+                            admin_email = st.secrets.get("ADMIN_EMAIL","")
+                            admin_pwd   = st.secrets.get("ADMIN_PASSWORD","")
+                        except Exception:
+                            admin_email = admin_pwd = ""
+                        if em.strip().lower() == admin_email.lower() and pw == admin_pwd:
+                            st.session_state["auth_email"]    = em.strip().lower()
+                            st.session_state["auth_premium"]  = True
+                            st.session_state["auth_is_admin"] = True
+                            st.rerun()
+                        else:
+                            ok, result = _login(em, pw)
+                            if ok:
+                                st.session_state["auth_email"]    = em.strip().lower()
+                                st.session_state["auth_premium"]  = _check_subscription(em.strip().lower())
+                                st.session_state["auth_is_admin"] = False
+                                st.rerun()
+                            else:
+                                st.error(result)
+                    else:
+                        st.warning("Fill in all fields.")
+            else:
+                em  = st.text_input("Email", key="rg_em", placeholder="your@email.com")
+                pw  = st.text_input("Password (min 6)", key="rg_pw", type="password")
+                pw2 = st.text_input("Confirm password", key="rg_pw2", type="password")
+                if st.button("Create account", use_container_width=True, key="btn_reg"):
+                    if pw != pw2:
+                        st.error("Passwords do not match.")
+                    elif em and pw:
+                        ok, msg = _register(em, pw)
+                        if ok:
+                            st.success(msg)
+                            _sub_button(em.strip().lower())
+                        else:
+                            st.error(msg)
+                    else:
+                        st.warning("Fill in all fields.")
+            st.markdown('<div style="font-size:0.7rem;color:#8496B0;text-align:center;margin-top:0.4rem">Dashboard free · Full access 10€/month</div>', unsafe_allow_html=True)
+
+    return st.session_state.get("auth_premium", False)
+
+def premium_gate():
+    email = st.session_state.get("auth_email")
+    st.markdown("""
+    <div style="background:linear-gradient(135deg,#112244 0%,#1A3A6E 100%);
+         border:1px solid #C9A84C;border-radius:12px;padding:2.5rem;text-align:center;margin:2rem 0">
+        <div style="font-size:2rem;margin-bottom:0.8rem">🔒</div>
+        <div style="font-size:1.3rem;font-weight:700;color:#E8C46A;margin-bottom:0.5rem">Premium Feature</div>
+        <div style="font-size:0.9rem;color:#8496B0;margin-bottom:1.5rem">
+            Full access requires a subscription.<br><b style="color:#C9A84C">€10/month</b> — cancel anytime.
+        </div>
+        <div style="font-size:0.82rem;color:#D6E4F7">
+            ✓ Profitability &nbsp;·&nbsp; ✓ Sensitivity &nbsp;·&nbsp; ✓ Cost Master &nbsp;·&nbsp; ✓ PDF Reports
+        </div>
+    </div>""", unsafe_allow_html=True)
+    if not email:
+        st.info("👈 Create a free account in the sidebar to get started.")
+    else:
+        _sub_button(email)
+
+
 def main():
     # ── Session state init ───────────────────────────────────────────────
     for _key, _val in [("database", None), ("cost_master", None), ("pdf_report", None),
