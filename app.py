@@ -919,13 +919,177 @@ def generate_pdf_report(cm, aircraft_row, annual_flights):
     return buf.getvalue()
 
 # ════════════════════════════════════════════════════════════════════════════
+# QUOTATION PDF
+# ════════════════════════════════════════════════════════════════════════════
+def generate_quotation_pdf(qr: dict, aircraft_row) -> bytes:
+    """Generate a branded Menkor Aviation charter quotation PDF."""
+    import math
+    buf = BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4,
+                             topMargin=28*mm, bottomMargin=22*mm,
+                             leftMargin=18*mm, rightMargin=18*mm)
+    styles = getSampleStyleSheet()
+
+    NAVY_C = HexColor("#112244"); GOLD_C = HexColor("#C9A84C")
+    SLATE_C = HexColor("#5A6B85"); LIGHT_C = HexColor("#F4F6FA")
+    BLUE_C  = HexColor("#1A3A6E")
+
+    style_title = ParagraphStyle("QT", parent=styles["Title"],
+        fontName="Helvetica-Bold", fontSize=24, textColor=NAVY_C,
+        alignment=TA_CENTER, spaceAfter=4)
+    style_sub = ParagraphStyle("QS", parent=styles["Normal"],
+        fontName="Helvetica", fontSize=11, textColor=SLATE_C,
+        alignment=TA_CENTER, spaceAfter=2)
+    style_h2 = ParagraphStyle("QH2", parent=styles["Heading2"],
+        fontName="Helvetica-Bold", fontSize=12, textColor=NAVY_C,
+        spaceBefore=10, spaceAfter=6)
+    style_small = ParagraphStyle("QSm", parent=styles["Normal"],
+        fontName="Helvetica", fontSize=7.5, textColor=SLATE_C)
+
+    # Canvas callbacks for header/footer
+    page_w, page_h = A4
+    logo_data = base64.b64decode(LOGO_B64)
+    from reportlab.lib.utils import ImageReader
+
+    def _hf(canvas_obj, doc_obj):
+        canvas_obj.saveState()
+        canvas_obj.drawImage(ImageReader(BytesIO(logo_data)),
+                              18*mm, page_h-22*mm, width=38*mm, height=14*mm,
+                              preserveAspectRatio=True, mask="auto")
+        canvas_obj.setStrokeColor(GOLD_C); canvas_obj.setLineWidth(0.8)
+        canvas_obj.line(18*mm, page_h-23*mm, page_w-18*mm, page_h-23*mm)
+        canvas_obj.line(18*mm, 14*mm, page_w-18*mm, 14*mm)
+        canvas_obj.setFont("Helvetica", 7); canvas_obj.setFillColor(SLATE_C)
+        canvas_obj.drawCentredString(page_w/2, 9*mm,
+            "Menkor Aviation GBL — Confidential Charter Quotation")
+        canvas_obj.drawRightString(page_w-18*mm, 9*mm,
+            f"Page {canvas_obj.getPageNumber()}")
+        canvas_obj.restoreState()
+
+    from datetime import date
+    story = []
+
+    # ── Cover ────────────────────────────────────────────────────────────
+    story.append(Spacer(1, 25*mm))
+    story.append(Paragraph("CHARTER FLIGHT QUOTATION", style_title))
+    story.append(Spacer(1, 3*mm))
+    story.append(Paragraph(qr["aircraft"], ParagraphStyle("QAC",
+        parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=16,
+        textColor=GOLD_C, alignment=TA_CENTER, spaceBefore=4, spaceAfter=2)))
+    story.append(Paragraph(str(aircraft_row.get("Categorie","")), style_sub))
+    story.append(Spacer(1, 8*mm))
+    story.append(HRFlowable(width="100%", thickness=1, color=GOLD_C, spaceAfter=6))
+    story.append(Paragraph(f"Date: {date.today().strftime('%d %B %Y')}", style_sub))
+    story.append(Paragraph("Menkor Aviation GBL — Charter Quotation", style_sub))
+    story.append(PageBreak())
+
+    # ── Route summary ────────────────────────────────────────────────────
+    story.append(Paragraph("Flight Itinerary", style_h2))
+
+    # Route string
+    route_parts = []
+    for i, leg in enumerate(qr["legs"]):
+        if i == 0: route_parts.append(leg["from_name"])
+        route_parts.append(leg["to_name"])
+    route_str = "  →  ".join(route_parts)
+    story.append(Paragraph(f'<b style="color:#C9A84C">{route_str}</b>',
+        ParagraphStyle("QRoute", parent=styles["Normal"],
+        fontName="Helvetica-Bold", fontSize=11, textColor=GOLD_C,
+        spaceAfter=8)))
+
+    # Leg table
+    leg_header = ["Leg", "From", "To", "Dep.", "Distance", "Flight Time",
+                  f"Cost ({qr['currency']})"]
+    leg_table_data = [leg_header]
+    for i, leg in enumerate(qr["legs"]):
+        leg_table_data.append([
+            str(i+1),
+            leg["from_name"], leg["to_name"],
+            leg["dep_time"],
+            f"{leg['dist_km']:,.0f} km",
+            leg["flight_time_str"],
+            f"{qr['currency']} {leg['cost']:,.0f}",
+        ])
+    # Totals row
+    leg_table_data.append([
+        "TOTAL", "", "",  "",
+        f"{qr['total_dist']:,.0f} km",
+        f"{int(qr['total_min']//60)}h {int(qr['total_min']%60):02d}m",
+        f"{qr['currency']} {qr['total_cost']:,.0f}",
+    ])
+
+    col_w = [10*mm, 32*mm, 32*mm, 16*mm, 24*mm, 22*mm, 28*mm]
+    leg_tbl = Table(leg_table_data, colWidths=col_w, repeatRows=1)
+    leg_tbl.setStyle(TableStyle([
+        ("FONTNAME",    (0,0),  (-1,0),  "Helvetica-Bold"),
+        ("FONTNAME",    (0,1),  (-1,-2), "Helvetica"),
+        ("FONTNAME",    (0,-1), (-1,-1), "Helvetica-Bold"),
+        ("FONTSIZE",    (0,0),  (-1,-1), 8.5),
+        ("TEXTCOLOR",   (0,0),  (-1,0),  HexColor("#FFFFFF")),
+        ("BACKGROUND",  (0,0),  (-1,0),  NAVY_C),
+        ("BACKGROUND",  (0,-1), (-1,-1), LIGHT_C),
+        ("TEXTCOLOR",   (6,-1), (6,-1),  GOLD_C),
+        ("FONTNAME",    (6,-1), (6,-1),  "Helvetica-Bold"),
+        ("ALIGN",       (0,0),  (0,-1),  "CENTER"),
+        ("ALIGN",       (4,0),  (-1,-1), "RIGHT"),
+        ("ROWBACKGROUNDS", (0,1), (-1,-2), [HexColor("#FFFFFF"), LIGHT_C]),
+        ("GRID",        (0,0),  (-1,-1), 0.3, HexColor("#DDDDDD")),
+        ("TOPPADDING",  (0,0),  (-1,-1), 4),
+        ("BOTTOMPADDING",(0,0), (-1,-1), 4),
+        ("LINEABOVE",   (0,-1), (-1,-1), 1, GOLD_C),
+    ]))
+    story.append(leg_tbl)
+    story.append(Spacer(1, 8*mm))
+
+    # ── Aircraft specs ───────────────────────────────────────────────────
+    story.append(Paragraph("Aircraft Specifications", style_h2))
+    spec_data = [
+        ["Aircraft", qr["aircraft"], "Category", str(aircraft_row.get("Categorie","—"))],
+        ["Cruise Speed", f"{aircraft_row.get('Vitesse_Croisiere_km_h','—')} km/h",
+         "Max Range", f"{aircraft_row.get('Autonomie_km',0):,.0f} km"],
+        ["Max Passengers", str(aircraft_row.get("Passagers_Max","—")),
+         "Operator Rate", f"{qr['currency']} {qr['rate']:,.0f}/h"],
+    ]
+    spec_tbl = Table(spec_data, colWidths=[38*mm, 47*mm, 38*mm, 47*mm])
+    spec_tbl.setStyle(TableStyle([
+        ("FONTNAME",  (0,0),  (-1,-1), "Helvetica"),
+        ("FONTNAME",  (0,0),  (0,-1),  "Helvetica-Bold"),
+        ("FONTNAME",  (2,0),  (2,-1),  "Helvetica-Bold"),
+        ("FONTSIZE",  (0,0),  (-1,-1), 9),
+        ("TEXTCOLOR", (0,0),  (0,-1),  NAVY_C),
+        ("TEXTCOLOR", (2,0),  (2,-1),  NAVY_C),
+        ("ROWBACKGROUNDS", (0,0), (-1,-1), [LIGHT_C, HexColor("#FFFFFF")]),
+        ("GRID",      (0,0),  (-1,-1), 0.3, HexColor("#DDDDDD")),
+        ("TOPPADDING",(0,0),  (-1,-1), 5),
+        ("BOTTOMPADDING",(0,0),(-1,-1),5),
+    ]))
+    story.append(spec_tbl)
+    story.append(Spacer(1, 8*mm))
+
+    # ── Disclaimer ───────────────────────────────────────────────────────
+    story.append(HRFlowable(width="100%", thickness=0.5,
+                             color=HexColor("#CCCCCC"), spaceAfter=4))
+    story.append(Paragraph(
+        "This quotation is indicative and subject to aircraft availability, fuel surcharges, "
+        "overflight permits, and applicable taxes. Valid for 48 hours from date of issue. "
+        "All times are estimated. Menkor Aviation GBL reserves the right to adjust pricing.",
+        style_small))
+
+    doc.build(story, onFirstPage=_hf, onLaterPages=_hf)
+    buf.seek(0)
+    return buf.getvalue()
+
+
+# ════════════════════════════════════════════════════════════════════════════
 # MAIN
 # ════════════════════════════════════════════════════════════════════════════
 def main():
     # ── Session state init ───────────────────────────────────────────────
     for _key, _val in [("database", None), ("cost_master", None), ("pdf_report", None),
                        ("auth_email", None), ("auth_premium", False),
-                       ("auth_is_admin", False), ("_users_db", {}), ("auth_view", "Login")]:
+                       ("auth_is_admin", False), ("_users_db", {}), ("auth_view", "Login"),
+                       ("q_legs", [{"from": "", "to": "", "dep_time": "08:00"}]),
+                       ("q_result", None), ("q_pdf", None)]:
         if _key not in st.session_state:
             st.session_state[_key] = _val
 
@@ -987,11 +1151,12 @@ def main():
     # ════════════════════════════════════════════════════════════════════
     # TABS
     # ════════════════════════════════════════════════════════════════════
-    tab1, tab2, tab3, tab4 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
         "📊  Dashboard",
         "📈  Profitability",
         "🔍  Sensitivity",
         "💼  Cost Master",
+        "✈️  Quotation",
     ])
 
     # ── TAB 1 : DASHBOARD ────────────────────────────────────────────────
@@ -1341,6 +1506,328 @@ def main():
                 st.download_button("⬇ Download PDF Report", data=st.session_state["pdf_report"],
                                    file_name=f"Menkor_Cost_Report_{cm['aircraft_name'].replace(' ', '_')}.pdf",
                                    mime="application/pdf", use_container_width=True)
+
+    # ── TAB 5 : QUOTATION ───────────────────────────────────────────────
+    with tab5:
+        if not is_premium:
+            premium_gate()
+            st.stop()
+
+        st.markdown('<div class="main-title" style="font-size:1.4rem">✈️ Flight Quotation</div>', unsafe_allow_html=True)
+        st.markdown('<div class="sub-title">Generate a professional charter quotation with route map & PDF</div>', unsafe_allow_html=True)
+
+        # ── Aircraft & rate selection ────────────────────────────────────
+        q1, q2, q3 = st.columns([2, 1, 1])
+        with q1:
+            df_q = get_active_db()
+            aircraft_options = df_q["Modele"].tolist()
+            q_aircraft_name = st.selectbox("Aircraft", aircraft_options, key="q_aircraft")
+            q_aircraft = df_q[df_q["Modele"] == q_aircraft_name].iloc[0]
+            speed_kmh = float(q_aircraft["Vitesse_Croisiere_km_h"]) * 0.9  # -10%
+        with q2:
+            q_rate = st.number_input("Operator rate (€/h)", min_value=0, max_value=200000,
+                                      value=int(q_aircraft.get("Taux_Charter_EUR_h", 5000)), step=100,
+                                      key="q_rate")
+        with q3:
+            q_currency = st.selectbox("Currency", ["EUR", "USD", "GBP", "AED"], key="q_currency")
+
+        # ── Show aircraft specs ─────────────────────────────────────────
+        sp1, sp2, sp3, sp4 = st.columns(4)
+        sp1.metric("Category",  q_aircraft.get("Categorie", "—"))
+        sp2.metric("Cruise Speed", f"{q_aircraft['Vitesse_Croisiere_km_h']} km/h")
+        sp3.metric("Max Range",  f"{q_aircraft.get('Autonomie_km', '—'):,.0f} km")
+        sp4.metric("Pax Max",   str(q_aircraft.get("Passagers_Max", "—")))
+
+        st.markdown("<hr>", unsafe_allow_html=True)
+
+        # ── Route builder ───────────────────────────────────────────────
+        st.markdown('<div class="section-header">✈ Route</div>', unsafe_allow_html=True)
+
+        if "q_legs" not in st.session_state:
+            st.session_state["q_legs"] = [
+                {"from": "", "to": "", "dep_time": "08:00"},
+            ]
+
+        legs = st.session_state["q_legs"]
+
+        for i, leg in enumerate(legs):
+            lc1, lc2, lc3, lc4 = st.columns([2.5, 2.5, 1.5, 0.5])
+            with lc1:
+                legs[i]["from"] = st.text_input(f"From", value=leg["from"],
+                                                 placeholder="e.g. Dubai, OMDB",
+                                                 key=f"leg_from_{i}")
+            with lc2:
+                legs[i]["to"] = st.text_input(f"To", value=leg["to"],
+                                               placeholder="e.g. London Luton, EGGW",
+                                               key=f"leg_to_{i}")
+            with lc3:
+                legs[i]["dep_time"] = st.text_input("Departure (local)", value=leg["dep_time"],
+                                                     placeholder="HH:MM",
+                                                     key=f"leg_time_{i}")
+            with lc4:
+                st.markdown("<br>", unsafe_allow_html=True)
+                if i > 0 and st.button("✕", key=f"del_leg_{i}"):
+                    legs.pop(i)
+                    st.rerun()
+
+        col_add, col_calc = st.columns([1, 2])
+        with col_add:
+            if st.button("➕ Add a stop", use_container_width=True):
+                last_to = legs[-1]["to"] if legs else ""
+                legs.append({"from": last_to, "to": "", "dep_time": "12:00"})
+                st.rerun()
+        with col_calc:
+            calc_btn = st.button("🧮 Calculate & Generate Quotation",
+                                  use_container_width=True, type="primary")
+
+        # ── Geocoding & calculation ─────────────────────────────────────
+        def geocode(place: str):
+            """Geocode via Nominatim (free, no key needed)."""
+            try:
+                r = requests.get(
+                    "https://nominatim.openstreetmap.org/search",
+                    params={"q": place, "format": "json", "limit": 1},
+                    headers={"User-Agent": "MenkorAviationQuotation/1.0"},
+                    timeout=8
+                )
+                data = r.json()
+                if data:
+                    return float(data[0]["lat"]), float(data[0]["lon"]), data[0]["display_name"]
+                return None, None, None
+            except Exception:
+                return None, None, None
+
+        def haversine(lat1, lon1, lat2, lon2):
+            """Great-circle distance in km."""
+            import math
+            R = 6371
+            dl = math.radians(lat2 - lat1)
+            dg = math.radians(lon2 - lon1)
+            a = math.sin(dl/2)**2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dg/2)**2
+            return R * 2 * math.asin(math.sqrt(a))
+
+        def flight_time_str(dist_km, speed_kmh):
+            """Returns (total_minutes, formatted string)."""
+            cruise_min = (dist_km / speed_kmh) * 60
+            total_min  = cruise_min + 10  # +10 min approach
+            h = int(total_min // 60)
+            m = int(total_min % 60)
+            return total_min, f"{h}h {m:02d}m"
+
+        if calc_btn:
+            # Geocode all points
+            all_legs_data = []
+            errors = []
+
+            progress = st.progress(0, text="Geocoding airports...")
+            total_steps = sum(2 for l in legs if l["from"] and l["to"])
+            step = 0
+
+            for i, leg in enumerate(legs):
+                if not leg["from"] or not leg["to"]:
+                    errors.append(f"Leg {i+1}: please fill From and To fields.")
+                    continue
+                lat1, lon1, name1 = geocode(leg["from"])
+                step += 1; progress.progress(step / max(total_steps, 1), text=f"Locating {leg['from']}...")
+                lat2, lon2, name2 = geocode(leg["to"])
+                step += 1; progress.progress(step / max(total_steps, 1), text=f"Locating {leg['to']}...")
+
+                if None in (lat1, lon1, lat2, lon2):
+                    errors.append(f"Leg {i+1}: could not locate '{leg['from']}' or '{leg['to']}'.")
+                    continue
+
+                dist = haversine(lat1, lon1, lat2, lon2)
+                tot_min, ft_str = flight_time_str(dist, speed_kmh)
+                cost = (tot_min / 60) * q_rate
+
+                all_legs_data.append({
+                    "from_name": leg["from"], "to_name": leg["to"],
+                    "dep_time": leg["dep_time"],
+                    "lat1": lat1, "lon1": lon1, "full_name1": name1,
+                    "lat2": lat2, "lon2": lon2, "full_name2": name2,
+                    "dist_km": dist,
+                    "flight_time_min": tot_min,
+                    "flight_time_str": ft_str,
+                    "cost": cost,
+                })
+
+            progress.empty()
+
+            if errors:
+                for e in errors: st.error(e)
+            else:
+                st.session_state["q_result"] = {
+                    "legs": all_legs_data,
+                    "aircraft": q_aircraft_name,
+                    "rate": q_rate,
+                    "currency": q_currency,
+                    "speed": speed_kmh,
+                    "total_dist": sum(l["dist_km"] for l in all_legs_data),
+                    "total_min": sum(l["flight_time_min"] for l in all_legs_data),
+                    "total_cost": sum(l["cost"] for l in all_legs_data),
+                }
+
+        # ── Display results ─────────────────────────────────────────────
+        if st.session_state.get("q_result"):
+            qr = st.session_state["q_result"]
+            legs_data = qr["legs"]
+
+            st.markdown("<hr>", unsafe_allow_html=True)
+
+            # KPIs
+            rk1, rk2, rk3, rk4 = st.columns(4)
+            rk1.metric("Total Distance",  f"{qr['total_dist']:,.0f} km")
+            rk2.metric("Total Flight Time", f"{int(qr['total_min']//60)}h {int(qr['total_min']%60):02d}m")
+            rk3.metric("Operator Rate",   f"€ {qr['rate']:,.0f}/h")
+            rk4.metric("💰 Total Quote",  f"{qr['currency']} {qr['total_cost']:,.0f}")
+
+            st.markdown("<hr>", unsafe_allow_html=True)
+
+            # ── ROUTE MAP ───────────────────────────────────────────────
+            st.markdown('<div class="section-header">🗺 Route Map</div>', unsafe_allow_html=True)
+
+            # Build Plotly map with great-circle arcs
+            import math
+
+            def arc_points(lat1, lon1, lat2, lon2, n=50):
+                """Generate n intermediate points along great circle."""
+                lats, lons = [lat1], [lon1]
+                for i in range(1, n):
+                    f = i / n
+                    # Linear interpolation (sufficient for display)
+                    lats.append(lat1 + (lat2 - lat1) * f)
+                    lons.append(lon1 + (lon2 - lon1) * f)
+                lats.append(lat2); lons.append(lon2)
+                return lats, lons
+
+            fig_map = go.Figure()
+
+            # Draw arcs for each leg
+            colors_legs = ["#C9A84C", "#60A5FA", "#4ADE80", "#F87171", "#A78BFA"]
+            all_lats = []
+            all_lons = []
+
+            for i, leg in enumerate(legs_data):
+                arc_lats, arc_lons = arc_points(leg["lat1"], leg["lon1"], leg["lat2"], leg["lon2"])
+                color = colors_legs[i % len(colors_legs)]
+
+                # Arc line
+                fig_map.add_trace(go.Scattergeo(
+                    lat=arc_lats, lon=arc_lons, mode="lines",
+                    line=dict(width=2.5, color=color),
+                    name=f"Leg {i+1}: {leg['from_name']} → {leg['to_name']}",
+                    hoverinfo="skip",
+                ))
+
+                # Direction arrow mid-point
+                mid = len(arc_lats) // 2
+                fig_map.add_trace(go.Scattergeo(
+                    lat=[arc_lats[mid]], lon=[arc_lons[mid]],
+                    mode="markers",
+                    marker=dict(size=8, color=color, symbol="triangle-right"),
+                    showlegend=False, hoverinfo="skip",
+                ))
+
+                all_lats += [leg["lat1"], leg["lat2"]]
+                all_lons += [leg["lon1"], leg["lon2"]]
+
+            # Airport markers
+            seen_airports = {}
+            for i, leg in enumerate(legs_data):
+                for key in [("lat1","lon1","from_name","full_name1"),
+                            ("lat2","lon2","to_name","full_name2")]:
+                    lat_k, lon_k, name_k, full_k = key
+                    akey = (round(leg[lat_k],2), round(leg[lon_k],2))
+                    if akey not in seen_airports:
+                        seen_airports[akey] = True
+                        fig_map.add_trace(go.Scattergeo(
+                            lat=[leg[lat_k]], lon=[leg[lon_k]],
+                            mode="markers+text",
+                            marker=dict(size=12, color="#FFFFFF",
+                                        line=dict(width=2, color="#C9A84C")),
+                            text=[leg[name_k]],
+                            textposition="top center",
+                            textfont=dict(size=11, color="#E8C46A", family="Helvetica"),
+                            showlegend=False,
+                            hovertemplate=f"<b>{leg[name_k]}</b><br>{leg[full_k]}<extra></extra>",
+                        ))
+
+            # Map styling
+            center_lat = sum(all_lats) / len(all_lats)
+            center_lon = sum(all_lons) / len(all_lons)
+
+            fig_map.update_layout(
+                paper_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="rgba(0,0,0,0)",
+                height=480,
+                margin=dict(t=0, b=0, l=0, r=0),
+                showlegend=True,
+                legend=dict(
+                    bgcolor="rgba(17,34,68,0.9)", font=dict(color="#D6E4F7", size=10),
+                    bordercolor="#C9A84C", borderwidth=1,
+                    x=0.01, y=0.99,
+                ),
+                geo=dict(
+                    projection_type="natural earth",
+                    showland=True, landcolor="#1A2744",
+                    showocean=True, oceancolor="#0B1629",
+                    showcoastlines=True, coastlinecolor="#2A4070",
+                    showcountries=True, countrycolor="#1E3560",
+                    showlakes=False,
+                    bgcolor="rgba(0,0,0,0)",
+                    center=dict(lat=center_lat, lon=center_lon),
+                ),
+            )
+
+            st.plotly_chart(fig_map, use_container_width=True, config={"displayModeBar": False})
+
+            # ── Leg detail table ────────────────────────────────────────
+            st.markdown('<div class="section-header">📋 Leg Details</div>', unsafe_allow_html=True)
+
+            leg_rows = []
+            for i, leg in enumerate(legs_data):
+                leg_rows.append({
+                    "Leg": f"{i+1}",
+                    "From": leg["from_name"],
+                    "To":   leg["to_name"],
+                    "Departure": leg["dep_time"],
+                    "Distance": f"{leg['dist_km']:,.0f} km",
+                    "Flight Time": leg["flight_time_str"],
+                    f"Cost ({qr['currency']})": f"{leg['cost']:,.0f}",
+                })
+            df_legs = pd.DataFrame(leg_rows)
+            st.dataframe(df_legs, use_container_width=True, hide_index=True)
+
+            # Totals
+            st.markdown(f"""
+            <div class="total-banner" style="margin-top:0.5rem">
+                <div style="font-size:0.72rem;letter-spacing:0.15em;text-transform:uppercase;
+                     color:#8496B0;margin-bottom:0.3rem">{qr['aircraft']} · {qr['currency']} {qr['rate']:,.0f}/h operator rate</div>
+                <div style="font-size:2rem;font-weight:800;color:#E8C46A">
+                    {qr['currency']} {qr['total_cost']:,.0f}
+                </div>
+                <div style="font-size:0.85rem;color:#8496B0;margin-top:0.2rem">
+                    {qr['total_dist']:,.0f} km · {int(qr['total_min']//60)}h {int(qr['total_min']%60):02d}m total flight time
+                </div>
+            </div>""", unsafe_allow_html=True)
+
+            # ── PDF Generation ──────────────────────────────────────────
+            st.markdown("<br>", unsafe_allow_html=True)
+            if st.button("📄 Generate PDF Quotation", use_container_width=True, type="primary"):
+                with st.spinner("Building your Menkor Aviation quotation..."):
+                    try:
+                        pdf_bytes = generate_quotation_pdf(qr, q_aircraft)
+                        st.session_state["q_pdf"] = pdf_bytes
+                        st.success("✓ Quotation ready!")
+                    except Exception as e:
+                        st.error(f"⚠ PDF error: {e}")
+                        st.session_state["q_pdf"] = None
+
+            if st.session_state.get("q_pdf"):
+                fname = f"Menkor_Quotation_{qr['aircraft'].replace(' ','_')}.pdf"
+                st.download_button("⬇ Download Quotation PDF", data=st.session_state["q_pdf"],
+                                   file_name=fname, mime="application/pdf",
+                                   use_container_width=True)
 
     st.markdown("<hr>", unsafe_allow_html=True)
     st.markdown('<div style="text-align:center;font-size:0.72rem;color:#4A5568;letter-spacing:0.1em">AVIATION COST ESTIMATOR — Figures are indicative and for simulation purposes only · Values based on market averages (NBAA / JETNET)</div>', unsafe_allow_html=True)
