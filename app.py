@@ -945,24 +945,6 @@ def main():
 
     # Sidebar
     with st.sidebar:
-        st.markdown('<div class="section-header">⬆ Database</div>', unsafe_allow_html=True)
-        uploaded_file = st.file_uploader("Import an Excel / CSV file", type=["xlsx","xls","csv"],
-            help="Required columns: Modele, Couts_Fixes_Annuels, Couts_Equipe_Annuels, Cout_Horaire_Charter, Cout_Horaire_Prive, Taux_Charter_EUR_h")
-        if uploaded_file:
-            loaded_df, errors = load_data(uploaded_file)
-            if errors:
-                for e in errors: st.error(f"⚠ {e}")
-                st.info("Using default dataset instead.")
-            else:
-                st.session_state["database"] = loaded_df
-                df = loaded_df
-                st.success(f"✓ {len(df)} aircraft loaded")
-        else:
-            db_count = len(df)
-            is_default = st.session_state["database"] is None
-            label = f"📋 Sample data ({db_count} aircraft)" if is_default else f"✓ Live database ({db_count} aircraft)"
-            st.info(label)
-
         st.markdown('<div class="section-header">✈ Aircraft Selection</div>', unsafe_allow_html=True)
         df = get_active_db()
         if "Categorie" in df.columns:
