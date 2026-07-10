@@ -1081,7 +1081,6 @@ def generate_quotation_pdf(qr: dict, aircraft_row) -> bytes:
         story.append(Spacer(1, 2*mm))
 
         # Golden frame around map
-        from reportlab.platypus import KeepTogether
         map_io = BytesIO(map_img_bytes)
         map_img = RLImage(map_io, width=173*mm, height=97*mm)
         map_img.hAlign = "CENTER"
