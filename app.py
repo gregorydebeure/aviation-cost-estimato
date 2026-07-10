@@ -14,13 +14,18 @@ import base64
 import json
 import requests
 import warnings
-from reportlab.lib.pagesizes import A4
-from reportlab.lib.units import mm
-from reportlab.lib.colors import HexColor
-from reportlab.platypus import (SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle,
-                                 Image as RLImage, PageBreak, HRFlowable)
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.enums import TA_CENTER, TA_LEFT
+# reportlab imported lazily inside PDF functions to avoid startup crash
+try:
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.units import mm
+    from reportlab.lib.colors import HexColor
+    from reportlab.platypus import (SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle,
+                                     Image as RLImage, PageBreak, HRFlowable)
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.enums import TA_CENTER, TA_LEFT
+    REPORTLAB_OK = True
+except ImportError:
+    REPORTLAB_OK = False
 warnings.filterwarnings("ignore")
 
 # ─── EMBEDDED ASSETS (Menkor logo + generic aircraft silhouettes, base64) ───
@@ -650,7 +655,7 @@ def render_auth_wall():
             return premium
         else:
             st.markdown('<div class="section-header">🔐 Account</div>', unsafe_allow_html=True)
-            view = st.radio("", ["Login", "Register"], horizontal=True,
+            view = st.radio("Account", ["Login", "Register"], horizontal=True,
                             key="auth_view", label_visibility="collapsed")
             if view == "Login":
                 em = st.text_input("Email", key="li_em", placeholder="your@email.com")
@@ -726,6 +731,8 @@ def _b64_to_imgbuf(b64_str):
 
 def generate_pdf_report(cm, aircraft_row, annual_flights):
     """Builds a branded Menkor Aviation PDF cost-master report and returns bytes."""
+    if not REPORTLAB_OK:
+        raise RuntimeError("ReportLab is not installed. Please add 'reportlab' to requirements.txt.")
     buf = BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=A4,
                              topMargin=28*mm, bottomMargin=22*mm,
@@ -921,6 +928,8 @@ def generate_pdf_report(cm, aircraft_row, annual_flights):
 # ════════════════════════════════════════════════════════════════════════════
 def generate_quotation_pdf(qr: dict, aircraft_row) -> bytes:
     """Generate a branded Menkor Aviation charter quotation PDF."""
+    if not REPORTLAB_OK:
+        raise RuntimeError("ReportLab is not installed. Please add 'reportlab' to requirements.txt.")
     import math
     buf = BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=A4,
