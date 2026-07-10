@@ -11,22 +11,10 @@ import plotly.graph_objects as go
 import plotly.express as px
 from io import BytesIO
 import base64
-import json
-import requests
 import warnings
-# reportlab imported lazily inside PDF functions to avoid startup crash
-try:
-    from reportlab.lib.pagesizes import A4
-    from reportlab.lib.units import mm
-    from reportlab.lib.colors import HexColor
-    from reportlab.platypus import (SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle,
-                                     Image as RLImage, PageBreak, HRFlowable)
-    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-    from reportlab.lib.enums import TA_CENTER, TA_LEFT
-    REPORTLAB_OK = True
-except ImportError:
-    REPORTLAB_OK = False
 warnings.filterwarnings("ignore")
+
+REPORTLAB_OK = True  # Will be set to False if import fails inside PDF functions
 
 
 # ─── LOGO ───────────────────────────────────────────────────────────────────
@@ -272,8 +260,17 @@ CM_DEFAULTS_INDIRECT = {
 
 def generate_pdf_report(cm, aircraft_row, annual_flights):
     """Builds a branded Menkor Aviation PDF cost-master report and returns bytes."""
-    if not REPORTLAB_OK:
-        raise RuntimeError("ReportLab is not installed. Please add 'reportlab' to requirements.txt.")
+    try:
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib.units import mm
+        from reportlab.lib.colors import HexColor
+        from reportlab.platypus import (SimpleDocTemplate, Paragraph, Spacer, Table,
+                                         TableStyle, Image as RLImage, PageBreak, HRFlowable)
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib.enums import TA_CENTER
+        from reportlab.lib.utils import ImageReader
+    except ImportError:
+        raise RuntimeError("ReportLab not installed.")
     buf = BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=A4,
                              topMargin=28*mm, bottomMargin=22*mm,
@@ -453,8 +450,18 @@ def generate_pdf_report(cm, aircraft_row, annual_flights):
 # ════════════════════════════════════════════════════════════════════════════
 def generate_quotation_pdf(qr: dict, aircraft_row) -> bytes:
     """Generate a branded Menkor Aviation charter quotation PDF."""
-    if not REPORTLAB_OK:
-        raise RuntimeError("ReportLab is not installed. Please add 'reportlab' to requirements.txt.")
+    try:
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib.units import mm
+        from reportlab.lib.colors import HexColor
+        from reportlab.platypus import (SimpleDocTemplate, Paragraph, Spacer, Table,
+                                         TableStyle, Image as RLImage, PageBreak, HRFlowable)
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib.enums import TA_CENTER
+        from reportlab.lib.utils import ImageReader
+        from reportlab.graphics.shapes import Drawing, Line, Circle, String, Rect
+    except ImportError:
+        raise RuntimeError("ReportLab not installed.")
     import math
     buf = BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=A4,
