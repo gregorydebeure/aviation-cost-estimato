@@ -983,74 +983,138 @@ def generate_quotation_pdf(qr: dict, aircraft_row) -> bytes:
 
     # ── Map page ─────────────────────────────────────────────────────────
     def build_map_image(qr_data):
-        """Build a dark Plotly map and export to PNG bytes."""
+        """Build a high-res dark Plotly map and export to PNG bytes."""
         import math
         fig = go.Figure()
 
-        def arc_pts(la1, lo1, la2, lo2, n=60):
+        def arc_pts(la1, lo1, la2, lo2, n=80):
+            """Smooth great-circle arc approximation."""
             lats = [la1 + (la2-la1)*i/n for i in range(n+1)]
             lons = [lo1 + (lo2-lo1)*i/n for i in range(n+1)]
             return lats, lons
 
-        colors = ["#C9A84C","#60A5FA","#4ADE80","#F87171","#A78BFA"]
+        colors = ["#C9A84C","#60A5FA","#4ADE80","#F87171","#A78BFA","#FB923C"]
         all_la, all_lo = [], []
+
         for i, leg in enumerate(qr_data["legs"]):
             clr = colors[i % len(colors)]
             al, alo = arc_pts(leg["lat1"],leg["lon1"],leg["lat2"],leg["lon2"])
-            fig.add_trace(go.Scattergeo(lat=al, lon=alo, mode="lines",
-                line=dict(width=3, color=clr), showlegend=False, hoverinfo="skip"))
-            mid = len(al)//2
-            fig.add_trace(go.Scattergeo(lat=[al[mid]], lon=[alo[mid]], mode="markers",
-                marker=dict(size=10, color=clr, symbol="triangle-right"),
-                showlegend=False, hoverinfo="skip"))
-            all_la += [leg["lat1"],leg["lat2"]]
-            all_lo += [leg["lon1"],leg["lon2"]]
 
+            # Glow effect — wider faded line behind
+            fig.add_trace(go.Scattergeo(lat=al, lon=alo, mode="lines",
+                line=dict(width=6, color=clr.replace("#","rgba(").rstrip(")") if False else clr),
+                opacity=0.2, showlegend=False, hoverinfo="skip"))
+
+            # Main arc line
+            fig.add_trace(go.Scattergeo(lat=al, lon=alo, mode="lines",
+                line=dict(width=2.5, color=clr),
+                opacity=1.0,
+                name=f"Leg {i+1}: {leg['from_name']} → {leg['to_name']}",
+                hoverinfo="skip"))
+
+            # Direction arrow
+            mid = len(al)//2
+            fig.add_trace(go.Scattergeo(
+                lat=[al[mid]], lon=[alo[mid]], mode="markers",
+                marker=dict(size=11, color=clr, symbol="triangle-right"),
+                showlegend=False, hoverinfo="skip"))
+
+            all_la += [leg["lat1"], leg["lat2"]]
+            all_lo += [leg["lon1"], leg["lon2"]]
+
+        # Airport markers
         seen = {}
         for leg in qr_data["legs"]:
-            for lk,lok,nk in [("lat1","lon1","from_name"),("lat2","lon2","to_name")]:
+            for lk, lok, nk in [("lat1","lon1","from_name"),("lat2","lon2","to_name")]:
                 k = (round(leg[lk],1), round(leg[lok],1))
                 if k not in seen:
                     seen[k] = True
+                    # Glow ring
+                    fig.add_trace(go.Scattergeo(
+                        lat=[leg[lk]], lon=[leg[lok]], mode="markers",
+                        marker=dict(size=22, color="#C9A84C", opacity=0.15),
+                        showlegend=False, hoverinfo="skip"))
+                    # Main dot
                     fig.add_trace(go.Scattergeo(
                         lat=[leg[lk]], lon=[leg[lok]], mode="markers+text",
-                        marker=dict(size=14, color="#FFFFFF", line=dict(width=2.5, color="#C9A84C")),
-                        text=[leg[nk]], textposition="top center",
-                        textfont=dict(size=12, color="#E8C46A", family="Helvetica"),
+                        marker=dict(size=10, color="#FFFFFF",
+                                    line=dict(width=2.5, color="#C9A84C")),
+                        text=[f"  {leg[nk]}"],
+                        textposition="middle right",
+                        textfont=dict(size=11, color="#E8C46A", family="Helvetica Bold"),
                         showlegend=False, hoverinfo="skip"))
 
-        pad_la = max((max(all_la)-min(all_la))*0.25, 6)
-        pad_lo = max((max(all_lo)-min(all_lo))*0.25, 10)
+        # Auto-zoom with padding
+        pad_la = max((max(all_la)-min(all_la))*0.30, 5)
+        pad_lo = max((max(all_lo)-min(all_lo))*0.30, 8)
+
         fig.update_layout(
-            paper_bgcolor="#0B1629", plot_bgcolor="#0B1629",
-            width=1100, height=540, margin=dict(t=20,b=20,l=20,r=20),
+            paper_bgcolor="#070E1F",
+            plot_bgcolor="#070E1F",
+            width=1300, height=640,
+            margin=dict(t=10, b=10, l=10, r=10),
             showlegend=False,
             geo=dict(
                 projection_type="natural earth",
-                showland=True,      landcolor="#1C2E55",
-                showocean=True,     oceancolor="#0D1C3E",
-                showcoastlines=True,coastlinecolor="#3A5080", coastlinewidth=0.8,
-                showcountries=True, countrycolor="#2A4070", countrywidth=0.6,
-                showlakes=True,     lakecolor="#0D1C3E",
-                bgcolor="#0B1629",
+                showland=True,       landcolor="#1C2E55",
+                showocean=True,      oceancolor="#0D1C3E",
+                showcoastlines=True, coastlinecolor="#3A5898", coastlinewidth=0.7,
+                showcountries=True,  countrycolor="#253D6A",   countrywidth=0.5,
+                showlakes=True,      lakecolor="#0D1C3E",
+                showrivers=False,
+                showframe=False,
+                bgcolor="#070E1F",
                 center=dict(lat=sum(all_la)/len(all_la), lon=sum(all_lo)/len(all_lo)),
                 lataxis=dict(range=[min(all_la)-pad_la, max(all_la)+pad_la]),
                 lonaxis=dict(range=[min(all_lo)-pad_lo, max(all_lo)+pad_lo]),
             )
         )
         try:
-            return fig.to_image(format="png", scale=2)
+            return fig.to_image(format="png", scale=2.5)
         except Exception:
             return None
 
     map_img_bytes = build_map_image(qr)
     if map_img_bytes:
+        story.append(PageBreak())
         story.append(Paragraph("Route Map", style_h2))
+        story.append(Spacer(1, 2*mm))
+
+        # Golden frame around map
+        from reportlab.platypus import KeepTogether
         map_io = BytesIO(map_img_bytes)
-        map_img = RLImage(map_io, width=170*mm, height=83*mm)
+        map_img = RLImage(map_io, width=173*mm, height=97*mm)
         map_img.hAlign = "CENTER"
-        story.append(map_img)
-        story.append(Spacer(1, 6*mm))
+
+        # Route string under map
+        route_parts = []
+        for i, leg in enumerate(qr["legs"]):
+            if i == 0: route_parts.append(leg["from_name"].upper())
+            route_parts.append(leg["to_name"].upper())
+        route_label = "  ✈  ".join(route_parts)
+
+        map_frame_data = [[map_img]]
+        map_frame = Table(map_frame_data, colWidths=[173*mm])
+        map_frame.setStyle(TableStyle([
+            ("BOX",           (0,0), (-1,-1), 1.5, GOLD_C),
+            ("TOPPADDING",    (0,0), (-1,-1), 0),
+            ("BOTTOMPADDING", (0,0), (-1,-1), 0),
+            ("LEFTPADDING",   (0,0), (-1,-1), 0),
+            ("RIGHTPADDING",  (0,0), (-1,-1), 0),
+        ]))
+        story.append(map_frame)
+        story.append(Spacer(1, 3*mm))
+        story.append(Paragraph(route_label, ParagraphStyle(
+            "RouteLabel", parent=styles["Normal"],
+            fontName="Helvetica-Bold", fontSize=9,
+            textColor=GOLD_C, alignment=TA_CENTER, spaceAfter=4)))
+        story.append(Spacer(1, 4*mm))
+    else:
+        # Fallback if kaleido not available
+        story.append(Paragraph(
+            "⚠ Route map could not be rendered (kaleido not available in this environment).",
+            ParagraphStyle("Warn", parent=styles["Normal"], fontSize=8, textColor=SLATE_C)))
+        story.append(Spacer(1, 4*mm))
 
     # ── Route summary ────────────────────────────────────────────────────
     story.append(Paragraph("Flight Itinerary", style_h2))
