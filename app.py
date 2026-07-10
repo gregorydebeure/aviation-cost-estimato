@@ -983,6 +983,77 @@ def generate_quotation_pdf(qr: dict, aircraft_row) -> bytes:
     story.append(Paragraph("Menkor Aviation GBL — Charter Quotation", style_sub))
     story.append(PageBreak())
 
+    # ── Map page ─────────────────────────────────────────────────────────
+    def build_map_image(qr_data):
+        """Build a dark Plotly map and export to PNG bytes."""
+        import math
+        fig = go.Figure()
+
+        def arc_pts(la1, lo1, la2, lo2, n=60):
+            lats = [la1 + (la2-la1)*i/n for i in range(n+1)]
+            lons = [lo1 + (lo2-lo1)*i/n for i in range(n+1)]
+            return lats, lons
+
+        colors = ["#C9A84C","#60A5FA","#4ADE80","#F87171","#A78BFA"]
+        all_la, all_lo = [], []
+        for i, leg in enumerate(qr_data["legs"]):
+            clr = colors[i % len(colors)]
+            al, alo = arc_pts(leg["lat1"],leg["lon1"],leg["lat2"],leg["lon2"])
+            fig.add_trace(go.Scattergeo(lat=al, lon=alo, mode="lines",
+                line=dict(width=3, color=clr), showlegend=False, hoverinfo="skip"))
+            mid = len(al)//2
+            fig.add_trace(go.Scattergeo(lat=[al[mid]], lon=[alo[mid]], mode="markers",
+                marker=dict(size=10, color=clr, symbol="triangle-right"),
+                showlegend=False, hoverinfo="skip"))
+            all_la += [leg["lat1"],leg["lat2"]]
+            all_lo += [leg["lon1"],leg["lon2"]]
+
+        seen = {}
+        for leg in qr_data["legs"]:
+            for lk,lok,nk in [("lat1","lon1","from_name"),("lat2","lon2","to_name")]:
+                k = (round(leg[lk],1), round(leg[lok],1))
+                if k not in seen:
+                    seen[k] = True
+                    fig.add_trace(go.Scattergeo(
+                        lat=[leg[lk]], lon=[leg[lok]], mode="markers+text",
+                        marker=dict(size=14, color="#FFFFFF", line=dict(width=2.5, color="#C9A84C")),
+                        text=[leg[nk]], textposition="top center",
+                        textfont=dict(size=12, color="#E8C46A", family="Helvetica"),
+                        showlegend=False, hoverinfo="skip"))
+
+        pad_la = max((max(all_la)-min(all_la))*0.25, 6)
+        pad_lo = max((max(all_lo)-min(all_lo))*0.25, 10)
+        fig.update_layout(
+            paper_bgcolor="#0B1629", plot_bgcolor="#0B1629",
+            width=1100, height=540, margin=dict(t=20,b=20,l=20,r=20),
+            showlegend=False,
+            geo=dict(
+                projection_type="natural earth",
+                showland=True,      landcolor="#1C2E55",
+                showocean=True,     oceancolor="#0D1C3E",
+                showcoastlines=True,coastlinecolor="#3A5080", coastlinewidth=0.8,
+                showcountries=True, countrycolor="#2A4070", countrywidth=0.6,
+                showlakes=True,     lakecolor="#0D1C3E",
+                bgcolor="#0B1629",
+                center=dict(lat=sum(all_la)/len(all_la), lon=sum(all_lo)/len(all_lo)),
+                lataxis=dict(range=[min(all_la)-pad_la, max(all_la)+pad_la]),
+                lonaxis=dict(range=[min(all_lo)-pad_lo, max(all_lo)+pad_lo]),
+            )
+        )
+        try:
+            return fig.to_image(format="png", scale=2)
+        except Exception:
+            return None
+
+    map_img_bytes = build_map_image(qr)
+    if map_img_bytes:
+        story.append(Paragraph("Route Map", style_h2))
+        map_io = BytesIO(map_img_bytes)
+        map_img = RLImage(map_io, width=170*mm, height=83*mm)
+        map_img.hAlign = "CENTER"
+        story.append(map_img)
+        story.append(Spacer(1, 6*mm))
+
     # ── Route summary ────────────────────────────────────────────────────
     story.append(Paragraph("Flight Itinerary", style_h2))
 
@@ -1065,6 +1136,64 @@ def generate_quotation_pdf(qr: dict, aircraft_row) -> bytes:
     ]))
     story.append(spec_tbl)
     story.append(Spacer(1, 8*mm))
+
+    # ── Extras & Notes ──────────────────────────────────────────────────
+    if qr.get("extras"):
+        story.append(Paragraph("Extras & Additional Services", style_h2))
+        ext_header = ["Service", f"Cost ({qr['currency']})"]
+        ext_data = [ext_header] + [[e["name"], f"{qr['currency']} {e['cost']:,.0f}"] for e in qr["extras"]]
+        ext_data.append(["TOTAL EXTRAS", f"{qr['currency']} {qr.get('extras_total',0):,.0f}"])
+        ext_tbl = Table(ext_data, colWidths=[120*mm, 50*mm])
+        ext_tbl.setStyle(TableStyle([
+            ("FONTNAME",   (0,0),  (-1,0),  "Helvetica-Bold"),
+            ("FONTNAME",   (0,1),  (-1,-2), "Helvetica"),
+            ("FONTNAME",   (0,-1), (-1,-1), "Helvetica-Bold"),
+            ("FONTSIZE",   (0,0),  (-1,-1), 9),
+            ("TEXTCOLOR",  (0,0),  (-1,0),  HexColor("#FFFFFF")),
+            ("BACKGROUND", (0,0),  (-1,0),  NAVY_C),
+            ("BACKGROUND", (0,-1), (-1,-1), LIGHT_C),
+            ("ALIGN",      (1,0),  (1,-1),  "RIGHT"),
+            ("ROWBACKGROUNDS",(0,1),(-1,-2),[HexColor("#FFFFFF"), LIGHT_C]),
+            ("GRID",       (0,0),  (-1,-1), 0.3, HexColor("#DDDDDD")),
+            ("TOPPADDING", (0,0),  (-1,-1), 4),
+            ("BOTTOMPADDING",(0,0),(-1,-1), 4),
+            ("LINEABOVE",  (0,-1), (-1,-1), 1, GOLD_C),
+            ("TEXTCOLOR",  (1,-1), (1,-1),  GOLD_C),
+        ]))
+        story.append(ext_tbl)
+        story.append(Spacer(1, 4*mm))
+
+    # Grand total box
+    flight_c = qr.get("flight_cost", qr["total_cost"])
+    extras_c = qr.get("extras_total", 0)
+    total_c  = qr["total_cost"]
+    total_data = [
+        ["Flight Cost", f"{qr['currency']} {flight_c:,.0f}"],
+        ["Extras", f"{qr['currency']} {extras_c:,.0f}"],
+        ["TOTAL QUOTATION", f"{qr['currency']} {total_c:,.0f}"],
+    ]
+    tot_tbl = Table(total_data, colWidths=[120*mm, 50*mm])
+    tot_tbl.setStyle(TableStyle([
+        ("FONTNAME",  (0,0),  (-1,-2), "Helvetica"),
+        ("FONTNAME",  (0,-1), (-1,-1), "Helvetica-Bold"),
+        ("FONTSIZE",  (0,0),  (-1,-2), 10),
+        ("FONTSIZE",  (0,-1), (-1,-1), 13),
+        ("ALIGN",     (1,0),  (1,-1),  "RIGHT"),
+        ("BACKGROUND",(0,-1), (-1,-1), NAVY_C),
+        ("TEXTCOLOR", (0,-1), (-1,-1), GOLD_C),
+        ("TOPPADDING",(0,0),  (-1,-1), 5),
+        ("BOTTOMPADDING",(0,0),(-1,-1),5),
+        ("LINEABOVE", (0,-1), (-1,-1), 1.5, GOLD_C),
+    ]))
+    story.append(tot_tbl)
+    story.append(Spacer(1, 5*mm))
+
+    if qr.get("notes"):
+        story.append(Paragraph(f"<b>Special Notes:</b> {qr['notes']}", ParagraphStyle(
+            "QNotes", parent=styles["Normal"], fontName="Helvetica",
+            fontSize=9, textColor=NAVY_C,
+            backColor=LIGHT_C, borderPadding=6)))
+        story.append(Spacer(1, 5*mm))
 
     # ── Disclaimer ───────────────────────────────────────────────────────
     story.append(HRFlowable(width="100%", thickness=0.5,
@@ -1576,6 +1705,53 @@ def main():
                 last_to = legs[-1]["to"] if legs else ""
                 legs.append({"from": last_to, "to": "", "dep_time": "12:00"})
                 st.rerun()
+
+        st.markdown("<hr>", unsafe_allow_html=True)
+
+        # ── EXTRAS ──────────────────────────────────────────────────────
+        st.markdown('<div class="section-header">➕ Extras & Additional Services</div>', unsafe_allow_html=True)
+
+        ex1, ex2 = st.columns(2)
+
+        with ex1:
+            st.markdown('<div style="font-size:0.78rem;color:#60A5FA;font-weight:600;margin-bottom:0.5rem">👤 Crew</div>', unsafe_allow_html=True)
+            q_fa_count = st.number_input("Flight Attendant(s)", min_value=0, max_value=6, value=1, step=1, key="q_fa")
+            q_fa_rate  = st.number_input("FA daily rate (€)", min_value=0, value=500, step=50, key="q_fa_rate")
+            q_fa_days  = st.number_input("Number of days", min_value=1, value=1, step=1, key="q_fa_days")
+            q_fa_total = q_fa_count * q_fa_rate * q_fa_days
+
+            st.markdown('<div style="font-size:0.78rem;color:#60A5FA;font-weight:600;margin-top:0.8rem;margin-bottom:0.5rem">🍽️ Catering</div>', unsafe_allow_html=True)
+            q_catering_pax  = st.number_input("Number of passengers", min_value=0, value=4, step=1, key="q_cat_pax")
+            q_catering_rate = st.number_input("Catering per pax (€)", min_value=0, value=150, step=10, key="q_cat_rate")
+            q_catering_total = q_catering_pax * q_catering_rate
+
+        with ex2:
+            st.markdown('<div style="font-size:0.78rem;color:#F59E0B;font-weight:600;margin-bottom:0.5rem">⭐ Special Services</div>', unsafe_allow_html=True)
+            q_special_1_name  = st.text_input("Service 1", value="Ground Transfer", placeholder="Service name", key="q_sp1_name")
+            q_special_1_price = st.number_input("Cost (€)", min_value=0, value=0, step=50, key="q_sp1_price")
+            q_special_2_name  = st.text_input("Service 2", value="", placeholder="Service name", key="q_sp2_name")
+            q_special_2_price = st.number_input("Cost (€) ", min_value=0, value=0, step=50, key="q_sp2_price")
+            q_special_3_name  = st.text_input("Service 3", value="", placeholder="Service name", key="q_sp3_name")
+            q_special_3_price = st.number_input("Cost (€)  ", min_value=0, value=0, step=50, key="q_sp3_price")
+            q_notes = st.text_area("Special notes / instructions", placeholder="VIP requirements, dietary restrictions, special requests...", height=80, key="q_notes")
+
+        # Build extras list
+        q_extras = []
+        if q_fa_count > 0 and q_fa_total > 0:
+            q_extras.append({"name": f"Flight Attendant x{q_fa_count} ({q_fa_days}d)", "cost": q_fa_total})
+        if q_catering_total > 0:
+            q_extras.append({"name": f"Catering ({q_catering_pax} pax)", "cost": q_catering_total})
+        for sp_name, sp_price in [(q_special_1_name, q_special_1_price),
+                                    (q_special_2_name, q_special_2_price),
+                                    (q_special_3_name, q_special_3_price)]:
+            if sp_name.strip() and sp_price > 0:
+                q_extras.append({"name": sp_name.strip(), "cost": sp_price})
+
+        extras_total = sum(e["cost"] for e in q_extras)
+        if q_extras:
+            st.markdown(f'<div style="padding:0.4rem 0.8rem;background:#112244;border-radius:4px;font-size:0.84rem;margin-top:0.5rem">Extras total: <b style="color:#F59E0B">€ {extras_total:,.0f}</b></div>', unsafe_allow_html=True)
+
+        st.markdown("<br>", unsafe_allow_html=True)
         with col_calc:
             calc_btn = st.button("🧮 Calculate & Generate Quotation",
                                   use_container_width=True, type="primary")
@@ -1656,6 +1832,7 @@ def main():
             if errors:
                 for e in errors: st.error(e)
             else:
+                flight_total = sum(l["cost"] for l in all_legs_data)
                 st.session_state["q_result"] = {
                     "legs": all_legs_data,
                     "aircraft": q_aircraft_name,
@@ -1664,7 +1841,11 @@ def main():
                     "speed": speed_kmh,
                     "total_dist": sum(l["dist_km"] for l in all_legs_data),
                     "total_min": sum(l["flight_time_min"] for l in all_legs_data),
-                    "total_cost": sum(l["cost"] for l in all_legs_data),
+                    "total_cost": flight_total + extras_total,
+                    "flight_cost": flight_total,
+                    "extras": q_extras,
+                    "extras_total": extras_total,
+                    "notes": q_notes,
                 }
 
         # ── Display results ─────────────────────────────────────────────
@@ -1675,11 +1856,12 @@ def main():
             st.markdown("<hr>", unsafe_allow_html=True)
 
             # KPIs
-            rk1, rk2, rk3, rk4 = st.columns(4)
-            rk1.metric("Total Distance",  f"{qr['total_dist']:,.0f} km")
-            rk2.metric("Total Flight Time", f"{int(qr['total_min']//60)}h {int(qr['total_min']%60):02d}m")
-            rk3.metric("Operator Rate",   f"€ {qr['rate']:,.0f}/h")
-            rk4.metric("💰 Total Quote",  f"{qr['currency']} {qr['total_cost']:,.0f}")
+            rk1, rk2, rk3, rk4, rk5 = st.columns(5)
+            rk1.metric("Total Distance",   f"{qr['total_dist']:,.0f} km")
+            rk2.metric("Flight Time",      f"{int(qr['total_min']//60)}h {int(qr['total_min']%60):02d}m")
+            rk3.metric("Flight Cost",      f"{qr['currency']} {qr.get('flight_cost', qr['total_cost']):,.0f}")
+            rk4.metric("Extras",           f"{qr['currency']} {qr.get('extras_total', 0):,.0f}")
+            rk5.metric("💰 Total Quote",   f"{qr['currency']} {qr['total_cost']:,.0f}")
 
             st.markdown("<hr>", unsafe_allow_html=True)
 
@@ -1769,13 +1951,21 @@ def main():
                 ),
                 geo=dict(
                     projection_type="natural earth",
-                    showland=True, landcolor="#1A2744",
-                    showocean=True, oceancolor="#0B1629",
-                    showcoastlines=True, coastlinecolor="#2A4070",
-                    showcountries=True, countrycolor="#1E3560",
-                    showlakes=False,
+                    showland=True,      landcolor="#1C2E55",
+                    showocean=True,     oceancolor="#0B1629",
+                    showcoastlines=True,coastlinecolor="#3A5080",
+                    showcountries=True, countrycolor="#2A4070", countrywidth=0.6,
+                    showlakes=True,     lakecolor="#0B1629",
+                    showrivers=False,
+                    showframe=False,
                     bgcolor="rgba(0,0,0,0)",
                     center=dict(lat=center_lat, lon=center_lon),
+                    lataxis=dict(
+                        range=[min(all_lats)-8, max(all_lats)+8],
+                    ),
+                    lonaxis=dict(
+                        range=[min(all_lons)-12, max(all_lons)+12],
+                    ),
                 ),
             )
 
@@ -1799,10 +1989,23 @@ def main():
             st.dataframe(df_legs, use_container_width=True, hide_index=True)
 
             # Totals
+            # Extras table
+            if qr.get("extras"):
+                st.markdown('<div class="section-header">➕ Extras & Services</div>', unsafe_allow_html=True)
+                ext_rows = [{"Service": e["name"], f"Cost ({qr['currency']})": f"{e['cost']:,.0f}"} for e in qr["extras"]]
+                st.dataframe(pd.DataFrame(ext_rows), use_container_width=True, hide_index=True)
+
+            if qr.get("notes"):
+                st.markdown(f'<div style="background:#13233F;border:1px solid #1A3A6E;border-radius:6px;padding:0.7rem 1rem;font-size:0.84rem;color:#D6E4F7;margin:0.5rem 0"><b>Notes:</b> {qr["notes"]}</div>', unsafe_allow_html=True)
+
             st.markdown(f"""
             <div class="total-banner" style="margin-top:0.5rem">
                 <div style="font-size:0.72rem;letter-spacing:0.15em;text-transform:uppercase;
                      color:#8496B0;margin-bottom:0.3rem">{qr['aircraft']} · {qr['currency']} {qr['rate']:,.0f}/h operator rate</div>
+                <div style="font-size:0.82rem;color:#8496B0;margin-bottom:0.3rem">
+                    Flight: <b style="color:#60A5FA">{qr['currency']} {qr.get('flight_cost', qr['total_cost']):,.0f}</b>
+                    &nbsp;+&nbsp; Extras: <b style="color:#F59E0B">{qr['currency']} {qr.get('extras_total', 0):,.0f}</b>
+                </div>
                 <div style="font-size:2rem;font-weight:800;color:#E8C46A">
                     {qr['currency']} {qr['total_cost']:,.0f}
                 </div>
