@@ -490,7 +490,7 @@ def render_auth():
                     for ue,ud in users.items():
                         col="#4ADE80" if ud.get("active") else "#F87171"
                         st.markdown(f'<div style="font-size:.75rem;border-bottom:1px solid #1A3A6E"><b>{ue}</b> <span style="color:{col}">{"✓" if ud.get("active") else "✗"}</span></div>', unsafe_allow_html=True)
-                    if st.button("🔄 Refresh",key="admin_ref",use_container_width=True):
+                    if st.button("🔄 Refresh",key="admin_ref",width="stretch"):
                         for ue in list(users.keys()): users[ue]["active"]=_check_sub(ue)
                         _save_users(users); st.rerun()
             else:
@@ -500,9 +500,9 @@ def render_auth():
                 else:
                     st.markdown('<div style="font-size:.72rem;color:#F87171;margin-bottom:.4rem">⚠ No subscription</div>', unsafe_allow_html=True)
                     _sub_btn(email)
-                    if st.button("🔄 Check subscription",key="chk_sub",use_container_width=True):
+                    if st.button("🔄 Check subscription",key="chk_sub",width="stretch"):
                         st.session_state["auth_premium"]=_check_sub(email); st.rerun()
-            if st.button("🚪 Log out",key="logout",use_container_width=True):
+            if st.button("🚪 Log out",key="logout",width="stretch"):
                 st.session_state["auth_email"]=None; st.session_state["auth_premium"]=False
                 st.session_state["auth_is_admin"]=False; st.rerun()
         else:
@@ -511,7 +511,7 @@ def render_auth():
             if view=="Login":
                 em=st.text_input("Email",key="li_em",placeholder="your@email.com")
                 pw=st.text_input("Password",key="li_pw",type="password")
-                if st.button("Login",key="btn_login",use_container_width=True):
+                if st.button("Login",key="btn_login",width="stretch"):
                     if em and pw:
                         try: ae=st.secrets.get("ADMIN_EMAIL",""); ap=st.secrets.get("ADMIN_PASSWORD","")
                         except: ae=ap=""
@@ -530,7 +530,7 @@ def render_auth():
                 em=st.text_input("Email",key="rg_em",placeholder="your@email.com")
                 pw=st.text_input("Password (min 6)",key="rg_pw",type="password")
                 pw2=st.text_input("Confirm",key="rg_pw2",type="password")
-                if st.button("Create account",key="btn_reg",use_container_width=True):
+                if st.button("Create account",key="btn_reg",width="stretch"):
                     if pw!=pw2: st.error("Passwords do not match.")
                     elif em and pw:
                         ok,msg=_register(em,pw)
@@ -629,10 +629,10 @@ def main():
         g1,g2=st.columns(2)
         with g1:
             st.markdown('<div class="section-header">Cost Breakdown</div>',unsafe_allow_html=True)
-            st.plotly_chart(chart_donut(costs),use_container_width=True,config={"displayModeBar":False})
+            st.plotly_chart(chart_donut(costs),width="stretch",config={"displayModeBar":False})
         with g2:
             st.markdown('<div class="section-header">Cost by Flight Mode</div>',unsafe_allow_html=True)
-            st.plotly_chart(chart_bars(costs),use_container_width=True,config={"displayModeBar":False})
+            st.plotly_chart(chart_bars(costs),width="stretch",config={"displayModeBar":False})
 
     # TAB 2: PROFITABILITY
     with tab2:
@@ -654,14 +654,14 @@ def main():
             r3.metric("💰 Net Revenue",fmt(prof["net_revenue"]))
             r4.metric("📊 Net Result",fmt(net),delta=f"{cr:.1f}%")
             st.markdown("<hr>",unsafe_allow_html=True)
-            st.plotly_chart(chart_waterfall(costs,prof),use_container_width=True,config={"displayModeBar":False})
+            st.plotly_chart(chart_waterfall(costs,prof),width="stretch",config={"displayModeBar":False})
 
     # TAB 3: SENSITIVITY
     with tab3:
         if not is_premium: premium_gate(); st.stop()
         st.markdown('<div class="section-header">Sensitivity — Charter Hours vs Net Result</div>',unsafe_allow_html=True)
         st.caption(f"Private: {h_private}h | Commission: {commission_pct}% | Rate: € {custom_rate:,.0f}/h")
-        st.plotly_chart(chart_sensitivity(aircraft,h_private,commission_pct,custom_rate),use_container_width=True,config={"displayModeBar":False})
+        st.plotly_chart(chart_sensitivity(aircraft,h_private,commission_pct,custom_rate),width="stretch",config={"displayModeBar":False})
         st.markdown('<div class="section-header">Fleet Comparison</div>',unsafe_allow_html=True)
         comp=[{"Model":row["Modele"],"Total Cost (€)":round(calculate_costs(row,h_charter,h_private)["grand_total"]),
                "Cost/Hour (€)":round(calculate_costs(row,h_charter,h_private)["avg_cost_h"])} for _,row in df.iterrows()]
@@ -671,7 +671,7 @@ def main():
         fig_c.update_layout(paper_bgcolor="rgba(0,0,0,0)",plot_bgcolor="rgba(0,0,0,0)",
                             font=dict(color="#D6E4F7"),height=350,margin=dict(t=10,b=80,l=10,r=10),
                             xaxis=dict(tickangle=-30),yaxis=dict(gridcolor="#1A3A6E",tickformat=",.0f"))
-        st.plotly_chart(fig_c,use_container_width=True,config={"displayModeBar":False})
+        st.plotly_chart(fig_c,width="stretch",config={"displayModeBar":False})
 
     # TAB 4: COST MASTER
     with tab4:
@@ -718,7 +718,7 @@ def main():
         st.markdown(f'<div style="padding:.4rem .8rem;background:#112244;border-radius:4px;font-size:.84rem;margin-bottom:.5rem">Indirect total: <b style="color:#A78BFA">€ {ind_t:,.0f}</b></div>',unsafe_allow_html=True)
 
         st.markdown("<br>",unsafe_allow_html=True)
-        if st.button("🚀 Generate Financial Analysis",use_container_width=True):
+        if st.button("🚀 Generate Financial Analysis",width="stretch"):
             ft=op_a; st.session_state["cost_master"]=dict(op_vals=op_vals,op_annual=op_a,op_per_flight=op_pf,
                 dir_vals=dir_vals,dir_total=dir_t,ind_vals=ind_vals,ind_total=ind_t,annual_flights=annual_flights,
                 charter_rate=cm_rate,commission_pct=cm_comm,h_charter=h_charter,aircraft_name=aircraft["Modele"])
@@ -739,24 +739,24 @@ def main():
             kk5.metric("📊 Net Result",fmt(net),delta=f"{cov:.1f}%")
             st.markdown("<hr>",unsafe_allow_html=True)
             d1,d2=st.columns(2)
-            with d1: st.plotly_chart(cm_global_donut(op_a2,dir_a,ind_a),use_container_width=True,config={"displayModeBar":False})
-            with d2: st.plotly_chart(cm_waterfall(op_a2,dir_a,ind_a,gross,cm["commission_pct"]),use_container_width=True,config={"displayModeBar":False})
+            with d1: st.plotly_chart(cm_global_donut(op_a2,dir_a,ind_a),width="stretch",config={"displayModeBar":False})
+            with d2: st.plotly_chart(cm_waterfall(op_a2,dir_a,ind_a,gross,cm["commission_pct"]),width="stretch",config={"displayModeBar":False})
             b1,b2,b3=st.columns(3)
-            with b1: st.plotly_chart(cm_donut(list(cm["op_vals"].keys()),[v*cm["annual_flights"] for v in cm["op_vals"].values()],["#60A5FA","#3B82F6","#1D4ED8","#93C5FD","#BFDBFE","#2563EB","#1E40AF","#DBEAFE"],"Operational"),use_container_width=True,config={"displayModeBar":False})
-            with b2: st.plotly_chart(cm_donut(list(cm["dir_vals"].keys()),list(cm["dir_vals"].values()),["#F59E0B","#D97706","#B45309","#FCD34D","#FDE68A","#92400E","#FBBF24","#FEF3C7","#78350F"],"Direct"),use_container_width=True,config={"displayModeBar":False})
-            with b3: st.plotly_chart(cm_donut(list(cm["ind_vals"].keys()),list(cm["ind_vals"].values()),["#A78BFA","#8B5CF6","#7C3AED","#C4B5FD","#DDD6FE","#6D28D9","#5B21B6","#EDE9FE","#4C1D95"],"Crew"),use_container_width=True,config={"displayModeBar":False})
+            with b1: st.plotly_chart(cm_donut(list(cm["op_vals"].keys()),[v*cm["annual_flights"] for v in cm["op_vals"].values()],["#60A5FA","#3B82F6","#1D4ED8","#93C5FD","#BFDBFE","#2563EB","#1E40AF","#DBEAFE"],"Operational"),width="stretch",config={"displayModeBar":False})
+            with b2: st.plotly_chart(cm_donut(list(cm["dir_vals"].keys()),list(cm["dir_vals"].values()),["#F59E0B","#D97706","#B45309","#FCD34D","#FDE68A","#92400E","#FBBF24","#FEF3C7","#78350F"],"Direct"),width="stretch",config={"displayModeBar":False})
+            with b3: st.plotly_chart(cm_donut(list(cm["ind_vals"].keys()),list(cm["ind_vals"].values()),["#A78BFA","#8B5CF6","#7C3AED","#C4B5FD","#DDD6FE","#6D28D9","#5B21B6","#EDE9FE","#4C1D95"],"Crew"),width="stretch",config={"displayModeBar":False})
             st.markdown("<hr>",unsafe_allow_html=True)
             bb1,bb2,bb3=st.columns(3)
-            with bb1: st.plotly_chart(cm_bar(list(cm["op_vals"].keys()),[v*cm["annual_flights"] for v in cm["op_vals"].values()],"#60A5FA","Operational"),use_container_width=True,config={"displayModeBar":False})
-            with bb2: st.plotly_chart(cm_bar(list(cm["dir_vals"].keys()),list(cm["dir_vals"].values()),"#F59E0B","Direct"),use_container_width=True,config={"displayModeBar":False})
-            with bb3: st.plotly_chart(cm_bar(list(cm["ind_vals"].keys()),list(cm["ind_vals"].values()),"#A78BFA","Crew"),use_container_width=True,config={"displayModeBar":False})
+            with bb1: st.plotly_chart(cm_bar(list(cm["op_vals"].keys()),[v*cm["annual_flights"] for v in cm["op_vals"].values()],"#60A5FA","Operational"),width="stretch",config={"displayModeBar":False})
+            with bb2: st.plotly_chart(cm_bar(list(cm["dir_vals"].keys()),list(cm["dir_vals"].values()),"#F59E0B","Direct"),width="stretch",config={"displayModeBar":False})
+            with bb3: st.plotly_chart(cm_bar(list(cm["ind_vals"].keys()),list(cm["ind_vals"].values()),"#A78BFA","Crew"),width="stretch",config={"displayModeBar":False})
             st.markdown("<hr>",unsafe_allow_html=True)
             rows2=[]
             for k,v in cm["op_vals"].items(): rows2.append({"Category":"Operational","Line":k,"Annual (€)":f"€ {v*cm['annual_flights']:,.0f}","% Total":f"{v*cm['annual_flights']/grand*100:.1f}%"})
             for k,v in cm["dir_vals"].items(): rows2.append({"Category":"Direct","Line":k,"Annual (€)":f"€ {v:,.0f}","% Total":f"{v/grand*100:.1f}%"})
             for k,v in cm["ind_vals"].items(): rows2.append({"Category":"Crew","Line":k,"Annual (€)":f"€ {v:,.0f}","% Total":f"{v/grand*100:.1f}%"})
-            st.dataframe(pd.DataFrame(rows2),use_container_width=True,hide_index=True)
-            if st.button("📄 Generate PDF Report",use_container_width=True,type="primary"):
+            st.dataframe(pd.DataFrame(rows2),width="stretch",hide_index=True)
+            if st.button("📄 Generate PDF Report",width="stretch",type="primary"):
                 with st.spinner("Building report..."):
                     try:
                         st.session_state["pdf_report"]=generate_pdf_report(cm,aircraft,annual_flights)
@@ -764,7 +764,7 @@ def main():
                     except Exception as e: st.error(f"PDF error: {e}")
             if st.session_state.get("pdf_report"):
                 st.download_button("⬇ Download PDF Report",data=st.session_state["pdf_report"],
-                    file_name=f"Menkor_Cost_{aircraft['Modele'].replace(' ','_')}.pdf",mime="application/pdf",use_container_width=True)
+                    file_name=f"Menkor_Cost_{aircraft['Modele'].replace(' ','_')}.pdf",mime="application/pdf",width="stretch")
 
     # TAB 5: QUOTATION
     with tab5:
@@ -819,10 +819,10 @@ def main():
         if q_extras: st.markdown(f'<div style="padding:.4rem .8rem;background:#112244;border-radius:4px;font-size:.84rem;margin:.5rem 0">Extras: <b style="color:#F59E0B">€ {extras_t:,.0f}</b></div>',unsafe_allow_html=True)
         ca1,ca2=st.columns([1,2])
         with ca1:
-            if st.button("➕ Add stop",use_container_width=True):
+            if st.button("➕ Add stop",width="stretch"):
                 last=legs[-1]["to"] if legs else ""; legs.append({"from":last,"to":"","dep_time":"12:00"}); st.rerun()
         with ca2:
-            calc=st.button("🧮 Calculate & Generate Quotation",use_container_width=True,type="primary")
+            calc=st.button("🧮 Calculate & Generate Quotation",width="stretch",type="primary")
 
         _AIRPORTS = {
             "OMDB":("Dubai Intl",25.2528,55.3644),"DXB":("Dubai Intl",25.2528,55.3644),
@@ -980,15 +980,15 @@ def main():
                     center=dict(lat=sum(all_la)/len(all_la),lon=sum(all_lo)/len(all_lo)),
                     lataxis=dict(range=[min(all_la)-pad_la,max(all_la)+pad_la]),
                     lonaxis=dict(range=[min(all_lo)-pad_lo,max(all_lo)+pad_lo])))
-            st.plotly_chart(fig_map,use_container_width=True,config={"displayModeBar":False})
+            st.plotly_chart(fig_map,width="stretch",config={"displayModeBar":False})
             st.markdown('<div class="section-header">📋 Leg Details</div>',unsafe_allow_html=True)
             lr=[{"Leg":str(i+1),"From":l["from_name"],"To":l["to_name"],"Dep.":l["dep_time"],
                  "Distance":f"{l['dist_km']:,.0f} km","Time":l["flight_time_str"],
                  f"Cost ({qr['currency']})":f"{l['cost']:,.0f}"} for i,l in enumerate(ald)]
-            st.dataframe(pd.DataFrame(lr),use_container_width=True,hide_index=True)
+            st.dataframe(pd.DataFrame(lr),width="stretch",hide_index=True)
             if qr.get("extras"):
                 st.markdown('<div class="section-header">➕ Extras</div>',unsafe_allow_html=True)
-                st.dataframe(pd.DataFrame([{"Service":e["name"],f"Cost ({qr['currency']})":f"{e['cost']:,.0f}"} for e in qr["extras"]]),use_container_width=True,hide_index=True)
+                st.dataframe(pd.DataFrame([{"Service":e["name"],f"Cost ({qr['currency']})":f"{e['cost']:,.0f}"} for e in qr["extras"]]),width="stretch",hide_index=True)
             if qr.get("notes"):
                 st.markdown(f'<div style="background:#13233F;border:1px solid #1A3A6E;border-radius:6px;padding:.7rem 1rem;font-size:.84rem;color:#D6E4F7;margin:.5rem 0"><b>Notes:</b> {qr["notes"]}</div>',unsafe_allow_html=True)
             st.markdown(f'''<div class="total-banner">
@@ -997,7 +997,7 @@ def main():
                 <div style="font-size:.85rem;color:#8496B0;margin-top:.2rem">{qr["total_dist"]:,.0f} km · {int(qr["total_min"]//60)}h {int(qr["total_min"]%60):02d}m</div>
             </div>''',unsafe_allow_html=True)
             st.markdown("<br>",unsafe_allow_html=True)
-            if st.button("📄 Generate PDF Quotation",use_container_width=True,type="primary"):
+            if st.button("📄 Generate PDF Quotation",width="stretch",type="primary"):
                 with st.spinner("Building quotation..."):
                     try:
                         st.session_state["q_pdf"]=generate_quotation_pdf(qr,q_ac)
@@ -1005,7 +1005,7 @@ def main():
                     except Exception as e: st.error(f"PDF error: {e}")
             if st.session_state.get("q_pdf"):
                 st.download_button("⬇ Download Quotation PDF",data=st.session_state["q_pdf"],
-                    file_name=f"Menkor_Quote_{qr['aircraft'].replace(' ','_')}.pdf",mime="application/pdf",use_container_width=True)
+                    file_name=f"Menkor_Quote_{qr['aircraft'].replace(' ','_')}.pdf",mime="application/pdf",width="stretch")
 
     st.markdown("<hr>",unsafe_allow_html=True)
     st.markdown('<div style="text-align:center;font-size:.72rem;color:#4A5568">MENKOR AVIATION — Figures for simulation purposes only</div>',unsafe_allow_html=True)
