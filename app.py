@@ -78,6 +78,34 @@ def get_default_data():
         {"Modele":"Challenger 350","Categorie":"Super Midsize Jet","Couts_Fixes_Annuels":93921,"Couts_Equipe_Annuels":394305,"Cout_Horaire_Charter":2353,"Cout_Horaire_Prive":1929,"Heures_Base":350,"Taux_Charter_EUR_h":4000,"Vitesse_Croisiere_km_h":850,"Autonomie_km":5784,"Passagers_Max":8},
         {"Modele":"Dassault Falcon 7X","Categorie":"Ultra Long Range Jet","Couts_Fixes_Annuels":588918,"Couts_Equipe_Annuels":377505,"Cout_Horaire_Charter":2994,"Cout_Horaire_Prive":2695,"Heures_Base":350,"Taux_Charter_EUR_h":9500,"Vitesse_Croisiere_km_h":904,"Autonomie_km":9924,"Passagers_Max":12},
         {"Modele":"Dassault Falcon 8X","Categorie":"Ultra Long Range Jet","Couts_Fixes_Annuels":598153,"Couts_Equipe_Annuels":377505,"Cout_Horaire_Charter":2958,"Cout_Horaire_Prive":2662,"Heures_Base":350,"Taux_Charter_EUR_h":10500,"Vitesse_Croisiere_km_h":903,"Autonomie_km":11365,"Passagers_Max":12},
+        {"Modele":"Beechcraft Beechjet 400A","Categorie":"Light Jet","Couts_Fixes_Annuels":36260,"Couts_Equipe_Annuels":245619,"Cout_Horaire_Charter":1568,"Cout_Horaire_Prive":1286,"Heures_Base":250,"Taux_Charter_EUR_h":2300,"Vitesse_Croisiere_km_h":832,"Autonomie_km":2133,"Passagers_Max":7},
+        {"Modele":"Beechcraft Premier I","Categorie":"Light Jet","Couts_Fixes_Annuels":35998,"Couts_Equipe_Annuels":136880,"Cout_Horaire_Charter":1254,"Cout_Horaire_Prive":1028,"Heures_Base":250,"Taux_Charter_EUR_h":1800,"Vitesse_Croisiere_km_h":789,"Autonomie_km":1536,"Passagers_Max":7},
+        {"Modele":"Beechcraft Premier IA","Categorie":"Light Jet","Couts_Fixes_Annuels":41947,"Couts_Equipe_Annuels":136880,"Cout_Horaire_Charter":1236,"Cout_Horaire_Prive":1013,"Heures_Base":250,"Taux_Charter_EUR_h":1900,"Vitesse_Croisiere_km_h":789,"Autonomie_km":1536,"Passagers_Max":7},
+        {"Modele":"Boeing 737-500","Categorie":"VIP Airliner / BBJ","Couts_Fixes_Annuels":242553,"Couts_Equipe_Annuels":419143,"Cout_Horaire_Charter":5456,"Cout_Horaire_Prive":4474,"Heures_Base":100,"Taux_Charter_EUR_h":7500,"Vitesse_Croisiere_km_h":839,"Autonomie_km":5424,"Passagers_Max":150},
+        {"Modele":"Boeing 737-600","Categorie":"VIP Airliner / BBJ","Couts_Fixes_Annuels":231007,"Couts_Equipe_Annuels":419143,"Cout_Horaire_Charter":4544,"Cout_Horaire_Prive":3726,"Heures_Base":100,"Taux_Charter_EUR_h":7800,"Vitesse_Croisiere_km_h":837,"Autonomie_km":7073,"Passagers_Max":119},
+        {"Modele":"Boeing 747-100","Categorie":"VIP Wide-Body","Couts_Fixes_Annuels":273066,"Couts_Equipe_Annuels":471643,"Cout_Horaire_Charter":19415,"Cout_Horaire_Prive":15920,"Heures_Base":100,"Taux_Charter_EUR_h":55000,"Vitesse_Croisiere_km_h":890,"Autonomie_km":11195,"Passagers_Max":400},
+        {"Modele":"Boeing 747-200","Categorie":"VIP Wide-Body","Couts_Fixes_Annuels":289890,"Couts_Equipe_Annuels":471643,"Cout_Horaire_Charter":18520,"Cout_Horaire_Prive":15186,"Heures_Base":100,"Taux_Charter_EUR_h":58000,"Vitesse_Croisiere_km_h":890,"Autonomie_km":12640,"Passagers_Max":350},
+        {"Modele":"Boeing 747SP","Categorie":"VIP Wide-Body","Couts_Fixes_Annuels":239780,"Couts_Equipe_Annuels":471643,"Cout_Horaire_Charter":15953,"Cout_Horaire_Prive":13081,"Heures_Base":100,"Taux_Charter_EUR_h":60000,"Vitesse_Croisiere_km_h":902,"Autonomie_km":13723,"Passagers_Max":331},
+        {"Modele":"Boeing 757-200ER","Categorie":"VIP Airliner / BBJ","Couts_Fixes_Annuels":274945,"Couts_Equipe_Annuels":471643,"Cout_Horaire_Charter":5939,"Cout_Horaire_Prive":4870,"Heures_Base":100,"Taux_Charter_EUR_h":12000,"Vitesse_Croisiere_km_h":850,"Autonomie_km":11159,"Passagers_Max":200},
+        {"Modele":"Boeing 767-200ER","Categorie":"VIP Wide-Body","Couts_Fixes_Annuels":384835,"Couts_Equipe_Annuels":471643,"Cout_Horaire_Charter":6537,"Cout_Horaire_Prive":5360,"Heures_Base":100,"Taux_Charter_EUR_h":15000,"Vitesse_Croisiere_km_h":850,"Autonomie_km":13145,"Passagers_Max":181},
+        {"Modele":"Boeing 767-300ER","Categorie":"VIP Wide-Body","Couts_Fixes_Annuels":380439,"Couts_Equipe_Annuels":471643,"Cout_Horaire_Charter":8352,"Cout_Horaire_Prive":6849,"Heures_Base":100,"Taux_Charter_EUR_h":18000,"Vitesse_Croisiere_km_h":850,"Autonomie_km":12474,"Passagers_Max":218},
+        {"Modele":"Boeing 787-8","Categorie":"VIP Wide-Body","Couts_Fixes_Annuels":358241,"Couts_Equipe_Annuels":521978,"Cout_Horaire_Charter":7925,"Cout_Horaire_Prive":6498,"Heures_Base":100,"Taux_Charter_EUR_h":20000,"Vitesse_Croisiere_km_h":930,"Autonomie_km":14538,"Passagers_Max":381},
+        {"Modele":"Boeing BBJ2","Categorie":"ACJ / VIP Airliner","Couts_Fixes_Annuels":241598,"Couts_Equipe_Annuels":469653,"Cout_Horaire_Charter":3882,"Cout_Horaire_Prive":3183,"Heures_Base":350,"Taux_Charter_EUR_h":10000,"Vitesse_Croisiere_km_h":840,"Autonomie_km":10191,"Passagers_Max":19},
+        {"Modele":"Boeing BBJ3","Categorie":"ACJ / VIP Airliner","Couts_Fixes_Annuels":248567,"Couts_Equipe_Annuels":470089,"Cout_Horaire_Charter":3889,"Cout_Horaire_Prive":3189,"Heures_Base":350,"Taux_Charter_EUR_h":11000,"Vitesse_Croisiere_km_h":840,"Autonomie_km":8649,"Passagers_Max":19},
+        {"Modele":"Bombardier Challenger 605","Categorie":"Large Jet","Couts_Fixes_Annuels":500361,"Couts_Equipe_Annuels":346500,"Cout_Horaire_Charter":2619,"Cout_Horaire_Prive":2360,"Heures_Base":350,"Taux_Charter_EUR_h":5500,"Vitesse_Croisiere_km_h":849,"Autonomie_km":6856,"Passagers_Max":10},
+        {"Modele":"Bombardier Challenger 650","Categorie":"Large Jet","Couts_Fixes_Annuels":488946,"Couts_Equipe_Annuels":333270,"Cout_Horaire_Charter":2455,"Cout_Horaire_Prive":2210,"Heures_Base":350,"Taux_Charter_EUR_h":5800,"Vitesse_Croisiere_km_h":850,"Autonomie_km":6795,"Passagers_Max":10},
+        {"Modele":"Bombardier Global Express","Categorie":"Ultra Long Range Jet","Couts_Fixes_Annuels":683427,"Couts_Equipe_Annuels":426052,"Cout_Horaire_Charter":4471,"Cout_Horaire_Prive":4024,"Heures_Base":350,"Taux_Charter_EUR_h":9500,"Vitesse_Croisiere_km_h":904,"Autonomie_km":10726,"Passagers_Max":13},
+        {"Modele":"Bombardier Global Express XRS","Categorie":"Ultra Long Range Jet","Couts_Fixes_Annuels":714023,"Couts_Equipe_Annuels":426052,"Cout_Horaire_Charter":4420,"Cout_Horaire_Prive":3978,"Heures_Base":350,"Taux_Charter_EUR_h":10000,"Vitesse_Croisiere_km_h":904,"Autonomie_km":10934,"Passagers_Max":13},
+        {"Modele":"Challenger 300","Categorie":"Super Midsize Jet","Couts_Fixes_Annuels":102295,"Couts_Equipe_Annuels":392114,"Cout_Horaire_Charter":2878,"Cout_Horaire_Prive":2360,"Heures_Base":350,"Taux_Charter_EUR_h":3500,"Vitesse_Croisiere_km_h":848,"Autonomie_km":5545,"Passagers_Max":8},
+        {"Modele":"Challenger 600","Categorie":"Large Jet","Couts_Fixes_Annuels":78406,"Couts_Equipe_Annuels":372774,"Cout_Horaire_Charter":4337,"Cout_Horaire_Prive":3556,"Heures_Base":350,"Taux_Charter_EUR_h":4500,"Vitesse_Croisiere_km_h":849,"Autonomie_km":5061,"Passagers_Max":9},
+        {"Modele":"Challenger 601-1A","Categorie":"Large Jet","Couts_Fixes_Annuels":84681,"Couts_Equipe_Annuels":367240,"Cout_Horaire_Charter":3720,"Cout_Horaire_Prive":3050,"Heures_Base":350,"Taux_Charter_EUR_h":4500,"Vitesse_Croisiere_km_h":821,"Autonomie_km":5748,"Passagers_Max":9},
+        {"Modele":"Dassault Falcon 10","Categorie":"Light Jet","Couts_Fixes_Annuels":279536,"Couts_Equipe_Annuels":224844,"Cout_Horaire_Charter":2372,"Cout_Horaire_Prive":2135,"Heures_Base":250,"Taux_Charter_EUR_h":2800,"Vitesse_Croisiere_km_h":837,"Autonomie_km":2745,"Passagers_Max":6},
+        {"Modele":"Dassault Falcon 20C","Categorie":"Midsize Jet","Couts_Fixes_Annuels":350751,"Couts_Equipe_Annuels":278094,"Cout_Horaire_Charter":3179,"Cout_Horaire_Prive":2861,"Heures_Base":250,"Taux_Charter_EUR_h":3200,"Vitesse_Croisiere_km_h":805,"Autonomie_km":2167,"Passagers_Max":9},
+        {"Modele":"Dassault Falcon 20C-5","Categorie":"Midsize Jet","Couts_Fixes_Annuels":356747,"Couts_Equipe_Annuels":278094,"Cout_Horaire_Charter":2675,"Cout_Horaire_Prive":2408,"Heures_Base":250,"Taux_Charter_EUR_h":3400,"Vitesse_Croisiere_km_h":842,"Autonomie_km":3684,"Passagers_Max":9},
+        {"Modele":"Dassault Falcon 20F","Categorie":"Midsize Jet","Couts_Fixes_Annuels":356077,"Couts_Equipe_Annuels":278094,"Cout_Horaire_Charter":2895,"Cout_Horaire_Prive":2606,"Heures_Base":250,"Taux_Charter_EUR_h":3200,"Vitesse_Croisiere_km_h":805,"Autonomie_km":2420,"Passagers_Max":9},
+        {"Modele":"Dassault Falcon 20F-5","Categorie":"Midsize Jet","Couts_Fixes_Annuels":353308,"Couts_Equipe_Annuels":278094,"Cout_Horaire_Charter":2485,"Cout_Horaire_Prive":2237,"Heures_Base":250,"Taux_Charter_EUR_h":3500,"Vitesse_Croisiere_km_h":842,"Autonomie_km":4063,"Passagers_Max":9},
+        {"Modele":"Dassault Falcon 50","Categorie":"Large Jet","Couts_Fixes_Annuels":450596,"Couts_Equipe_Annuels":334924,"Cout_Horaire_Charter":3352,"Cout_Horaire_Prive":3017,"Heures_Base":350,"Taux_Charter_EUR_h":5000,"Vitesse_Croisiere_km_h":799,"Autonomie_km":5526,"Passagers_Max":9},
+        {"Modele":"Dassault Falcon 50-40","Categorie":"Large Jet","Couts_Fixes_Annuels":469453,"Couts_Equipe_Annuels":334924,"Cout_Horaire_Charter":3328,"Cout_Horaire_Prive":2995,"Heures_Base":350,"Taux_Charter_EUR_h":5200,"Vitesse_Croisiere_km_h":850,"Autonomie_km":5905,"Passagers_Max":9},
     ]
     return pd.DataFrame(data)
 
@@ -796,11 +824,73 @@ def main():
         with ca2:
             calc=st.button("🧮 Calculate & Generate Quotation",use_container_width=True,type="primary")
 
+        _AIRPORTS = {
+            "OMDB":("Dubai Intl",25.2528,55.3644),"DXB":("Dubai Intl",25.2528,55.3644),
+            "DUBAI":("Dubai",25.2048,55.2708),"OMAA":("Abu Dhabi",24.4330,54.6511),
+            "AUH":("Abu Dhabi",24.4330,54.6511),"OMDW":("Al Maktoum",24.8963,55.1614),
+            "EGLL":("London Heathrow",51.4775,-0.4614),"LHR":("London Heathrow",51.4775,-0.4614),
+            "EGGW":("London Luton",51.8747,-0.3683),"LTN":("London Luton",51.8747,-0.3683),
+            "EGKK":("London Gatwick",51.1537,-0.1821),"LGW":("London Gatwick",51.1537,-0.1821),
+            "LFPG":("Paris CDG",49.0097,2.5479),"CDG":("Paris CDG",49.0097,2.5479),
+            "EDDF":("Frankfurt",50.0333,8.5706),"FRA":("Frankfurt",50.0333,8.5706),
+            "EHAM":("Amsterdam",52.3086,4.7639),"AMS":("Amsterdam",52.3086,4.7639),
+            "LEMD":("Madrid",40.4983,-3.5676),"MAD":("Madrid",40.4983,-3.5676),
+            "LEBL":("Barcelona",41.2971,2.0785),"BCN":("Barcelona",41.2971,2.0785),
+            "LIRF":("Rome Fiumicino",41.8003,12.2389),"FCO":("Rome",41.8003,12.2389),
+            "LMML":("Malta",35.8575,14.4775),"MLA":("Malta",35.8575,14.4775),
+            "GMMN":("Casablanca",33.3675,-7.5900),"CMN":("Casablanca",33.3675,-7.5900),
+            "HECA":("Cairo",30.1219,31.4056),"CAI":("Cairo",30.1219,31.4056),
+            "FACT":("Cape Town",-33.9649,18.6017),"CPT":("Cape Town",-33.9649,18.6017),
+            "FAOR":("Johannesburg",-26.1392,28.2460),"JNB":("Johannesburg",-26.1392,28.2460),
+            "HKJK":("Nairobi",-1.3192,36.9275),"NBO":("Nairobi",-1.3192,36.9275),
+            "OTHH":("Doha",25.2731,51.6080),"DOH":("Doha",25.2731,51.6080),
+            "OERK":("Riyadh",24.9578,46.6988),"RUH":("Riyadh",24.9578,46.6988),
+            "OKBK":("Kuwait",29.2267,47.9689),"KWI":("Kuwait",29.2267,47.9689),
+            "LSZH":("Zurich",47.4647,8.5492),"ZRH":("Zurich",47.4647,8.5492),
+            "LSGG":("Geneva",46.2381,6.1089),"GVA":("Geneva",46.2381,6.1089),
+            "ESSA":("Stockholm",59.6519,17.9186),"ARN":("Stockholm",59.6519,17.9186),
+            "LOWW":("Vienna",48.1103,16.5697),"VIE":("Vienna",48.1103,16.5697),
+            "UUEE":("Moscow",55.9726,37.4146),"SVO":("Moscow",55.9726,37.4146),
+            "LLBG":("Tel Aviv",32.0114,34.8867),"TLV":("Tel Aviv",32.0114,34.8867),
+            "LGAV":("Athens",37.9364,23.9445),"ATH":("Athens",37.9364,23.9445),
+            "LTBA":("Istanbul",40.9769,28.8146),"IST":("Istanbul",40.9769,28.8146),
+            "YSSY":("Sydney",-33.9461,151.1772),"SYD":("Sydney",-33.9461,151.1772),
+            "KLAX":("Los Angeles",33.9425,-118.4081),"LAX":("Los Angeles",33.9425,-118.4081),
+            "KJFK":("New York JFK",40.6413,-73.7781),"JFK":("New York JFK",40.6413,-73.7781),
+            "KMIA":("Miami",25.7959,-80.2870),"MIA":("Miami",25.7959,-80.2870),
+            "VIDP":("New Delhi",28.5665,77.1031),"DEL":("New Delhi",28.5665,77.1031),
+            "VABB":("Mumbai",19.0887,72.8679),"BOM":("Mumbai",19.0887,72.8679),
+            "WSSS":("Singapore",1.3592,103.9894),"SIN":("Singapore",1.3592,103.9894),
+            "VTBS":("Bangkok",13.6900,100.7501),"BKK":("Bangkok",13.6900,100.7501),
+            "RJTT":("Tokyo Haneda",35.5494,139.7798),"HND":("Tokyo Haneda",35.5494,139.7798),
+            "ZBAA":("Beijing",40.0799,116.6031),"PEK":("Beijing",40.0799,116.6031),
+            "LONDON":("London",51.5074,-0.1278),"PARIS":("Paris",48.8566,2.3522),
+            "AMSTERDAM":("Amsterdam",52.3676,4.9041),"BERLIN":("Berlin",52.5200,13.4050),
+            "ROME":("Rome",41.9028,12.4964),"MADRID":("Madrid",40.4168,-3.7038),
+            "BARCELONA":("Barcelona",41.3851,2.1734),"MOSCOW":("Moscow",55.7558,37.6173),
+            "TOKYO":("Tokyo",35.6762,139.6503),"SINGAPORE":("Singapore",1.3521,103.8198),
+            "MUMBAI":("Mumbai",19.0760,72.8777),"DELHI":("New Delhi",28.6139,77.2090),
+            "ISTANBUL":("Istanbul",41.0082,28.9784),"ZURICH":("Zurich",47.3769,8.5417),
+            "GENEVA":("Geneva",46.2044,6.1432),"NICE":("Nice",43.7102,7.2620),
+            "CANNES":("Cannes",43.5528,7.0174),"MONACO":("Monaco",43.7384,7.4246),
+            "MARRAKECH":("Marrakech",31.6295,-7.9811),"DOHA":("Doha",25.2854,51.5310),
+            "DUBAI AL MAKTOUM":("Al Maktoum",24.8963,55.1614),
+        }
         def geocode(place):
+            key=place.strip().upper().replace("-","")
+            if key in _AIRPORTS: n,la,lo=_AIRPORTS[key]; return la,lo,n
+            # partial match
+            for k,(n,la,lo) in _AIRPORTS.items():
+                if key in k or k in key: return la,lo,n
+            # name match
+            pl=place.strip().lower()
+            for k,(n,la,lo) in _AIRPORTS.items():
+                if pl in n.lower() or n.lower() in pl: return la,lo,n
+            # try nominatim as last resort
             try:
                 r=requests.get("https://nominatim.openstreetmap.org/search",
                     params={"q":place,"format":"json","limit":1},
-                    headers={"User-Agent":"MenkorAviationQuotation/1.0"},timeout=8)
+                    headers={"User-Agent":"MenkorAviationQuotation/1.0"},timeout=6)
                 d=r.json()
                 if d: return float(d[0]["lat"]),float(d[0]["lon"]),d[0]["display_name"]
             except Exception: pass
