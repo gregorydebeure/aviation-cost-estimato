@@ -901,14 +901,7 @@ def main():
             pl=place.strip().lower()
             for k,(n,la,lo) in _AIRPORTS.items():
                 if pl in n.lower() or n.lower() in pl: return la,lo,n
-            # try nominatim as last resort
-            try:
-                r=requests.get("https://nominatim.openstreetmap.org/search",
-                    params={"q":place,"format":"json","limit":1},
-                    headers={"User-Agent":"MenkorAviationQuotation/1.0"},timeout=6)
-                d=r.json()
-                if d: return float(d[0]["lat"]),float(d[0]["lon"]),d[0]["display_name"]
-            except Exception: pass
+            # 100% offline — no network call
             return None,None,None
 
         def haversine(la1,lo1,la2,lo2):
@@ -927,7 +920,9 @@ def main():
                 if not leg["from"] or not leg["to"]: errs.append(f"Leg {i+1}: fill From and To."); continue
                 la1,lo1,n1=geocode(leg["from"]); step+=1; prog.progress(step/max(tot,1),text=f"Locating {leg['from']}...")
                 la2,lo2,n2=geocode(leg["to"]); step+=1; prog.progress(step/max(tot,1),text=f"Locating {leg['to']}...")
-                if None in (la1,lo1,la2,lo2): errs.append(f"Leg {i+1}: could not locate airports."); continue
+                if None in (la1,lo1,la2,lo2): 
+                    errs.append(f"Leg {i+1}: airport not found. Use ICAO (OMDB, LFPB, EGLL) or city name (Dubai, Paris, London).")
+                    continue
                 dist=haversine(la1,lo1,la2,lo2); tm,fts=ft_str(dist,speed); cost=(tm/60)*q_rate
                 ald.append(dict(from_name=leg["from"],to_name=leg["to"],dep_time=leg["dep_time"],
                     lat1=la1,lon1=lo1,full_name1=n1,lat2=la2,lon2=lo2,full_name2=n2,
