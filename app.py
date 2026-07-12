@@ -596,7 +596,7 @@ def main():
     costs=calculate_costs(aircraft,h_charter,h_private)
     prof=calculate_profitability(costs,commission_pct,custom_rate)
 
-    tab1,tab2,tab3,tab4=st.tabs(["📊 Dashboard","📈 Profitability","🔍 Sensitivity","💼 Cost Master"])
+    tab1,tab2,tab3,tab4,tab5=st.tabs(["📊 Dashboard","📈 Profitability","🔍 Sensitivity","💼 Cost Master","✈️ Quotation"])
 
     # TAB 1: DASHBOARD
     with tab1:
@@ -767,23 +767,40 @@ def main():
                     file_name=f"Menkor_Cost_{aircraft['Modele'].replace(' ','_')}.pdf",mime="application/pdf",width="stretch")
 
 
-    # ── QUOTATION LINK ──────────────────────────────────────────────────────
-    st.markdown("<hr>", unsafe_allow_html=True)
-    st.markdown("""
-    <div style="background:linear-gradient(135deg,#112244 0%,#1A3A6E 100%);
-         border:1px solid #C9A84C;border-radius:12px;padding:2rem;text-align:center;margin:1rem 0">
-        <div style="font-size:1.5rem;margin-bottom:.5rem">✈️</div>
-        <div style="font-size:1.1rem;font-weight:700;color:#E8C46A;margin-bottom:.5rem">Charter Flight Quotation</div>
-        <div style="font-size:.85rem;color:#8496B0;margin-bottom:1.2rem">
-            Generate a professional charter quotation with route map & PDF
-        </div>
-        <a href="https://menkor-quotation.streamlit.app" target="_blank"
-           style="background:#C9A84C;color:#0B1629;padding:.6rem 2rem;border-radius:6px;
-                  font-weight:700;text-decoration:none;font-size:.95rem">
-            ✈️ Open Quotation Tool
-        </a>
-    </div>""", unsafe_allow_html=True)
-
+    # ── TAB 5 : QUOTATION ───────────────────────────────────────────────
+    with tab5:
+        if not is_premium:
+            premium_gate()
+            st.stop()
+        st.markdown("""
+        <div style="background:linear-gradient(135deg,#112244 0%,#1A3A6E 100%);
+             border:1px solid #C9A84C;border-radius:12px;padding:3rem 2rem;
+             text-align:center;margin:2rem 0">
+            <div style="font-size:3rem;margin-bottom:1rem">✈️</div>
+            <div style="font-size:1.6rem;font-weight:700;color:#E8C46A;margin-bottom:.8rem">
+                Charter Flight Quotation
+            </div>
+            <div style="font-size:.95rem;color:#8496B0;margin-bottom:2rem;line-height:1.6">
+                Generate a professional charter quotation with interactive route map,<br>
+                extras & services, and a branded Menkor Aviation PDF.
+            </div>
+            <div style="font-size:.82rem;color:#D6E4F7;margin-bottom:2rem">
+                ✓ ICAO / IATA airport lookup &nbsp;·&nbsp;
+                ✓ Multi-leg routes &nbsp;·&nbsp;
+                ✓ Catering & crew extras &nbsp;·&nbsp;
+                ✓ PDF with route map
+            </div>
+            <a href="https://menkor-quotation-9nff8mo2pbyf8vddbsucvm.streamlit.app/"
+               target="_blank"
+               style="background:#C9A84C;color:#0B1629;padding:.8rem 2.5rem;
+                      border-radius:6px;font-weight:700;text-decoration:none;
+                      font-size:1.05rem;letter-spacing:.04em">
+                ✈️ Open Quotation Tool
+            </a>
+            <div style="font-size:.75rem;color:#8496B0;margin-top:1.2rem">
+                Opens in a new tab
+            </div>
+        </div>""", unsafe_allow_html=True)
 
     st.markdown("<hr>",unsafe_allow_html=True)
     st.markdown('<div style="text-align:center;font-size:.72rem;color:#4A5568">MENKOR AVIATION — Figures for simulation purposes only</div>',unsafe_allow_html=True)
