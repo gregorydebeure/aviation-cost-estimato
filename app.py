@@ -1242,6 +1242,122 @@ def main():
         </div>''',unsafe_allow_html=True)
 
         st.markdown("<hr>",unsafe_allow_html=True)
+        with st.expander("📂 Real Example — Falcon 7X Full Market Dossier & Turnkey Program", expanded=False):
+            st.caption("A genuine, in-depth example of what the € 300 Market Search becomes once paired with Menkor's turnkey acquisition service — shown here for the Falcon 7X segment (24 aircraft tracked, 2007–2022).")
+
+            # ── Falcon 7X market ledger ──────────────────────────────────
+            st.markdown('<div class="section-header">Falcon 7X Market — 24 Aircraft Tracked</div>',unsafe_allow_html=True)
+            _f7x_rows=[
+                ("SN 296","2022","VP-CMY","Melbourne, FL / Europe","$39,900,000",None,"1,082","268","ESP Platinum / MSP Gold","EASy II Cert 5 / Ka-Band Satcom","Fresh 48M c/w June 2026; Factory warranty baseline","Dassault Aviation"),
+                ("SN 288","2020","Pending","Brussels, Belgium",None,"$33.5M","1,797","820","ESP Platinum / MSP Gold","EASy II Cert 5 / Ka-Band High Speed","1C c/w; Next major 2028; EASA CAT compliant","Boutique European Broker"),
+                ("SN 287","2020","F-reg","Le Bourget, France",None,"$33.0M","1,714","800","ESP Platinum / MSP Gold","EASy II Cert 5 / Ka-Band Satcom","EASA CAT maintenance compliance; Low exposure","Corporate Fleet Sales"),
+                ("SN 233","2018","N666ZL","Fort Lauderdale, FL, USA",None,"$31.0M","490","185","ESP Platinum / MSP Gold","EASy II Cert 5 / Ku/Ka-Band","Ultra-low time (490h); Bespoke custom 14-pax interior","Equus Global Aviation"),
+                ("SN 259","2015","LX-reg","Amsterdam, Netherlands",None,"$25.5M","4,047","1,592","ESP Platinum / MSP","EASy II Cert 4/5 / Ka-Band Satcom","1C c/w; Next heavy 2C/16-yr due 2031","Flying Service NV"),
+                ("SN 255","2015","N-reg","Dallas, TX, USA",None,"$25.0M","4,081","1,620","ESP Platinum / MSP Gold","EASy II Cert 4 / Gogo AVANCE L5","1C c/w; Mid-life gear inspection schedule","Corporate Aircraft Partners"),
+                ("SN 234","2015","N-reg","Los Angeles, CA, USA",None,"$25.2M","3,650","1,480","ESP Platinum / MSP Gold","EASy II Cert 5 / SwiftBroadband + Gogo 5G","1C c/w 2023; Clean 36-month CAMP projection","Jet Transactions Inc."),
+                ("SN 235","2014","N606TJ","Oxford, CT, USA",None,"$24.0M","2,925","1,803","ESP Platinum / MSP Gold","EASy II / SwiftBroadband + Gogo","1C check c/w 2022; One US corporate owner since new","Dassault Falcon Jet Corp"),
+                ("SN 222","2014","N-reg","Miami, FL, USA",None,"$23.5M","3,820","1,510","ESP Platinum / MSP Gold","EASy II Cert 4 / Ka-Band Satcom","1C c/w 2022; Available for sale or lease","Private Jet Sales Miami"),
+                ("SN 211","2013","N-reg","Seattle, WA, USA","$22,950,000",None,"5,009","2,930","ESP Platinum / MSP Gold","EASy II+ Cert 5 / Ka-Band High Speed","1C/2C baseline clear; Next major 3C in 2029","Zone 5 Aviation"),
+                ("SN 194","2013","N194W","Atlanta, GA, USA",None,"$21.8M","4,450","1,890","ESP Platinum / MSP Gold","EASy II Cert 5 / Gogo AVANCE L5","1C c/w; Clean corporate US pedigree; No damage history","VanAllen Group"),
+                ("SN 165","2012","T7-AMY","Guernsey, Channel Islands, UK",None,"$18.5M","3,574","1,151","ESP Gold (100%) / MSP Gold","EASy II / SwiftBroadband","12/24/36-Mo completed Dec 2025; 2C due ~2028","Tangmere Aircraft Sales"),
+                ("SN 143","2012","Pending","Seletar, Singapore",None,"$18.0M","5,000","1,980","ESP Platinum / MSP Gold","EASy II Cert 5 / Inmarsat Satcom","Compliant EU OPS 1 Subparts K&L; 2C due 2028","Global Jet / Private Broker"),
+                ("SN 173","2012","N173CN","Sarasota, FL, USA",None,"$17.5M","5,979","2,510","ESP Gold / MSP Gold","EASy II / Gogo ATG-5000","2C (16-yr) approaching in 2028; Landing gear check","Pinnacle Aviation"),
+                ("SN 118","2011","LX-reg","Geneva / Dubai",None,"$18.2M","4,210","1,650","ESP Platinum / MSP Gold","EASy II Cert 5 / Ka-Band Satcom","2C inspection window due 2027; FalconCare enrolled","Global Jet Monaco/Geneva"),
+                ("SN 129","2011","N-reg","St. Louis, MO, USA",None,"$18.5M","3,895","1,740","ESP Platinum / MSP Gold","EASy II / Gogo AVANCE L5","Low time for year; 2C heavy check due 2027","Jetcraft"),
+                ("SN 115","2011","N506BA","Ronkonkoma, NY, USA","$17,250,000",None,"5,831","2,488","ESP Platinum / MSP Gold","EASy II+ Cert 5 / Gogo AVANCE L5","2C check / gear overhaul exposure within 18 mos","Leading Edge Aviation Solutions / Avpro"),
+                ("SN 096","2010","M-reg","Geneva, Switzerland",None,"$17.0M","3,231","1,290","ESP Gold / MSP Gold","EASy II Cert 4 / SwiftBroadband","2C inspection completed 2026; Clean near-term calendar","Boutsen Aviation"),
+                ("SN 076","2010","Off-Market","Paris / London",None,"$16.8M","4,890","2,150","ESP Platinum / MSP Gold","EASy II / Inmarsat SwiftBroadband","2C check c/w 2026; Clean airframe records","Hyperluxe Off-Market"),
+                ("SN 048","2009","N-reg","Chicago, IL, USA",None,"$16.2M","5,120","2,240","ESP Platinum / MSP Gold","EASy II / Inmarsat Satcom","2C c/w Q2 2025; Repainted 2020; Fresh interior","Central Business Jets"),
+                ("SN 033","2009","N-reg","Savannah, GA, USA",None,"$16.5M","2,458","1,120","ESP Platinum / MSP Gold","EASy II / Gogo Biz","2C inspection completed; Low cycles; Repainted 2025","Guardian Jet"),
+                ("SN 008","2008","M-REEE / G-reg","Biggin Hill, London, UK",None,"$16.0M","2,568","1,145","ESP Platinum / MSP Gold","EASy II Baseline / Inmarsat Satcom","2C (16-yr) & Landing Gear O/H completed Oct 2024","Freestream Aircraft / Avpro"),
+                ("SN 034","2008","OE-reg","Vienna, Austria",None,"$14.8M","6,893","3,120","ESP Gold / MSP","EASy II / SwiftBroadband","Higher total time; 2C check done; 3C due 2032","Global Jet Concept"),
+                ("SN 005","2007","LX-reg","Luxembourg",None,"$13.5M","7,867","3,610","ESP Gold (Partial) / MSP","EASy II Baseline / Ku-Band WiFi","Early serial; 2C completed; High time discount; Paint 2024","Boutsen Aviation"),
+            ]
+            _f7x_hdr=["Serial","Year","Reg.","Location","Price / Est. FMV","TTAF","Landings","Engine Program","Avionics","Inspection Status / Key Notes","Broker"]
+            _f7x_html='<div style="overflow-x:auto;border:1px solid #1A3A6E;border-radius:6px"><table style="border-collapse:collapse;width:100%;min-width:980px;font-size:.78rem">'
+            _f7x_html+='<tr>'+''.join(f'<th style="position:sticky;top:0;background:#13233F;color:#8496B0;text-align:left;padding:.5rem .6rem;border-bottom:1px solid #1A3A6E;white-space:nowrap;font-size:.68rem;letter-spacing:.04em;text-transform:uppercase">{h}</th>' for h in _f7x_hdr)+'</tr>'
+            for sn,yr,reg,loc,adv,fmv,ttaf,land,eng,av,notes,brk in _f7x_rows:
+                price_html=f'<span style="color:#4ADE80;font-weight:700">{adv}</span>' if adv else f'<span style="color:#8496B0;font-style:italic">Make Offer</span><div style="font-size:.7rem;color:#8496B0;font-style:italic">Est. FMV {fmv}</div>'
+                _f7x_html+=(f'<tr><td style="padding:.5rem .6rem;border-bottom:1px solid #1A3A6E;color:#D6E4F7;font-weight:600;white-space:nowrap">{sn}</td>'
+                            f'<td style="padding:.5rem .6rem;border-bottom:1px solid #1A3A6E;color:#D6E4F7;white-space:nowrap">{yr}</td>'
+                            f'<td style="padding:.5rem .6rem;border-bottom:1px solid #1A3A6E;color:#8496B0;white-space:nowrap">{reg}</td>'
+                            f'<td style="padding:.5rem .6rem;border-bottom:1px solid #1A3A6E;color:#8496B0">{loc}</td>'
+                            f'<td style="padding:.5rem .6rem;border-bottom:1px solid #1A3A6E;white-space:nowrap">{price_html}</td>'
+                            f'<td style="padding:.5rem .6rem;border-bottom:1px solid #1A3A6E;color:#D6E4F7;white-space:nowrap">{ttaf}</td>'
+                            f'<td style="padding:.5rem .6rem;border-bottom:1px solid #1A3A6E;color:#D6E4F7;white-space:nowrap">{land}</td>'
+                            f'<td style="padding:.5rem .6rem;border-bottom:1px solid #1A3A6E;color:#8496B0;white-space:nowrap"><span style="border:1px solid #1A3A6E;border-radius:10px;padding:.1rem .5rem;font-size:.7rem">{eng}</span></td>'
+                            f'<td style="padding:.5rem .6rem;border-bottom:1px solid #1A3A6E;color:#8496B0;white-space:nowrap">{av}</td>'
+                            f'<td style="padding:.5rem .6rem;border-bottom:1px solid #1A3A6E;color:#8496B0;max-width:260px">{notes}</td>'
+                            f'<td style="padding:.5rem .6rem;border-bottom:1px solid #1A3A6E;color:#8496B0;white-space:nowrap">{brk}</td></tr>')
+            _f7x_html+='</table></div>'
+            st.markdown(_f7x_html,unsafe_allow_html=True)
+            st.caption("Full dossiers, HD photos and direct broker introductions are provided by Menkor Aviation on request — this is the raw ledger behind every Market Search.")
+
+            # ── Turnkey acquisition timeline ─────────────────────────────
+            st.markdown('<div class="section-header" style="margin-top:1.4rem">Turnkey Acquisition Timeline — Market → AOC</div>',unsafe_allow_html=True)
+            _tl_steps=[
+                ("01","Market Search / Advisory — Taxes / AOC / Registration","Full market search and technical screening, run alongside early advisory on applicable taxes, AOC placement options and the target registration jurisdiction.","3–5 days","$300"),
+                ("02","Preselection / First Pre-Audit","Shortlist narrowed by our B1/B2 engineers and CAMO team; first pre-audit of maintenance records, engine program status and airframe history.","3–7 days",None),
+                ("03","LOI / Deposit Escrow / Pre-Inspection","Letter of Intent negotiated and signed; deposit placed in escrow; informal pre-inspection to confirm the aircraft warrants a full PPI.","5–10 days","$1,500–$3,000"),
+                ("04","APA / PPI","Aircraft Purchase Agreement finalized alongside the Pre-Purchase Inspection: full technical inspection, discrepancy list, closing conditions drafted.","7–14 days","$15,000–$35,000"),
+                ("05","PPI Negotiation / PPI Review","Findings reviewed; price adjustment or corrective work negotiated with the seller based on the discrepancies the inspection raised.","3–7 days",None),
+                ("06","Delivering","Technical acceptance, documentation handover, ferry flight to the aircraft's new base with a type-qualified crew.","1–3 days","$5,000–$25,000"),
+                ("07","Deregistration","Export Certificate of Airworthiness issued and the aircraft removed from its current registry.","5–15 days","$1,500–$3,500"),
+                ("08","Deal Closing","Escrow funds released, title transferred, bill of sale recorded, final settlement between buyer and seller.","2–5 days",None),
+                ("09","Registration","Import and airworthiness certification in the target jurisdiction (EASA, FAA, other), new registration issued.","10–30 days","$8,000–$20,000"),
+                ("10","New AOC Registration","Aircraft added to the operator's Air Operator Certificate, operations manual amended, regulatory approvals secured.","15–45 days","$4,000–$12,000"),
+            ]
+            for num,title,desc,delay,cost in _tl_steps:
+                _cost_html=f'<span style="margin-left:1.2rem">💰 {cost}</span>' if cost else ''
+                st.markdown(f'''<div class="metric-card" style="display:flex;gap:1rem;align-items:flex-start">
+                    <div style="font-size:1.3rem;font-weight:800;color:#E8C46A;min-width:34px">{num}</div>
+                    <div>
+                        <div style="font-size:.95rem;font-weight:700;color:#D6E4F7">{title}</div>
+                        <div style="font-size:.82rem;color:#8496B0;margin-top:.2rem">{desc}</div>
+                        <div style="font-size:.72rem;color:#5A6B85;margin-top:.4rem">⏱ {delay}{_cost_html}</div>
+                    </div>
+                </div>''',unsafe_allow_html=True)
+            st.markdown('''<div class="metric-card" style="border-left:3px dashed #C9A84C;display:flex;gap:1rem;align-items:flex-start">
+                <div style="font-size:1.3rem;font-weight:800;color:#E8C46A;min-width:34px">11</div>
+                <div>
+                    <div style="font-size:.95rem;font-weight:700;color:#D6E4F7">Cost Control on the Entire Operation</div>
+                    <div style="font-size:.82rem;color:#8496B0;margin-top:.2rem">Every cost line across all ten steps is tracked and reported transparently to the client throughout the transaction, then monitored on an ongoing basis after delivery via the Aviation Cost Estimator.</div>
+                    <div style="font-size:.72rem;color:#5A6B85;margin-top:.4rem">⏱ Continuous, start to finish</div>
+                </div>
+            </div>''',unsafe_allow_html=True)
+
+            # ── B1/B2/CAMO technical preselection ─────────────────────────
+            st.markdown('<div class="section-header" style="margin-top:1.4rem">Technical Preselection — B1/B2 &amp; CAMO</div>',unsafe_allow_html=True)
+            st.caption("No aircraft on the market is offered as-is: every listing is first run through an internal technical review before it ever reaches a client presentation.")
+            tpc1,tpc2=st.columns(2)
+            with tpc1:
+                _roles=[("B1","Airframe / Powerplant Engineer","CAMP records, ESP/MSP engine program status, SMOH, AD/SB compliance, damage and structural-repair history."),
+                        ("B2","Avionics Engineer","EASy certification level, connectivity compliance (Satcom/Ka-Band), avionics modification schedules."),
+                        ("CAMO","Continuing Airworthiness Mgmt","Upcoming major inspection due dates (1C/2C/3C), maintenance program, EASA/FAA regulatory compliance for the target jurisdiction.")]
+                for tag,title,desc in _roles:
+                    st.markdown(f'''<div class="metric-card" style="display:flex;gap:.7rem;align-items:flex-start">
+                        <span style="background:#C9A84C;color:#0B1629;font-weight:800;font-size:.72rem;border-radius:5px;padding:.15rem .5rem;white-space:nowrap">{tag}</span>
+                        <div><div style="font-size:.88rem;font-weight:700;color:#D6E4F7">{title}</div>
+                        <div style="font-size:.78rem;color:#8496B0;margin-top:.15rem">{desc}</div></div>
+                    </div>''',unsafe_allow_html=True)
+            with tpc2:
+                _criteria=["Mission: range, passenger count, desired cabin configuration",
+                           "Target budget against advertised price / FMV",
+                           "Operating base and target registration (EASA, FAA, other)",
+                           "Exposure to upcoming major inspections (1C/2C/3C) and near-term maintenance budget",
+                           "Engine program status (ESP Platinum/Gold, MSP) and transferability",
+                           "Ownership, damage and operating history (corporate vs. charter use)"]
+                _crit_html='<div class="metric-card"><div class="metric-label" style="margin-bottom:.6rem">Shortlist criteria applied</div>'
+                _crit_html+=''.join(f'<div style="font-size:.82rem;color:#D6E4F7;padding:.35rem 0;border-bottom:1px solid #1A3A6E">— {c}</div>' for c in _criteria)
+                _crit_html+='</div>'
+                st.markdown(_crit_html,unsafe_allow_html=True)
+
+            st.markdown('''<div class="total-banner" style="padding:1rem 1.5rem">
+                <div style="font-size:1.05rem;font-weight:700;color:#E8C46A;margin-bottom:.3rem">A shortlist built around your mission</div>
+                <div style="font-size:.85rem;color:#8496B0">Send us your requirements — our B1/B2 engineers and CAMO team return a reasoned shortlist before any viewing or PPI is scheduled.</div>
+            </div>''',unsafe_allow_html=True)
+
+        st.markdown("<hr>",unsafe_allow_html=True)
         st.markdown('<div class="section-header">What You Get — € 300 Flat Fee</div>',unsafe_allow_html=True)
         f1,f2,f3=st.columns(3)
         with f1:
