@@ -16,15 +16,17 @@ import os
 from pathlib import Path
 
 _secrets_path = Path(".streamlit/secrets.toml")
-if os.environ.get("ADMIN_EMAIL"):
-    # Always rewrite from the live environment variables (never reuse a stale file from a previous
-    # deploy/process) so a value changed on Render is picked up without any caching surprises.
-    _secrets_path.parent.mkdir(exist_ok=True)
-    _keys = ["STRIPE_SECRET_KEY", "STRIPE_PRICE_ESSENTIEL", "STRIPE_PRICE_PRO", "ADMIN_EMAIL", "ADMIN_PASSWORD",
-             "SUPABASE_URL", "SUPABASE_SERVICE_KEY", "RESEND_API_KEY"]
-    with open(_secrets_path, "w") as f:
-        for k in _keys:
-            v = os.environ.get(k, "")
+try:
+    if os.environ.get("ADMIN_EMAIL") and not st.secrets.get("ADMIN_EMAIL"):
+        # Platforms like Render have no native st.secrets support, only plain env vars — bridge them
+        # into a secrets.toml the first time. On Streamlit Community Cloud this is a no-op: secrets
+        # are already provided natively, so the guard above skips the write entirely.
+        _secrets_path.parent.mkdir(exist_ok=True)
+        _keys = ["STRIPE_SECRET_KEY", "STRIPE_PRICE_ESSENTIEL", "STRIPE_PRICE_PRO", "ADMIN_EMAIL", "ADMIN_PASSWORD",
+                 "SUPABASE_URL", "SUPABASE_SERVICE_KEY", "RESEND_API_KEY"]
+        with open(_secrets_path, "w") as f:
+            for k in _keys:
+                v = os.environ.get(k, "")
             f.write(f'{k} = {v!r}\n')
 
 # ─── PAGE CONFIG & CSS ───────────────────────────────────────────────────────
