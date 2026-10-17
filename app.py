@@ -555,6 +555,68 @@ def _login(email,pwd):
 
 PLAN_PRICE_KEYS = {"essentiel":"STRIPE_PRICE_ESSENTIEL", "pro":"STRIPE_PRICE_PRO"}
 PLAN_LABELS = {"essentiel":"Essentiel — €15/month", "pro":"Pro — €50/month"}
+DAY_PASS_PRICES_CENTS = {"essentiel":1000, "pro":5000}  # 10€ / 50€
+DAY_PASS_HOURS = 48
+DAY_PASS_LABELS = {"essentiel":"Day Pass Essentiel — €10 (48h)", "pro":"Day Pass Pro — €50 (48h)"}
+
+def _get_active_day_pass(email):
+    """Returns the active one-time day-pass tier ('essentiel'/'pro') for this user, or None if expired/absent.
+    Reads the already-fetched Supabase user record — no extra Stripe call, cheap to call on every rerun."""
+    try:
+        import datetime
+        rec=_sb_get_user(email) or {}
+        tier=rec.get("pass_tier"); exp_raw=rec.get("pass_expires_at")
+        if not tier or not exp_raw: return None
+        exp=datetime.datetime.fromisoformat(str(exp_raw).replace("Z","+00:00"))
+        now=datetime.datetime.now(exp.tzinfo) if exp.tzinfo else datetime.datetime.utcnow()
+        return tier if exp>now else None
+    except Exception: return None
+
+def _day_pass_checkout_url(email,tier):
+    """One-time Stripe payment for a 48h all-access pass at the given tier. Returns (url, error)."""
+    try:
+        import stripe
+    except ImportError:
+        return None,"The 'stripe' package isn't installed on the server (check requirements.txt)."
+    try:
+        key=st.secrets.get("STRIPE_SECRET_KEY")
+        if not key: return None,"STRIPE_SECRET_KEY is missing/empty in this app's secrets."
+        amount=DAY_PASS_PRICES_CENTS.get(tier)
+        if not amount: return None,f"Unknown day pass tier: {tier}"
+        stripe.api_key=key
+        s=stripe.checkout.Session.create(
+            mode="payment", customer_email=email,
+            line_items=[{"price_data":{"currency":"eur","unit_amount":amount,
+                "product_data":{"name":f"Aviation Cost Estimator — {DAY_PASS_LABELS.get(tier,tier)}"}},"quantity":1}],
+            metadata={"type":"day_pass","tier":tier,"email":email},
+            success_url="https://aviation-cost-estimator.onrender.com/?pass_session={CHECKOUT_SESSION_ID}",
+            cancel_url="https://aviation-cost-estimator.onrender.com/?cancelled=1")
+        return s.url,None
+    except Exception as e:
+        return None,f"{type(e).__name__}: {e}"
+
+def _process_day_pass_return():
+    """Call once near the top of main(): if the URL carries ?pass_session=... from a completed Stripe
+    Checkout redirect, verify the payment server-side and grant the 48h pass. Never trusts the URL alone."""
+    try:
+        sess_id=st.query_params.get("pass_session")
+        if not sess_id: return
+        import stripe,datetime
+        stripe.api_key=st.secrets.get("STRIPE_SECRET_KEY","")
+        s=stripe.checkout.Session.retrieve(sess_id)
+        if s.get("payment_status")=="paid":
+            meta=s.get("metadata",{}) or {}
+            tier=meta.get("tier")
+            email=((s.get("customer_details") or {}).get("email") or meta.get("email") or "").strip().lower()
+            if email and tier in ("essentiel","pro"):
+                expires=(datetime.datetime.utcnow()+datetime.timedelta(hours=DAY_PASS_HOURS)).isoformat()+"Z"
+                _sb_update_user(email,{"pass_tier":tier,"pass_expires_at":expires})
+                st.session_state["_day_pass_toast"]=(tier,DAY_PASS_HOURS)
+                if st.session_state.get("auth_email","").strip().lower()==email:
+                    st.session_state["auth_pass_tier"]=tier
+        st.query_params.clear()
+    except Exception:
+        pass
 
 def _check_sub(email):
     """Returns 'pro', 'essentiel', or None based on the customer's active Stripe subscription."""
@@ -620,21 +682,32 @@ def _market_search_checkout_url(email, meta):
         if st.session_state.get("auth_is_admin"): st.caption(f"Admin detail: {type(e).__name__}: {e}")
         return None
 
-def _plan_buttons(email,current_plan=None):
-    """Renders a subscribe button for every plan tier above the user's current one.
+def _plan_buttons(email,current_plan=None,show_day_pass=True):
+    """Renders a subscribe button for every plan tier above the user's current one, plus (optionally)
+    one-time 48h day-pass options for occasional users who don't want a monthly commitment.
     On failure, the customer only ever sees a gentle message — the real Stripe error is shown to admins only."""
     is_admin=st.session_state.get("auth_is_admin",False)
     def _fail(label,err):
         st.warning(f"⚠ {label} checkout isn't available right now. Please try again shortly, or contact support if this persists.")
         if is_admin: st.caption(f"Admin detail: {err}")
+    st.markdown('<div style="font-size:.74rem;color:#8496B0;text-align:center;margin:.3rem 0 .2rem 0;letter-spacing:.06em;text-transform:uppercase">Monthly subscription</div>',unsafe_allow_html=True)
     if current_plan not in ("essentiel","pro"):
         url,err=_checkout_url(email,"essentiel")
-        if url: st.markdown(f'<div style="text-align:center;margin-top:.5rem"><a href="{url}" target="_blank" style="display:block;background:#1A3A6E;color:#D6E4F7;border:1px solid #8496B0;padding:.5rem 1.2rem;border-radius:5px;font-weight:600;text-decoration:none">Essentiel — 15€/month</a></div>', unsafe_allow_html=True)
+        if url: st.markdown(f'<div style="text-align:center;margin-top:.3rem"><a href="{url}" target="_blank" style="display:block;background:#1A3A6E;color:#D6E4F7;border:1px solid #8496B0;padding:.5rem 1.2rem;border-radius:5px;font-weight:600;text-decoration:none">Essentiel — 15€/month</a></div>', unsafe_allow_html=True)
         else: _fail("Essentiel",err)
     if current_plan!="pro":
         url,err=_checkout_url(email,"pro")
         if url: st.markdown(f'<div style="text-align:center;margin-top:.5rem"><a href="{url}" target="_blank" style="display:block;background:#C9A84C;color:#0B1629;padding:.5rem 1.2rem;border-radius:5px;font-weight:700;text-decoration:none">⭐ {"Upgrade to Pro" if current_plan=="essentiel" else "Pro"} — 50€/month</a></div>', unsafe_allow_html=True)
         else: _fail("Pro",err)
+    if show_day_pass and current_plan!="pro":
+        st.markdown('<div style="font-size:.74rem;color:#8496B0;text-align:center;margin:.8rem 0 .2rem 0;letter-spacing:.06em;text-transform:uppercase">Or, for a single one-off deal</div>',unsafe_allow_html=True)
+        st.markdown('<div style="font-size:.72rem;color:#8496B0;text-align:center;margin-bottom:.3rem">No commitment — full access for 48h, then it locks again.</div>',unsafe_allow_html=True)
+        url,err=_day_pass_checkout_url(email,"essentiel")
+        if url: st.markdown(f'<div style="text-align:center;margin-top:.3rem"><a href="{url}" target="_blank" style="display:block;background:transparent;color:#D6E4F7;border:1px dashed #8496B0;padding:.45rem 1.2rem;border-radius:5px;font-weight:600;text-decoration:none">{DAY_PASS_LABELS["essentiel"]}</a></div>', unsafe_allow_html=True)
+        else: _fail("Day Pass Essentiel",err)
+        url,err=_day_pass_checkout_url(email,"pro")
+        if url: st.markdown(f'<div style="text-align:center;margin-top:.4rem"><a href="{url}" target="_blank" style="display:block;background:transparent;color:#E8C46A;border:1px dashed #C9A84C;padding:.45rem 1.2rem;border-radius:5px;font-weight:600;text-decoration:none">{DAY_PASS_LABELS["pro"]}</a></div>', unsafe_allow_html=True)
+        else: _fail("Day Pass Pro",err)
 
 def render_auth():
     for k,v in [("auth_email",None),("auth_plan",None),("auth_is_admin",False)]:
@@ -702,9 +775,11 @@ def render_auth():
                     _plan_buttons(email,current_plan=None)
                 if st.button("🔄 Check subscription",key="chk_sub",width="stretch"):
                     st.session_state["auth_plan"]=_check_sub(email); st.rerun()
+                _ap=st.session_state.get("auth_pass_tier")
+                if _ap: st.caption(f"⏱ {_ap.capitalize()} day pass active")
             if st.button("🚪 Log out",key="logout",width="stretch"):
                 st.session_state["auth_email"]=None; st.session_state["auth_plan"]=None
-                st.session_state["auth_is_admin"]=False; st.rerun()
+                st.session_state["auth_is_admin"]=False; st.session_state["auth_pass_tier"]=None; st.rerun()
         else:
             st.markdown('<div class="section-header">🔐 Account</div>', unsafe_allow_html=True)
             view=st.radio("Account",["Login","Register"],horizontal=True,key="auth_view",label_visibility="collapsed")
@@ -721,8 +796,10 @@ def render_auth():
                         else:
                             ok,res=_login(em,pw)
                             if ok:
-                                st.session_state["auth_email"]=em.strip().lower()
-                                st.session_state["auth_plan"]=_check_sub(em.strip().lower())
+                                _em=em.strip().lower()
+                                st.session_state["auth_email"]=_em
+                                st.session_state["auth_plan"]=_check_sub(_em)
+                                st.session_state["auth_pass_tier"]=_get_active_day_pass(_em)
                                 st.session_state["auth_is_admin"]=False; st.rerun()
                             else: st.error(res)
                     else: st.warning("Fill in all fields.")
@@ -782,12 +859,22 @@ def premium_gate(required="pro"):
 # ─── MAIN ────────────────────────────────────────────────────────────────────
 def main():
     for k,v in [("database",None),("cost_master",None),("pdf_report",None),
-                ("auth_email",None),("auth_plan",None),("auth_is_admin",False),
+                ("auth_email",None),("auth_plan",None),("auth_is_admin",False),("auth_pass_tier",None),
                 ("q_legs",[{"from":"","to":"","dep_time":"08:00"}]),
                 ("q_result",None),("q_pdf",None)]:
         if k not in st.session_state: st.session_state[k]=v
 
+    _process_day_pass_return()
+    if st.session_state.get("_day_pass_toast"):
+        _tier,_hrs=st.session_state.pop("_day_pass_toast")
+        st.success(f"✓ {_tier.capitalize()} day pass activated — full access for the next {_hrs}h.")
+
     is_essentiel,is_pro=render_auth()
+    # A day pass unlocks the same tiers as a subscription, just temporarily — merge both into the
+    # effective access level without any extra Stripe/Supabase calls (expiry check is local/cheap).
+    _active_pass=st.session_state.get("auth_pass_tier")
+    if _active_pass=="pro": is_pro=True; is_essentiel=True
+    elif _active_pass=="essentiel": is_essentiel=True
 
     # Header
     c1,c2=st.columns([1,6])
@@ -914,171 +1001,176 @@ def main():
 
     # TAB 2: PROFITABILITY
     with tab2:
-        if not is_essentiel: premium_gate("essentiel"); st.stop()
-        st.markdown('<div class="section-header">Charter Profitability Simulation</div>',unsafe_allow_html=True)
-        if h_charter==0:
-            st.warning("⚠ No charter hours configured.")
+        if not is_essentiel:
+            premium_gate("essentiel")
         else:
-            net=prof["net_result"]; cr=prof["coverage_rate"]
-            badge='<span class="tag-ok">✓ PROFITABLE</span>' if net>=0 else ('<span class="tag-warn">⚠ NEAR BREAK-EVEN</span>' if cr>=70 else '<span class="tag-err">✗ LOSS-MAKING</span>')
-            st.markdown(f"**Status:** {badge} — Coverage: **{cr:.1f}%**",unsafe_allow_html=True)
-            er=prof["effective_rate"]
-            st.markdown(f'''<div class="metric-card" style="margin:.8rem 0"><div class="metric-label">Effective Rate</div>
-                <div class="metric-value">€ {er:,.0f} <span style="font-size:1rem;color:#8496B0">/h</span></div>
-                <div class="metric-sub">{h_charter}h × € {er:,.0f} = € {er*h_charter:,.0f}</div></div>''',unsafe_allow_html=True)
-            r1,r2,r3,r4=st.columns(4)
-            r1.metric("💵 Gross Revenue",fmt(prof["gross_revenue"]))
-            r2.metric("📉 Commission",fmt(prof["commission"]))
-            r3.metric("💰 Net Revenue",fmt(prof["net_revenue"]))
-            r4.metric("📊 Net Result",fmt(net),delta=f"{cr:.1f}%")
-            st.markdown("<hr>",unsafe_allow_html=True)
-            st.plotly_chart(chart_waterfall(costs,prof),width="stretch",config={"displayModeBar":False})
+            st.markdown('<div class="section-header">Charter Profitability Simulation</div>',unsafe_allow_html=True)
+            if h_charter==0:
+                st.warning("⚠ No charter hours configured.")
+            else:
+                net=prof["net_result"]; cr=prof["coverage_rate"]
+                badge='<span class="tag-ok">✓ PROFITABLE</span>' if net>=0 else ('<span class="tag-warn">⚠ NEAR BREAK-EVEN</span>' if cr>=70 else '<span class="tag-err">✗ LOSS-MAKING</span>')
+                st.markdown(f"**Status:** {badge} — Coverage: **{cr:.1f}%**",unsafe_allow_html=True)
+                er=prof["effective_rate"]
+                st.markdown(f'''<div class="metric-card" style="margin:.8rem 0"><div class="metric-label">Effective Rate</div>
+                    <div class="metric-value">€ {er:,.0f} <span style="font-size:1rem;color:#8496B0">/h</span></div>
+                    <div class="metric-sub">{h_charter}h × € {er:,.0f} = € {er*h_charter:,.0f}</div></div>''',unsafe_allow_html=True)
+                r1,r2,r3,r4=st.columns(4)
+                r1.metric("💵 Gross Revenue",fmt(prof["gross_revenue"]))
+                r2.metric("📉 Commission",fmt(prof["commission"]))
+                r3.metric("💰 Net Revenue",fmt(prof["net_revenue"]))
+                r4.metric("📊 Net Result",fmt(net),delta=f"{cr:.1f}%")
+                st.markdown("<hr>",unsafe_allow_html=True)
+                st.plotly_chart(chart_waterfall(costs,prof),width="stretch",config={"displayModeBar":False})
 
     # TAB 3: SENSITIVITY
     with tab3:
-        if not is_essentiel: premium_gate("essentiel"); st.stop()
-        st.markdown('<div class="section-header">Sensitivity — Charter Hours vs Net Result</div>',unsafe_allow_html=True)
-        st.caption(f"Private: {h_private}h | Commission: {commission_pct}% | Rate: € {custom_rate:,.0f}/h")
-        st.plotly_chart(chart_sensitivity(aircraft,h_private,commission_pct,custom_rate),width="stretch",config={"displayModeBar":False})
-        st.markdown('<div class="section-header">Fleet Comparison</div>',unsafe_allow_html=True)
-        comp=[{"Model":row["Modele"],"Total Cost (€)":round(calculate_costs(row,h_charter,h_private)["grand_total"]),
-               "Cost/Hour (€)":round(calculate_costs(row,h_charter,h_private)["avg_cost_h"])} for _,row in df.iterrows()]
-        df_c=pd.DataFrame(comp).sort_values("Total Cost (€)")
-        fig_c=px.bar(df_c,x="Model",y="Total Cost (€)",color="Cost/Hour (€)",
-                     color_continuous_scale=["#1A3A6E","#4A90D9","#C9A84C","#E8C46A"],template="plotly_dark")
-        fig_c.update_layout(paper_bgcolor="rgba(0,0,0,0)",plot_bgcolor="rgba(0,0,0,0)",
-                            font=dict(color="#D6E4F7"),height=350,margin=dict(t=10,b=80,l=10,r=10),
-                            xaxis=dict(tickangle=-30),yaxis=dict(gridcolor="#1A3A6E",tickformat=",.0f"))
-        st.plotly_chart(fig_c,width="stretch",config={"displayModeBar":False})
+        if not is_essentiel:
+            premium_gate("essentiel")
+        else:
+            st.markdown('<div class="section-header">Sensitivity — Charter Hours vs Net Result</div>',unsafe_allow_html=True)
+            st.caption(f"Private: {h_private}h | Commission: {commission_pct}% | Rate: € {custom_rate:,.0f}/h")
+            st.plotly_chart(chart_sensitivity(aircraft,h_private,commission_pct,custom_rate),width="stretch",config={"displayModeBar":False})
+            st.markdown('<div class="section-header">Fleet Comparison</div>',unsafe_allow_html=True)
+            comp=[{"Model":row["Modele"],"Total Cost (€)":round(calculate_costs(row,h_charter,h_private)["grand_total"]),
+                   "Cost/Hour (€)":round(calculate_costs(row,h_charter,h_private)["avg_cost_h"])} for _,row in df.iterrows()]
+            df_c=pd.DataFrame(comp).sort_values("Total Cost (€)")
+            fig_c=px.bar(df_c,x="Model",y="Total Cost (€)",color="Cost/Hour (€)",
+                         color_continuous_scale=["#1A3A6E","#4A90D9","#C9A84C","#E8C46A"],template="plotly_dark")
+            fig_c.update_layout(paper_bgcolor="rgba(0,0,0,0)",plot_bgcolor="rgba(0,0,0,0)",
+                                font=dict(color="#D6E4F7"),height=350,margin=dict(t=10,b=80,l=10,r=10),
+                                xaxis=dict(tickangle=-30),yaxis=dict(gridcolor="#1A3A6E",tickformat=",.0f"))
+            st.plotly_chart(fig_c,width="stretch",config={"displayModeBar":False})
 
     # TAB 4: COST MASTER
     with tab4:
-        if not is_pro: premium_gate("pro"); st.stop()
-        st.markdown('<div class="main-title" style="font-size:1.4rem">💼 Cost Master</div>',unsafe_allow_html=True)
-        cfg1,cfg2,cfg3=st.columns(3)
-        with cfg1: annual_flights=st.number_input("Annual flights",min_value=1,max_value=2000,value=200,step=10)
-        with cfg2: cm_rate=st.number_input("Charter rate (€/h)",min_value=0,max_value=200000,value=int(custom_rate) if custom_rate>0 else int(db_rate),step=500)
-        with cfg3: cm_comm=st.slider("Commission (%)",0,25,int(commission_pct),step=1,key="cm_comm")
-        st.markdown("<hr>",unsafe_allow_html=True)
-        mc1,mc2,mc3=st.columns(3)
-        with mc1: use_gop=st.radio("✈ Operational",["🌐 Generic","✏️ Custom"],horizontal=True,key="gop")=="🌐 Generic"
-        with mc2: use_gdir=st.radio("🔧 Direct",["🌐 Generic","✏️ Custom"],horizontal=True,key="gdir")=="🌐 Generic"
-        with mc3: use_gind=st.radio("👥 Indirect",["🌐 Generic","✏️ Custom"],horizontal=True,key="gind")=="🌐 Generic"
-
-        def render_block(title,color,defaults,prefix,use_generic,step=100.0):
-            vals={}
-            with st.expander(title,expanded=True):
-                st.markdown(f'<div style="font-size:.72rem;color:{color};letter-spacing:.1em;margin-bottom:.6rem">{"🌐 GENERIC" if use_generic else "✏️ CUSTOM"}</div>',unsafe_allow_html=True)
-                pairs=list(defaults.items())
-                for i in range(0,len(pairs),2):
-                    c1,c2,c3,c4=st.columns([2.2,1,2.2,1])
-                    k1,d1=pairs[i]
-                    with c1: st.markdown(f'<span style="font-size:.82rem;color:#D6E4F7">{k1}</span>',unsafe_allow_html=True)
-                    with c2:
-                        if use_generic: st.markdown(f'<span style="color:#E8C46A;font-size:.88rem;font-weight:600">€ {d1:,.0f}</span>',unsafe_allow_html=True); vals[k1]=float(d1)
-                        else: vals[k1]=st.number_input(k1,value=float(d1),min_value=0.0,step=step,label_visibility="collapsed",key=f"{prefix}_{k1}")
-                    if i+1<len(pairs):
-                        k2,d2=pairs[i+1]
-                        with c3: st.markdown(f'<span style="font-size:.82rem;color:#D6E4F7">{k2}</span>',unsafe_allow_html=True)
-                        with c4:
-                            if use_generic: st.markdown(f'<span style="color:#E8C46A;font-size:.88rem;font-weight:600">€ {d2:,.0f}</span>',unsafe_allow_html=True); vals[k2]=float(d2)
-                            else: vals[k2]=st.number_input(k2,value=float(d2),min_value=0.0,step=step,label_visibility="collapsed",key=f"{prefix}_{k2}")
-            return vals
-
-        op_vals=render_block("✈ OPERATIONAL (per flight)","#60A5FA",CM_OP,"op",use_gop,50.0)
-        op_pf=sum(op_vals.values()); op_a=op_pf*annual_flights
-        st.markdown(f'<div style="padding:.4rem .8rem;background:#112244;border-radius:4px;font-size:.84rem;margin-bottom:.5rem">Per flight: <b style="color:#60A5FA">€ {op_pf:,.0f}</b> · Annual: <b style="color:#60A5FA">€ {op_a:,.0f}</b></div>',unsafe_allow_html=True)
-        dir_vals=render_block("🔧 DIRECT COSTS (annual)","#F59E0B",CM_DIR,"dir",use_gdir,500.0)
-        dir_t=sum(dir_vals.values())
-        st.markdown(f'<div style="padding:.4rem .8rem;background:#112244;border-radius:4px;font-size:.84rem;margin-bottom:.5rem">Direct total: <b style="color:#F59E0B">€ {dir_t:,.0f}</b></div>',unsafe_allow_html=True)
-        ind_vals=render_block("👥 INDIRECT / CREW (annual)","#A78BFA",CM_IND,"ind",use_gind,500.0)
-        ind_t=sum(ind_vals.values())
-        st.markdown(f'<div style="padding:.4rem .8rem;background:#112244;border-radius:4px;font-size:.84rem;margin-bottom:.5rem">Indirect total: <b style="color:#A78BFA">€ {ind_t:,.0f}</b></div>',unsafe_allow_html=True)
-
-        st.markdown("<br>",unsafe_allow_html=True)
-        if st.button("🚀 Generate Financial Analysis",width="stretch"):
-            ft=op_a; st.session_state["cost_master"]=dict(op_vals=op_vals,op_annual=op_a,op_per_flight=op_pf,
-                dir_vals=dir_vals,dir_total=dir_t,ind_vals=ind_vals,ind_total=ind_t,annual_flights=annual_flights,
-                charter_rate=cm_rate,commission_pct=cm_comm,h_charter=h_charter,aircraft_name=aircraft["Modele"])
-
-        if st.session_state.get("cost_master"):
-            cm=st.session_state["cost_master"]; op_a2=cm["op_annual"]; dir_a=cm["dir_total"]; ind_a=cm["ind_total"]
-            grand=op_a2+dir_a+ind_a; gross=cm["charter_rate"]*cm["h_charter"]
-            commission=gross*cm["commission_pct"]/100; nr=gross-commission; net=nr-grand; cov=(nr/grand*100) if grand>0 else 0
+        if not is_pro:
+            premium_gate("pro")
+        else:
+            st.markdown('<div class="main-title" style="font-size:1.4rem">💼 Cost Master</div>',unsafe_allow_html=True)
+            cfg1,cfg2,cfg3=st.columns(3)
+            with cfg1: annual_flights=st.number_input("Annual flights",min_value=1,max_value=2000,value=200,step=10)
+            with cfg2: cm_rate=st.number_input("Charter rate (€/h)",min_value=0,max_value=200000,value=int(custom_rate) if custom_rate>0 else int(db_rate),step=500)
+            with cfg3: cm_comm=st.slider("Commission (%)",0,25,int(commission_pct),step=1,key="cm_comm")
             st.markdown("<hr>",unsafe_allow_html=True)
-            st.markdown(f'''<div class="total-banner">
-                <div style="font-size:.72rem;color:#8496B0;margin-bottom:.4rem">{cm["aircraft_name"]}</div>
-                <div style="font-size:2.4rem;font-weight:800;color:#E8C46A">€ {grand:,.0f}</div>
-                <div style="font-size:.85rem;color:#8496B0">Op: <b style="color:#60A5FA">€ {op_a2:,.0f}</b> · Direct: <b style="color:#F59E0B">€ {dir_a:,.0f}</b> · Crew: <b style="color:#A78BFA">€ {ind_a:,.0f}</b></div>
-            </div>''',unsafe_allow_html=True)
-            kk1,kk2,kk3,kk4,kk5=st.columns(5)
-            kk1.metric("✈ Gross Revenue",fmt(gross)); kk2.metric("📉 Commission",fmt(commission))
-            kk3.metric("💰 Net Revenue",fmt(nr)); kk4.metric("💸 Total Costs",fmt(grand))
-            kk5.metric("📊 Net Result",fmt(net),delta=f"{cov:.1f}%")
-            st.markdown("<hr>",unsafe_allow_html=True)
-            d1,d2=st.columns(2)
-            with d1: st.plotly_chart(cm_global_donut(op_a2,dir_a,ind_a),width="stretch",config={"displayModeBar":False})
-            with d2: st.plotly_chart(cm_waterfall(op_a2,dir_a,ind_a,gross,cm["commission_pct"]),width="stretch",config={"displayModeBar":False})
-            b1,b2,b3=st.columns(3)
-            with b1: st.plotly_chart(cm_donut(list(cm["op_vals"].keys()),[v*cm["annual_flights"] for v in cm["op_vals"].values()],["#60A5FA","#3B82F6","#1D4ED8","#93C5FD","#BFDBFE","#2563EB","#1E40AF","#DBEAFE"],"Operational"),width="stretch",config={"displayModeBar":False})
-            with b2: st.plotly_chart(cm_donut(list(cm["dir_vals"].keys()),list(cm["dir_vals"].values()),["#F59E0B","#D97706","#B45309","#FCD34D","#FDE68A","#92400E","#FBBF24","#FEF3C7","#78350F"],"Direct"),width="stretch",config={"displayModeBar":False})
-            with b3: st.plotly_chart(cm_donut(list(cm["ind_vals"].keys()),list(cm["ind_vals"].values()),["#A78BFA","#8B5CF6","#7C3AED","#C4B5FD","#DDD6FE","#6D28D9","#5B21B6","#EDE9FE","#4C1D95"],"Crew"),width="stretch",config={"displayModeBar":False})
-            st.markdown("<hr>",unsafe_allow_html=True)
-            bb1,bb2,bb3=st.columns(3)
-            with bb1: st.plotly_chart(cm_bar(list(cm["op_vals"].keys()),[v*cm["annual_flights"] for v in cm["op_vals"].values()],"#60A5FA","Operational"),width="stretch",config={"displayModeBar":False})
-            with bb2: st.plotly_chart(cm_bar(list(cm["dir_vals"].keys()),list(cm["dir_vals"].values()),"#F59E0B","Direct"),width="stretch",config={"displayModeBar":False})
-            with bb3: st.plotly_chart(cm_bar(list(cm["ind_vals"].keys()),list(cm["ind_vals"].values()),"#A78BFA","Crew"),width="stretch",config={"displayModeBar":False})
-            st.markdown("<hr>",unsafe_allow_html=True)
-            rows2=[]
-            for k,v in cm["op_vals"].items(): rows2.append({"Category":"Operational","Line":k,"Annual (€)":f"€ {v*cm['annual_flights']:,.0f}","% Total":f"{v*cm['annual_flights']/grand*100:.1f}%"})
-            for k,v in cm["dir_vals"].items(): rows2.append({"Category":"Direct","Line":k,"Annual (€)":f"€ {v:,.0f}","% Total":f"{v/grand*100:.1f}%"})
-            for k,v in cm["ind_vals"].items(): rows2.append({"Category":"Crew","Line":k,"Annual (€)":f"€ {v:,.0f}","% Total":f"{v/grand*100:.1f}%"})
-            st.dataframe(pd.DataFrame(rows2),width="stretch",hide_index=True)
-            if st.button("📄 Generate PDF Report",width="stretch",type="primary"):
-                with st.spinner("Building report..."):
-                    try:
-                        st.session_state["pdf_report"]=generate_pdf_report(cm,aircraft,annual_flights)
-                        st.success("✓ Report ready!")
-                    except Exception as e: st.error(f"PDF error: {e}")
-            if st.session_state.get("pdf_report"):
-                st.download_button("⬇ Download PDF Report",data=st.session_state["pdf_report"],
-                    file_name=f"Menkor_Cost_{aircraft['Modele'].replace(' ','_')}.pdf",mime="application/pdf",width="stretch")
+            mc1,mc2,mc3=st.columns(3)
+            with mc1: use_gop=st.radio("✈ Operational",["🌐 Generic","✏️ Custom"],horizontal=True,key="gop")=="🌐 Generic"
+            with mc2: use_gdir=st.radio("🔧 Direct",["🌐 Generic","✏️ Custom"],horizontal=True,key="gdir")=="🌐 Generic"
+            with mc3: use_gind=st.radio("👥 Indirect",["🌐 Generic","✏️ Custom"],horizontal=True,key="gind")=="🌐 Generic"
 
+            def render_block(title,color,defaults,prefix,use_generic,step=100.0):
+                vals={}
+                with st.expander(title,expanded=True):
+                    st.markdown(f'<div style="font-size:.72rem;color:{color};letter-spacing:.1em;margin-bottom:.6rem">{"🌐 GENERIC" if use_generic else "✏️ CUSTOM"}</div>',unsafe_allow_html=True)
+                    pairs=list(defaults.items())
+                    for i in range(0,len(pairs),2):
+                        c1,c2,c3,c4=st.columns([2.2,1,2.2,1])
+                        k1,d1=pairs[i]
+                        with c1: st.markdown(f'<span style="font-size:.82rem;color:#D6E4F7">{k1}</span>',unsafe_allow_html=True)
+                        with c2:
+                            if use_generic: st.markdown(f'<span style="color:#E8C46A;font-size:.88rem;font-weight:600">€ {d1:,.0f}</span>',unsafe_allow_html=True); vals[k1]=float(d1)
+                            else: vals[k1]=st.number_input(k1,value=float(d1),min_value=0.0,step=step,label_visibility="collapsed",key=f"{prefix}_{k1}")
+                        if i+1<len(pairs):
+                            k2,d2=pairs[i+1]
+                            with c3: st.markdown(f'<span style="font-size:.82rem;color:#D6E4F7">{k2}</span>',unsafe_allow_html=True)
+                            with c4:
+                                if use_generic: st.markdown(f'<span style="color:#E8C46A;font-size:.88rem;font-weight:600">€ {d2:,.0f}</span>',unsafe_allow_html=True); vals[k2]=float(d2)
+                                else: vals[k2]=st.number_input(k2,value=float(d2),min_value=0.0,step=step,label_visibility="collapsed",key=f"{prefix}_{k2}")
+                return vals
+
+            op_vals=render_block("✈ OPERATIONAL (per flight)","#60A5FA",CM_OP,"op",use_gop,50.0)
+            op_pf=sum(op_vals.values()); op_a=op_pf*annual_flights
+            st.markdown(f'<div style="padding:.4rem .8rem;background:#112244;border-radius:4px;font-size:.84rem;margin-bottom:.5rem">Per flight: <b style="color:#60A5FA">€ {op_pf:,.0f}</b> · Annual: <b style="color:#60A5FA">€ {op_a:,.0f}</b></div>',unsafe_allow_html=True)
+            dir_vals=render_block("🔧 DIRECT COSTS (annual)","#F59E0B",CM_DIR,"dir",use_gdir,500.0)
+            dir_t=sum(dir_vals.values())
+            st.markdown(f'<div style="padding:.4rem .8rem;background:#112244;border-radius:4px;font-size:.84rem;margin-bottom:.5rem">Direct total: <b style="color:#F59E0B">€ {dir_t:,.0f}</b></div>',unsafe_allow_html=True)
+            ind_vals=render_block("👥 INDIRECT / CREW (annual)","#A78BFA",CM_IND,"ind",use_gind,500.0)
+            ind_t=sum(ind_vals.values())
+            st.markdown(f'<div style="padding:.4rem .8rem;background:#112244;border-radius:4px;font-size:.84rem;margin-bottom:.5rem">Indirect total: <b style="color:#A78BFA">€ {ind_t:,.0f}</b></div>',unsafe_allow_html=True)
+
+            st.markdown("<br>",unsafe_allow_html=True)
+            if st.button("🚀 Generate Financial Analysis",width="stretch"):
+                ft=op_a; st.session_state["cost_master"]=dict(op_vals=op_vals,op_annual=op_a,op_per_flight=op_pf,
+                    dir_vals=dir_vals,dir_total=dir_t,ind_vals=ind_vals,ind_total=ind_t,annual_flights=annual_flights,
+                    charter_rate=cm_rate,commission_pct=cm_comm,h_charter=h_charter,aircraft_name=aircraft["Modele"])
+
+            if st.session_state.get("cost_master"):
+                cm=st.session_state["cost_master"]; op_a2=cm["op_annual"]; dir_a=cm["dir_total"]; ind_a=cm["ind_total"]
+                grand=op_a2+dir_a+ind_a; gross=cm["charter_rate"]*cm["h_charter"]
+                commission=gross*cm["commission_pct"]/100; nr=gross-commission; net=nr-grand; cov=(nr/grand*100) if grand>0 else 0
+                st.markdown("<hr>",unsafe_allow_html=True)
+                st.markdown(f'''<div class="total-banner">
+                    <div style="font-size:.72rem;color:#8496B0;margin-bottom:.4rem">{cm["aircraft_name"]}</div>
+                    <div style="font-size:2.4rem;font-weight:800;color:#E8C46A">€ {grand:,.0f}</div>
+                    <div style="font-size:.85rem;color:#8496B0">Op: <b style="color:#60A5FA">€ {op_a2:,.0f}</b> · Direct: <b style="color:#F59E0B">€ {dir_a:,.0f}</b> · Crew: <b style="color:#A78BFA">€ {ind_a:,.0f}</b></div>
+                </div>''',unsafe_allow_html=True)
+                kk1,kk2,kk3,kk4,kk5=st.columns(5)
+                kk1.metric("✈ Gross Revenue",fmt(gross)); kk2.metric("📉 Commission",fmt(commission))
+                kk3.metric("💰 Net Revenue",fmt(nr)); kk4.metric("💸 Total Costs",fmt(grand))
+                kk5.metric("📊 Net Result",fmt(net),delta=f"{cov:.1f}%")
+                st.markdown("<hr>",unsafe_allow_html=True)
+                d1,d2=st.columns(2)
+                with d1: st.plotly_chart(cm_global_donut(op_a2,dir_a,ind_a),width="stretch",config={"displayModeBar":False})
+                with d2: st.plotly_chart(cm_waterfall(op_a2,dir_a,ind_a,gross,cm["commission_pct"]),width="stretch",config={"displayModeBar":False})
+                b1,b2,b3=st.columns(3)
+                with b1: st.plotly_chart(cm_donut(list(cm["op_vals"].keys()),[v*cm["annual_flights"] for v in cm["op_vals"].values()],["#60A5FA","#3B82F6","#1D4ED8","#93C5FD","#BFDBFE","#2563EB","#1E40AF","#DBEAFE"],"Operational"),width="stretch",config={"displayModeBar":False})
+                with b2: st.plotly_chart(cm_donut(list(cm["dir_vals"].keys()),list(cm["dir_vals"].values()),["#F59E0B","#D97706","#B45309","#FCD34D","#FDE68A","#92400E","#FBBF24","#FEF3C7","#78350F"],"Direct"),width="stretch",config={"displayModeBar":False})
+                with b3: st.plotly_chart(cm_donut(list(cm["ind_vals"].keys()),list(cm["ind_vals"].values()),["#A78BFA","#8B5CF6","#7C3AED","#C4B5FD","#DDD6FE","#6D28D9","#5B21B6","#EDE9FE","#4C1D95"],"Crew"),width="stretch",config={"displayModeBar":False})
+                st.markdown("<hr>",unsafe_allow_html=True)
+                bb1,bb2,bb3=st.columns(3)
+                with bb1: st.plotly_chart(cm_bar(list(cm["op_vals"].keys()),[v*cm["annual_flights"] for v in cm["op_vals"].values()],"#60A5FA","Operational"),width="stretch",config={"displayModeBar":False})
+                with bb2: st.plotly_chart(cm_bar(list(cm["dir_vals"].keys()),list(cm["dir_vals"].values()),"#F59E0B","Direct"),width="stretch",config={"displayModeBar":False})
+                with bb3: st.plotly_chart(cm_bar(list(cm["ind_vals"].keys()),list(cm["ind_vals"].values()),"#A78BFA","Crew"),width="stretch",config={"displayModeBar":False})
+                st.markdown("<hr>",unsafe_allow_html=True)
+                rows2=[]
+                for k,v in cm["op_vals"].items(): rows2.append({"Category":"Operational","Line":k,"Annual (€)":f"€ {v*cm['annual_flights']:,.0f}","% Total":f"{v*cm['annual_flights']/grand*100:.1f}%"})
+                for k,v in cm["dir_vals"].items(): rows2.append({"Category":"Direct","Line":k,"Annual (€)":f"€ {v:,.0f}","% Total":f"{v/grand*100:.1f}%"})
+                for k,v in cm["ind_vals"].items(): rows2.append({"Category":"Crew","Line":k,"Annual (€)":f"€ {v:,.0f}","% Total":f"{v/grand*100:.1f}%"})
+                st.dataframe(pd.DataFrame(rows2),width="stretch",hide_index=True)
+                if st.button("📄 Generate PDF Report",width="stretch",type="primary"):
+                    with st.spinner("Building report..."):
+                        try:
+                            st.session_state["pdf_report"]=generate_pdf_report(cm,aircraft,annual_flights)
+                            st.success("✓ Report ready!")
+                        except Exception as e: st.error(f"PDF error: {e}")
+                if st.session_state.get("pdf_report"):
+                    st.download_button("⬇ Download PDF Report",data=st.session_state["pdf_report"],
+                        file_name=f"Menkor_Cost_{aircraft['Modele'].replace(' ','_')}.pdf",mime="application/pdf",width="stretch")
 
     # ── TAB 5 : QUOTATION ───────────────────────────────────────────────
     with tab5:
         if not is_pro:
             premium_gate("pro")
-            st.stop()
-        st.markdown("""
-        <div style="background:linear-gradient(135deg,#112244 0%,#1A3A6E 100%);
-             border:1px solid #C9A84C;border-radius:12px;padding:3rem 2rem;
-             text-align:center;margin:2rem 0">
-            <div style="font-size:3rem;margin-bottom:1rem">✈️</div>
-            <div style="font-size:1.6rem;font-weight:700;color:#E8C46A;margin-bottom:.8rem">
-                Charter Flight Quotation
-            </div>
-            <div style="font-size:.95rem;color:#8496B0;margin-bottom:2rem;line-height:1.6">
-                Generate a professional charter quotation with interactive route map,<br>
-                extras & services, and a branded Menkor Aviation PDF.
-            </div>
-            <div style="font-size:.82rem;color:#D6E4F7;margin-bottom:2rem">
-                ✓ ICAO / IATA airport lookup &nbsp;·&nbsp;
-                ✓ Multi-leg routes &nbsp;·&nbsp;
-                ✓ Catering & crew extras &nbsp;·&nbsp;
-                ✓ PDF with route map
-            </div>
-            <a href="https://menkor-quotation-9nff8mo2pbyf8vddbsucvm.streamlit.app/"
-               target="_blank"
-               style="background:#C9A84C;color:#0B1629;padding:.8rem 2.5rem;
-                      border-radius:6px;font-weight:700;text-decoration:none;
-                      font-size:1.05rem;letter-spacing:.04em">
-                ✈️ Open Quotation Tool
-            </a>
-            <div style="font-size:.75rem;color:#8496B0;margin-top:1.2rem">
-                Opens in a new tab
-            </div>
-        </div>""", unsafe_allow_html=True)
+        else:
+            st.markdown("""
+            <div style="background:linear-gradient(135deg,#112244 0%,#1A3A6E 100%);
+                 border:1px solid #C9A84C;border-radius:12px;padding:3rem 2rem;
+                 text-align:center;margin:2rem 0">
+                <div style="font-size:3rem;margin-bottom:1rem">✈️</div>
+                <div style="font-size:1.6rem;font-weight:700;color:#E8C46A;margin-bottom:.8rem">
+                    Charter Flight Quotation
+                </div>
+                <div style="font-size:.95rem;color:#8496B0;margin-bottom:2rem;line-height:1.6">
+                    Generate a professional charter quotation with interactive route map,<br>
+                    extras & services, and a branded Menkor Aviation PDF.
+                </div>
+                <div style="font-size:.82rem;color:#D6E4F7;margin-bottom:2rem">
+                    ✓ ICAO / IATA airport lookup &nbsp;·&nbsp;
+                    ✓ Multi-leg routes &nbsp;·&nbsp;
+                    ✓ Catering & crew extras &nbsp;·&nbsp;
+                    ✓ PDF with route map
+                </div>
+                <a href="https://menkor-quotation-9nff8mo2pbyf8vddbsucvm.streamlit.app/"
+                   target="_blank"
+                   style="background:#C9A84C;color:#0B1629;padding:.8rem 2.5rem;
+                          border-radius:6px;font-weight:700;text-decoration:none;
+                          font-size:1.05rem;letter-spacing:.04em">
+                    ✈️ Open Quotation Tool
+                </a>
+                <div style="font-size:.75rem;color:#8496B0;margin-top:1.2rem">
+                    Opens in a new tab
+                </div>
+            </div>""", unsafe_allow_html=True)
 
     # ── TAB 6 : MARKET SEARCH ───────────────────────────────────────────
     with tab6:
