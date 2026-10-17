@@ -15,19 +15,21 @@ warnings.filterwarnings("ignore")
 import os
 from pathlib import Path
 
-_secrets_path = Path(".streamlit/secrets.toml")
 try:
+    # Platforms like Render have no native st.secrets support, only plain env vars — bridge them into
+    # a secrets.toml once. On Streamlit Community Cloud st.secrets is already populated natively (and
+    # that filesystem is read-only anyway), so the guard below skips this entirely there.
     if os.environ.get("ADMIN_EMAIL") and not st.secrets.get("ADMIN_EMAIL"):
-        # Platforms like Render have no native st.secrets support, only plain env vars — bridge them
-        # into a secrets.toml the first time. On Streamlit Community Cloud this is a no-op: secrets
-        # are already provided natively, so the guard above skips the write entirely.
+        _secrets_path = Path(".streamlit/secrets.toml")
         _secrets_path.parent.mkdir(exist_ok=True)
         _keys = ["STRIPE_SECRET_KEY", "STRIPE_PRICE_ESSENTIEL", "STRIPE_PRICE_PRO", "ADMIN_EMAIL", "ADMIN_PASSWORD",
                  "SUPABASE_URL", "SUPABASE_SERVICE_KEY", "RESEND_API_KEY"]
         with open(_secrets_path, "w") as f:
             for k in _keys:
                 v = os.environ.get(k, "")
-            f.write(f'{k} = {v!r}\n')
+                f.write(f'{k} = {v!r}\n')
+except Exception:
+    pass  # never let this bootstrap crash the app on any platform
 
 # ─── PAGE CONFIG & CSS ───────────────────────────────────────────────────────
 st.set_page_config(page_title="Aviation Cost Estimator", page_icon="✈",
