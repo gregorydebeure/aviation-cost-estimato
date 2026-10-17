@@ -599,11 +599,37 @@ def premium_gate(required="pro"):
     req_label="Pro" if required=="pro" else "Essentiel"
     price_label=PLAN_LABELS.get(required,"")
     st.markdown(f"""<div style="background:linear-gradient(135deg,#112244 0%,#1A3A6E 100%);
-         border:1px solid #C9A84C;border-radius:12px;padding:2.5rem;text-align:center;margin:2rem 0">
+         border:1px solid #C9A84C;border-radius:12px;padding:2.5rem;text-align:center;margin:2rem 0 1rem 0">
         <div style="font-size:2rem;margin-bottom:.8rem">🔒</div>
         <div style="font-size:1.3rem;font-weight:700;color:#E8C46A;margin-bottom:.5rem">{req_label} Feature</div>
-        <div style="font-size:.9rem;color:#8496B0;margin-bottom:1.5rem">This section requires the <b style="color:#C9A84C">{price_label}</b> plan.</div>
+        <div style="font-size:.9rem;color:#8496B0;margin-bottom:.2rem">This section requires the <b style="color:#C9A84C">{price_label}</b> plan.</div>
     </div>""", unsafe_allow_html=True)
+
+    def _cell(included,is_current_col):
+        mark='<span style="color:#4ADE80;font-weight:700">✓</span>' if included else '<span style="color:#4A5568">—</span>'
+        bg="background:rgba(201,168,76,.10);" if is_current_col else ""
+        return f'<td style="text-align:center;padding:.5rem .4rem;{bg}">{mark}</td>'
+
+    rows=[("Dashboard",True,True,True),("Profitability",False,True,True),
+          ("Sensitivity",False,True,True),("Cost Master",False,False,True),
+          ("Quotation",False,False,True),("Market Search",True,True,True)]
+    body="".join(
+        f'<tr><td style="padding:.5rem .6rem;color:#D6E4F7;font-size:.82rem;'
+        + ('font-weight:700;color:#E8C46A;' if name in ("Cost Master","Quotation","Profitability","Sensitivity") and
+             ((required=="essentiel" and name in ("Profitability","Sensitivity")) or (required=="pro" and name in ("Cost Master","Quotation"))) else '')
+        + f'">{name}</td>{_cell(free_,False)}{_cell(ess_,required=="essentiel")}{_cell(pro_,required=="pro")}</tr>'
+        for name,free_,ess_,pro_ in rows
+    )
+    st.markdown(f"""<table style="width:100%;border-collapse:collapse;background:#13233F;border:1px solid #1A3A6E;border-radius:6px;margin-bottom:1.5rem">
+        <thead><tr style="border-bottom:1px solid #1A3A6E">
+            <th style="text-align:left;padding:.5rem .6rem;font-size:.68rem;letter-spacing:.08em;text-transform:uppercase;color:#8496B0">Feature</th>
+            <th style="padding:.5rem .4rem;font-size:.7rem;color:#8496B0">Free</th>
+            <th style="padding:.5rem .4rem;font-size:.7rem;color:#8496B0">Essentiel<br>15€/mo</th>
+            <th style="padding:.5rem .4rem;font-size:.7rem;color:#8496B0">Pro<br>50€/mo</th>
+        </tr></thead>
+        <tbody>{body}</tbody>
+    </table>""", unsafe_allow_html=True)
+
     if not email: st.info("👈 Create a free account in the sidebar.")
     else: _plan_buttons(email,current_plan=st.session_state.get("auth_plan"))
 
@@ -652,7 +678,20 @@ def main():
     costs=calculate_costs(aircraft,h_charter,h_private)
     prof=calculate_profitability(costs,commission_pct,custom_rate)
 
-    tab1,tab2,tab3,tab4,tab5,tab6=st.tabs(["📊 Dashboard","📈 Profitability","🔍 Sensitivity","💼 Cost Master","✈️ Quotation","🌐 Market Search"])
+    def _tab_label(base,required):
+        if required is None: return base
+        unlocked = is_pro or (required=="essentiel" and is_essentiel)
+        if unlocked: return base
+        return f"{base} 🔒{'15€' if required=='essentiel' else '50€'}"
+
+    tab1,tab2,tab3,tab4,tab5,tab6=st.tabs([
+        _tab_label("📊 Dashboard",None),
+        _tab_label("📈 Profitability","essentiel"),
+        _tab_label("🔍 Sensitivity","essentiel"),
+        _tab_label("💼 Cost Master","pro"),
+        _tab_label("✈️ Quotation","pro"),
+        _tab_label("🌐 Market Search",None),
+    ])
 
     # TAB 1: DASHBOARD
     with tab1:
