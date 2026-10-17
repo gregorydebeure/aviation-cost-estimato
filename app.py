@@ -680,11 +680,10 @@ def render_auth():
                     else: st.warning("Fill in all fields.")
             else:
                 em=st.text_input("Email",key="rg_em",placeholder="your@email.com")
-                pw=st.text_input("Password (min 6)",key="rg_pw",type="password")
-                pw2=st.text_input("Confirm",key="rg_pw2",type="password")
+                pw=st.text_input("Password (min 6)",key="rg_pw",type="password",
+                                  help="Click the eye icon to verify what you typed before creating the account.")
                 if st.button("Create account",key="btn_reg",width="stretch"):
-                    if pw!=pw2: st.error("Passwords do not match.")
-                    elif em and pw:
+                    if em and pw:
                         ok,msg=_register(em,pw)
                         if ok: st.success(msg); _plan_buttons(em.strip().lower(),current_plan=None)
                         else: st.error(msg)
