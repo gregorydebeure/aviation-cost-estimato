@@ -43,27 +43,27 @@ st.set_page_config(page_title="Aviation Cost Estimator", page_icon="✈",
 
 st.markdown("""<style>
 :root{--navy:#0B1629;--deep:#112244;--mid:#1A3A6E;--gold:#C9A84C;--amber:#E8C46A;
-      --slate:#8496B0;--light:#D6E4F7;--card:#13233F;}
+      --slate:#B9C6DC;--light:#F0F4FB;--card:#13233F;}
 .stApp{background-color:var(--navy)!important;color:var(--light)!important;
-       font-family:'Segoe UI',system-ui,sans-serif;}
+       font-family:'Segoe UI',system-ui,sans-serif;font-size:1.02rem;}
 [data-testid="stSidebar"]{background-color:var(--deep)!important;border-right:1px solid var(--mid);}
 [data-testid="stSidebar"] *{color:var(--light)!important;}
 .main-title{font-size:2rem;font-weight:700;letter-spacing:.08em;color:var(--amber);text-transform:uppercase;}
-.sub-title{font-size:.85rem;color:var(--slate);letter-spacing:.12em;text-transform:uppercase;margin-bottom:1.5rem;}
+.sub-title{font-size:.9rem;color:var(--slate);letter-spacing:.12em;text-transform:uppercase;margin-bottom:1.5rem;}
 .metric-card{background:var(--card);border:1px solid var(--mid);border-left:3px solid var(--gold);border-radius:6px;padding:1rem 1.2rem;margin-bottom:.8rem;}
-.metric-label{font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;color:var(--slate);margin-bottom:.3rem;}
+.metric-label{font-size:.76rem;letter-spacing:.12em;text-transform:uppercase;color:var(--slate);margin-bottom:.3rem;}
 .metric-value{font-size:1.7rem;font-weight:700;color:var(--amber);}
-.metric-sub{font-size:.78rem;color:var(--slate);margin-top:.1rem;}
-.section-header{font-size:.7rem;letter-spacing:.18em;text-transform:uppercase;color:var(--gold);
+.metric-sub{font-size:.82rem;color:var(--slate);margin-top:.1rem;}
+.section-header{font-size:.78rem;letter-spacing:.18em;text-transform:uppercase;color:var(--gold);
                 border-bottom:1px solid var(--mid);padding-bottom:.4rem;margin:1.2rem 0 .8rem 0;}
 hr{border-color:var(--mid)!important;}
 [data-testid="stMetricValue"]{color:var(--amber)!important;font-size:1.5rem!important;}
-[data-testid="stMetricLabel"]{color:var(--slate)!important;font-size:.72rem!important;}
+[data-testid="stMetricLabel"]{color:var(--slate)!important;font-size:.78rem!important;}
 [data-testid="stMetricDelta"]{color:#4ADE80!important;}
-.stButton>button{background:var(--mid)!important;color:var(--amber)!important;border:1px solid var(--gold)!important;border-radius:4px;font-weight:600;}
+.stButton>button{background:var(--mid)!important;color:var(--amber)!important;border:1px solid var(--gold)!important;border-radius:4px;font-weight:600;font-size:1rem;}
 .stButton>button:hover{background:var(--gold)!important;color:var(--navy)!important;}
 [data-baseweb="tab-list"]{background:var(--card);border-radius:6px;}
-[data-baseweb="tab"]{color:#C3D1E8!important;opacity:1!important;font-weight:500;padding-left:14px!important;padding-right:14px!important;white-space:nowrap!important;}
+[data-baseweb="tab"]{color:#D6E4F7!important;opacity:1!important;font-weight:600;padding-left:14px!important;padding-right:14px!important;white-space:nowrap!important;}
 [data-baseweb="tab"] *{color:inherit!important;}
 [data-baseweb="tab"]:hover{color:var(--amber)!important;}
 [aria-selected="true"]{color:var(--amber)!important;border-bottom-color:var(--gold)!important;font-weight:700;}
@@ -72,6 +72,19 @@ hr{border-color:var(--mid)!important;}
 .tag-warn{background:#3A2A10;color:#FBBF24;padding:2px 8px;border-radius:3px;font-size:.75rem;}
 .tag-err{background:#3A1010;color:#F87171;padding:2px 8px;border-radius:3px;font-size:.75rem;}
 .total-banner{background:linear-gradient(135deg,#112244 0%,#1A3A6E 100%);border:1px solid var(--gold);border-radius:8px;padding:1.5rem;text-align:center;margin:1.5rem 0;}
+/* ── Readability pass: Streamlit's own widget labels/captions default to a low-contrast grey that is
+   hard to read for older users, including in the main content area (the sidebar override above only
+   covers the sidebar). Force every label, caption and input in the main app to a bright, legible color. */
+[data-testid="stWidgetLabel"] p, [data-testid="stWidgetLabel"] label,
+.stTextInput label, .stTextArea label, .stSelectbox label, .stNumberInput label,
+.stSlider label, .stRadio label, .stCheckbox label, .stDateInput label, .stToggle label{
+    color:var(--light)!important;font-size:.98rem!important;font-weight:500!important;opacity:1!important;}
+[data-testid="stCaptionContainer"], .stCaption, [data-testid="stMarkdownContainer"] small{
+    color:var(--slate)!important;font-size:.85rem!important;opacity:1!important;}
+.stTextInput input, .stTextArea textarea, .stNumberInput input, .stSelectbox div[data-baseweb="select"] *{
+    color:#0B1629!important;font-size:1rem!important;}
+.stTextInput input::placeholder, .stTextArea textarea::placeholder{color:#5A6B85!important;opacity:1!important;}
+[data-testid="stMarkdownContainer"] p{color:var(--light);}
 </style>""", unsafe_allow_html=True)
 
 # ─── LOGO ────────────────────────────────────────────────────────────────────
