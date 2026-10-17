@@ -592,7 +592,9 @@ def _checkout_url(email,plan="pro"):
         price=st.secrets.get(price_key) if price_key else None
         if not price: return None,f"{price_key} is missing/empty in this app's secrets."
         stripe.api_key=key
-        s=stripe.checkout.Session.create(payment_method_types=["card"],mode="subscription",
+        # No payment_method_types here: newer Stripe accounts manage accepted payment methods from the
+        # Dashboard (Settings → Payment methods) and reject this parameter on Checkout Session creation.
+        s=stripe.checkout.Session.create(mode="subscription",
             customer_email=email,line_items=[{"price":price,"quantity":1}],metadata={"plan":plan},
             success_url=f"https://aviation-cost-estimator.onrender.com/?subscribed={plan}",
             cancel_url="https://aviation-cost-estimator.onrender.com/?cancelled=1")
@@ -603,8 +605,10 @@ def _checkout_url(email,plan="pro"):
 def _market_search_checkout_url(email, meta):
     try:
         import stripe; stripe.api_key=st.secrets["STRIPE_SECRET_KEY"]
+        # No payment_method_types here: newer Stripe accounts manage accepted payment methods from the
+        # Dashboard (Settings → Payment methods) and reject this parameter on Checkout Session creation.
         s=stripe.checkout.Session.create(
-            payment_method_types=["card"], mode="payment", customer_email=email,
+            mode="payment", customer_email=email,
             line_items=[{"price_data":{"currency":"eur","unit_amount":30000,
                 "product_data":{"name":"Personalized Aircraft Market Search"}},"quantity":1}],
             metadata=meta,
@@ -612,20 +616,25 @@ def _market_search_checkout_url(email, meta):
             cancel_url="https://aviation-cost-estimator.onrender.com/?market_cancelled=1")
         return s.url
     except Exception as e:
-        st.error(f"Payment error: {e}")
+        st.warning("Payment couldn't be started right now. Please try again in a moment, or contact support if this keeps happening.")
+        if st.session_state.get("auth_is_admin"): st.caption(f"Admin detail: {type(e).__name__}: {e}")
         return None
 
 def _plan_buttons(email,current_plan=None):
     """Renders a subscribe button for every plan tier above the user's current one.
-    Never fails silently: if Stripe checkout can't be created, shows the real error instead of nothing."""
+    On failure, the customer only ever sees a gentle message — the real Stripe error is shown to admins only."""
+    is_admin=st.session_state.get("auth_is_admin",False)
+    def _fail(label,err):
+        st.warning(f"⚠ {label} checkout isn't available right now. Please try again shortly, or contact support if this persists.")
+        if is_admin: st.caption(f"Admin detail: {err}")
     if current_plan not in ("essentiel","pro"):
         url,err=_checkout_url(email,"essentiel")
         if url: st.markdown(f'<div style="text-align:center;margin-top:.5rem"><a href="{url}" target="_blank" style="display:block;background:#1A3A6E;color:#D6E4F7;border:1px solid #8496B0;padding:.5rem 1.2rem;border-radius:5px;font-weight:600;text-decoration:none">Essentiel — 15€/month</a></div>', unsafe_allow_html=True)
-        else: st.error(f"Essentiel checkout unavailable: {err}")
+        else: _fail("Essentiel",err)
     if current_plan!="pro":
         url,err=_checkout_url(email,"pro")
         if url: st.markdown(f'<div style="text-align:center;margin-top:.5rem"><a href="{url}" target="_blank" style="display:block;background:#C9A84C;color:#0B1629;padding:.5rem 1.2rem;border-radius:5px;font-weight:700;text-decoration:none">⭐ {"Upgrade to Pro" if current_plan=="essentiel" else "Pro"} — 50€/month</a></div>', unsafe_allow_html=True)
-        else: st.error(f"Pro checkout unavailable: {err}")
+        else: _fail("Pro",err)
 
 def render_auth():
     for k,v in [("auth_email",None),("auth_plan",None),("auth_is_admin",False)]:
@@ -786,6 +795,17 @@ def main():
     with c2:
         st.markdown('<div class="main-title">Aviation Cost Estimator</div>',unsafe_allow_html=True)
         st.markdown('<div class="sub-title">Operating Cost Simulation — Business Aviation</div>',unsafe_allow_html=True)
+
+    _plan_name = "Pro" if is_pro else ("Essentiel" if is_essentiel else "Free")
+    _plan_color = "#4ADE80" if is_pro else ("#60A5FA" if is_essentiel else "#8496B0")
+    _plan_includes = ("Dashboard · Profitability · Sensitivity · Cost Master · Quotation · Market Search" if is_pro
+        else "Dashboard · Profitability · Sensitivity" if is_essentiel
+        else "Dashboard · Market Search only")
+    st.markdown(f'''<div style="display:flex;align-items:center;gap:.6rem;background:#13233F;border:1px solid #1A3A6E;
+         border-left:3px solid {_plan_color};border-radius:6px;padding:.5rem .9rem;margin-bottom:.8rem;font-size:.8rem">
+        <span style="color:{_plan_color};font-weight:700">● {_plan_name} plan</span>
+        <span style="color:#8496B0">— included: {_plan_includes}</span>
+    </div>''', unsafe_allow_html=True)
     st.markdown("<hr>",unsafe_allow_html=True)
 
     df=get_active_db()
@@ -852,19 +872,45 @@ def main():
                     <div class="metric-value">{aircraft["Vitesse_Croisiere_km_h"]} km/h</div>
                     <div class="metric-sub">Certified performance</div></div>''',unsafe_allow_html=True)
         st.markdown("<hr>",unsafe_allow_html=True)
-        m1,m2,m3,m4=st.columns(4)
-        m1.metric("💶 Total Annual Cost",fmt(costs["grand_total"]))
-        m2.metric("🔒 Fixed Costs",fmt(costs["total_fixed"]))
-        m3.metric("⚡ Variable Costs",fmt(costs["total_variable"]))
-        m4.metric("⌛ Cost/Hour",fmt(costs["avg_cost_h"]))
-        st.markdown("<hr>",unsafe_allow_html=True)
-        g1,g2=st.columns(2)
-        with g1:
-            st.markdown('<div class="section-header">Cost Breakdown</div>',unsafe_allow_html=True)
-            st.plotly_chart(chart_donut(costs),width="stretch",config={"displayModeBar":False})
-        with g2:
-            st.markdown('<div class="section-header">Cost by Flight Mode</div>',unsafe_allow_html=True)
-            st.plotly_chart(chart_bars(costs),width="stretch",config={"displayModeBar":False})
+        if is_essentiel or is_pro:
+            m1,m2,m3,m4=st.columns(4)
+            m1.metric("💶 Total Annual Cost",fmt(costs["grand_total"]))
+            m2.metric("🔒 Fixed Costs",fmt(costs["total_fixed"]))
+            m3.metric("⚡ Variable Costs",fmt(costs["total_variable"]))
+            m4.metric("⌛ Cost/Hour",fmt(costs["avg_cost_h"]))
+            st.markdown("<hr>",unsafe_allow_html=True)
+            g1,g2=st.columns(2)
+            with g1:
+                st.markdown('<div class="section-header">Cost Breakdown</div>',unsafe_allow_html=True)
+                st.plotly_chart(chart_donut(costs),width="stretch",config={"displayModeBar":False})
+            with g2:
+                st.markdown('<div class="section-header">Cost by Flight Mode</div>',unsafe_allow_html=True)
+                st.plotly_chart(chart_bars(costs),width="stretch",config={"displayModeBar":False})
+        else:
+            def _locked_metric(label):
+                return f'''<div class="metric-card" style="text-align:center">
+                    <div class="metric-label">{label}</div>
+                    <div style="font-size:1.6rem;font-weight:700;color:#4A5568;filter:blur(5px);user-select:none">€ 000,000</div>
+                    <div class="metric-sub" style="color:#F59E0B">🔒 Essentiel</div></div>'''
+            m1,m2,m3,m4=st.columns(4)
+            m1.markdown(_locked_metric("💶 Total Annual Cost"),unsafe_allow_html=True)
+            m2.markdown(_locked_metric("🔒 Fixed Costs"),unsafe_allow_html=True)
+            m3.markdown(_locked_metric("⚡ Variable Costs"),unsafe_allow_html=True)
+            m4.markdown(_locked_metric("⌛ Cost/Hour"),unsafe_allow_html=True)
+            st.markdown("<hr>",unsafe_allow_html=True)
+            g1,g2=st.columns(2)
+            for _g,_title in [(g1,"Cost Breakdown"),(g2,"Cost by Flight Mode")]:
+                with _g:
+                    st.markdown(f'<div class="section-header">{_title}</div>',unsafe_allow_html=True)
+                    st.markdown('''<div style="height:260px;display:flex;flex-direction:column;align-items:center;
+                         justify-content:center;background:#13233F;border:1px dashed #1A3A6E;border-radius:6px">
+                        <div style="font-size:1.8rem">🔒</div>
+                        <div style="font-size:.78rem;color:#8496B0;margin-top:.4rem">Unlock with Essentiel — 15€/mo</div>
+                    </div>''',unsafe_allow_html=True)
+            st.markdown('<div style="text-align:center;margin-top:1rem">',unsafe_allow_html=True)
+            st.caption("See the exact cost breakdown for every aircraft with an Essentiel or Pro plan.")
+            if st.session_state.get("auth_email"): _plan_buttons(st.session_state["auth_email"],current_plan=st.session_state.get("auth_plan"))
+            st.markdown('</div>',unsafe_allow_html=True)
 
     # TAB 2: PROFITABILITY
     with tab2:
