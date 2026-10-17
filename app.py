@@ -17,9 +17,15 @@ from pathlib import Path
 
 try:
     # Platforms like Render have no native st.secrets support, only plain env vars — bridge them into
-    # a secrets.toml once. On Streamlit Community Cloud st.secrets is already populated natively (and
-    # that filesystem is read-only anyway), so the guard below skips this entirely there.
-    if os.environ.get("ADMIN_EMAIL") and not st.secrets.get("ADMIN_EMAIL"):
+    # a secrets.toml on every startup. NOTE: we deliberately never touch st.secrets here (not even
+    # st.secrets.get(...)) — accessing it before any secrets.toml exists raises
+    # StreamlitSecretNotFoundError, which the except below would swallow, silently skipping the write
+    # entirely and leaving every later st.secrets[...] call in the app broken. Render restarts the
+    # container fresh on every deploy, so unconditionally rewriting the file on each boot is safe and
+    # also keeps it in sync if env vars change. On Streamlit Community Cloud, writing is skipped because
+    # ADMIN_EMAIL won't be present as a plain env var there (it's native st.secrets-only), and that
+    # filesystem is read-only anyway.
+    if os.environ.get("ADMIN_EMAIL"):
         _secrets_path = Path(".streamlit/secrets.toml")
         _secrets_path.parent.mkdir(exist_ok=True)
         _keys = ["STRIPE_SECRET_KEY", "STRIPE_PRICE_ESSENTIEL", "STRIPE_PRICE_PRO", "ADMIN_EMAIL", "ADMIN_PASSWORD",
