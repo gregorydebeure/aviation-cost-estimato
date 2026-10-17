@@ -16,7 +16,9 @@ import os
 from pathlib import Path
 
 _secrets_path = Path(".streamlit/secrets.toml")
-if not _secrets_path.exists() and os.environ.get("ADMIN_EMAIL"):
+if os.environ.get("ADMIN_EMAIL"):
+    # Always rewrite from the live environment variables (never reuse a stale file from a previous
+    # deploy/process) so a value changed on Render is picked up without any caching surprises.
     _secrets_path.parent.mkdir(exist_ok=True)
     _keys = ["STRIPE_SECRET_KEY", "STRIPE_PRICE_ESSENTIEL", "STRIPE_PRICE_PRO", "ADMIN_EMAIL", "ADMIN_PASSWORD",
              "SUPABASE_URL", "SUPABASE_SERVICE_KEY", "RESEND_API_KEY"]
@@ -487,6 +489,16 @@ def _sb_insert_user(email,pwd_hash):
     except Exception as e:
         return False,f"{type(e).__name__}: {e}"
 
+def _sb_delete_user(email):
+    try:
+        import requests
+        url,key=_sb_base()
+        if not url or not key: return False
+        r=requests.delete(f"{url}/rest/v1/users",headers={**_sb_headers(),"Prefer":"return=minimal"},
+                           params={"email":f"eq.{email}"},timeout=6)
+        return r.status_code in (200,204)
+    except Exception: return False
+
 def _sb_update_user(email,fields):
     try:
         import requests
@@ -608,6 +620,17 @@ def render_auth():
                     if st.button("🔄 Refresh",key="admin_ref",width="stretch"):
                         for ud in users: _check_sub(ud.get("email",""))
                         st.rerun()
+                with st.expander("🩺 Supabase diagnostics"):
+                    _u,_k=_sb_base()
+                    st.caption(f"SUPABASE_URL: {'✓ set — ' + _u if _u else '✗ missing'}")
+                    st.caption(f"SUPABASE_SERVICE_KEY: {'✓ set (' + str(len(_k)) + ' chars)' if _k else '✗ missing'}")
+                    if st.button("Test connection",key="sb_test",width="stretch"):
+                        _diag_email=f"__diag_{int(__import__('time').time())}@test.invalid"
+                        ok,detail=_sb_insert_user(_diag_email,"x")
+                        if ok:
+                            _sb_delete_user(_diag_email)
+                            st.success("✓ Supabase accepted a test write. Storage is working.")
+                        else: st.error(detail)
             else:
                 st.markdown(f'<div style="font-size:.78rem;color:#4ADE80">✓ {email}</div>', unsafe_allow_html=True)
                 plan=st.session_state["auth_plan"]
