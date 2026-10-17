@@ -18,7 +18,8 @@ from pathlib import Path
 _secrets_path = Path(".streamlit/secrets.toml")
 if not _secrets_path.exists() and os.environ.get("ADMIN_EMAIL"):
     _secrets_path.parent.mkdir(exist_ok=True)
-    _keys = ["STRIPE_SECRET_KEY", "STRIPE_PRICE_ESSENTIEL", "STRIPE_PRICE_PRO", "ADMIN_EMAIL", "ADMIN_PASSWORD", "USERS_DB"]
+    _keys = ["STRIPE_SECRET_KEY", "STRIPE_PRICE_ESSENTIEL", "STRIPE_PRICE_PRO", "ADMIN_EMAIL", "ADMIN_PASSWORD",
+             "SUPABASE_URL", "SUPABASE_SERVICE_KEY", "RESEND_API_KEY"]
     with open(_secrets_path, "w") as f:
         for k in _keys:
             v = os.environ.get(k, "")
@@ -439,29 +440,85 @@ def generate_quotation_pdf(qr, aircraft_row):
     story.append(Paragraph("This quotation is indicative and subject to aircraft availability. Valid 48 hours.",sSm))
     doc.build(story,onFirstPage=hf,onLaterPages=hf); buf.seek(0); return buf.getvalue()
 
-# ─── AUTH ────────────────────────────────────────────────────────────────────
+# ─── AUTH (Supabase-backed persistent user store) ────────────────────────────
 def _hash(pw): return hashlib.sha256(pw.encode()).hexdigest()
 
-def _get_users():
-    if "_users_db" not in st.session_state:
-        try:
-            import json; st.session_state["_users_db"]=json.loads(st.secrets.get("USERS_DB","{}"))
-        except Exception: st.session_state["_users_db"]={}
-    return st.session_state["_users_db"]
+def _sb_base():
+    url=st.secrets.get("SUPABASE_URL","").rstrip("/")
+    key=st.secrets.get("SUPABASE_SERVICE_KEY","")
+    return url,key
 
-def _save_users(u): st.session_state["_users_db"]=u
+def _sb_headers():
+    _,key=_sb_base()
+    return {"apikey":key,"Authorization":f"Bearer {key}","Content-Type":"application/json"}
+
+def _sb_get_user(email):
+    try:
+        import requests
+        url,key=_sb_base()
+        if not url or not key: return None
+        r=requests.get(f"{url}/rest/v1/users",headers=_sb_headers(),
+                        params={"email":f"eq.{email}","select":"*"},timeout=6)
+        if r.status_code==200 and r.json(): return r.json()[0]
+        return None
+    except Exception: return None
+
+def _sb_list_users():
+    try:
+        import requests
+        url,key=_sb_base()
+        if not url or not key: return []
+        r=requests.get(f"{url}/rest/v1/users",headers=_sb_headers(),
+                        params={"select":"*","order":"created_at.desc"},timeout=6)
+        return r.json() if r.status_code==200 else []
+    except Exception: return []
+
+def _sb_insert_user(email,pwd_hash):
+    try:
+        import requests
+        url,key=_sb_base()
+        if not url or not key: return False
+        r=requests.post(f"{url}/rest/v1/users",headers={**_sb_headers(),"Prefer":"return=minimal"},
+                         json={"email":email,"pwd_hash":pwd_hash,"stripe_cid":None,"active":False,"plan":None},timeout=6)
+        return r.status_code in (200,201)
+    except Exception: return False
+
+def _sb_update_user(email,fields):
+    try:
+        import requests
+        url,key=_sb_base()
+        if not url or not key: return False
+        r=requests.patch(f"{url}/rest/v1/users",headers={**_sb_headers(),"Prefer":"return=minimal"},
+                          params={"email":f"eq.{email}"},json=fields,timeout=6)
+        return r.status_code in (200,204)
+    except Exception: return False
+
+def _notify_admin_new_signup(email):
+    try:
+        import requests
+        key=st.secrets.get("RESEND_API_KEY"); admin=st.secrets.get("ADMIN_EMAIL")
+        if not key or not admin: return
+        requests.post("https://api.resend.com/emails",
+            headers={"Authorization":f"Bearer {key}","Content-Type":"application/json"},
+            json={"from":"Aviation Cost Estimator <onboarding@resend.dev>","to":[admin],
+                  "subject":"✈ New user registered — Aviation Cost Estimator",
+                  "html":f"<p>A new account was just created:</p><p style='font-size:1.1rem;font-weight:700'>{email}</p>"},
+            timeout=6)
+    except Exception: pass
 
 def _register(email,pwd):
     email=email.strip().lower()
     if not _re.match(r"[^@]+@[^@]+\.[^@]+",email): return False,"Invalid email."
     if len(pwd)<6: return False,"Password must be at least 6 characters."
-    u=_get_users()
-    if email in u: return False,"Account already exists."
-    u[email]={"pwd_hash":_hash(pwd),"stripe_cid":None,"active":False,"plan":None}; _save_users(u); return True,"Account created!"
+    if _sb_get_user(email): return False,"Account already exists."
+    if not _sb_insert_user(email,_hash(pwd)):
+        return False,"Could not create account — storage is not configured. Contact support."
+    _notify_admin_new_signup(email)
+    return True,"Account created!"
 
 def _login(email,pwd):
-    email=email.strip().lower(); u=_get_users(); rec=u.get(email)
-    if not rec or rec["pwd_hash"]!=_hash(pwd): return False,"Incorrect email or password."
+    email=email.strip().lower(); rec=_sb_get_user(email)
+    if not rec or rec.get("pwd_hash")!=_hash(pwd): return False,"Incorrect email or password."
     return True,rec
 
 PLAN_PRICE_KEYS = {"essentiel":"STRIPE_PRICE_ESSENTIEL", "pro":"STRIPE_PRICE_PRO"}
@@ -471,11 +528,12 @@ def _check_sub(email):
     """Returns 'pro', 'essentiel', or None based on the customer's active Stripe subscription."""
     try:
         import stripe; stripe.api_key=st.secrets["STRIPE_SECRET_KEY"]
-        u=_get_users(); cid=u.get(email,{}).get("stripe_cid")
+        rec=_sb_get_user(email) or {}
+        cid=rec.get("stripe_cid")
         if not cid:
             custs=stripe.Customer.list(email=email,limit=1)
             if not custs.data: return None
-            cid=custs.data[0].id; u[email]["stripe_cid"]=cid; _save_users(u)
+            cid=custs.data[0].id; _sb_update_user(email,{"stripe_cid":cid})
         subs=stripe.Subscription.list(customer=cid,status="active",limit=10)
         pro_price=st.secrets.get("STRIPE_PRICE_PRO",""); ess_price=st.secrets.get("STRIPE_PRICE_ESSENTIEL","")
         plan=None
@@ -485,7 +543,8 @@ def _check_sub(email):
                 if pid==pro_price: plan="pro"
                 elif pid==ess_price and plan!="pro": plan="essentiel"
             if plan=="pro": break
-        u[email]["plan"]=plan; u[email]["active"]=plan is not None; _save_users(u); return plan
+        _sb_update_user(email,{"plan":plan,"active":plan is not None})
+        return plan
     except Exception: return None
 
 def _checkout_url(email,plan="pro"):
@@ -532,16 +591,18 @@ def render_auth():
         if email:
             if is_admin:
                 st.markdown('<div style="font-size:.78rem;color:#F59E0B;font-weight:700">👑 ADMIN</div>', unsafe_allow_html=True)
-                with st.expander("👥 Users"):
-                    users=_get_users()
-                    for ue,ud in users.items():
-                        p=ud.get("plan")
+                with st.expander("👥 Users",expanded=True):
+                    users=_sb_list_users()
+                    if not users:
+                        st.caption("No users yet, or Supabase isn't configured (SUPABASE_URL / SUPABASE_SERVICE_KEY).")
+                    for ud in users:
+                        ue=ud.get("email",""); p=ud.get("plan")
                         col="#4ADE80" if p=="pro" else ("#60A5FA" if p=="essentiel" else "#F87171")
                         lbl={"pro":"Pro","essentiel":"Essentiel"}.get(p,"✗")
-                        st.markdown(f'<div style="font-size:.75rem;border-bottom:1px solid #1A3A6E"><b>{ue}</b> <span style="color:{col}">{lbl}</span></div>', unsafe_allow_html=True)
+                        st.markdown(f'<div style="font-size:.75rem;border-bottom:1px solid #1A3A6E;padding:2px 0"><b>{ue}</b> <span style="color:{col}">{lbl}</span></div>', unsafe_allow_html=True)
                     if st.button("🔄 Refresh",key="admin_ref",width="stretch"):
-                        for ue in list(users.keys()): users[ue]["plan"]=_check_sub(ue)
-                        _save_users(users); st.rerun()
+                        for ud in users: _check_sub(ud.get("email",""))
+                        st.rerun()
             else:
                 st.markdown(f'<div style="font-size:.78rem;color:#4ADE80">✓ {email}</div>', unsafe_allow_html=True)
                 plan=st.session_state["auth_plan"]
@@ -637,7 +698,7 @@ def premium_gate(required="pro"):
 def main():
     for k,v in [("database",None),("cost_master",None),("pdf_report",None),
                 ("auth_email",None),("auth_plan",None),("auth_is_admin",False),
-                ("_users_db",{}),("q_legs",[{"from":"","to":"","dep_time":"08:00"}]),
+                ("q_legs",[{"from":"","to":"","dep_time":"08:00"}]),
                 ("q_result",None),("q_pdf",None)]:
         if k not in st.session_state: st.session_state[k]=v
 
