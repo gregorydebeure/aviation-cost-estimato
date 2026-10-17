@@ -632,24 +632,27 @@ def _process_day_pass_return():
         pass
 
 def _check_sub(email):
-    """Returns 'pro', 'essentiel', or None based on the customer's active Stripe subscription."""
+    """Returns 'pro', 'essentiel', or None based on any active Stripe subscription for this email.
+    IMPORTANT: Stripe Checkout creates a brand-new Customer object every time it's given customer_email
+    without an existing customer id — so the same person can end up with several Customer records
+    under one email (visible side-by-side in the Stripe Dashboard → Clients). We must check ALL of
+    them, not just the first one ever seen/cached, or a subscription paid under a newer customer
+    object is silently missed forever even though the payment went through."""
     try:
         import stripe; stripe.api_key=st.secrets["STRIPE_SECRET_KEY"]
-        rec=_sb_get_user(email) or {}
-        cid=rec.get("stripe_cid")
-        if not cid:
-            custs=stripe.Customer.list(email=email,limit=1)
-            if not custs.data: return None
-            cid=custs.data[0].id; _sb_update_user(email,{"stripe_cid":cid})
-        subs=stripe.Subscription.list(customer=cid,status="active",limit=10)
         pro_price=st.secrets.get("STRIPE_PRICE_PRO",""); ess_price=st.secrets.get("STRIPE_PRICE_ESSENTIEL","")
-        plan=None
-        for sub in subs.data:
-            for item in sub["items"]["data"]:
-                pid=item["price"]["id"]
-                if pid==pro_price: plan="pro"
-                elif pid==ess_price and plan!="pro": plan="essentiel"
+        custs=stripe.Customer.list(email=email,limit=25)
+        if not custs.data: return None
+        plan=None; active_cid=None
+        for cust in custs.data:
+            subs=stripe.Subscription.list(customer=cust.id,status="active",limit=10)
+            for sub in subs.data:
+                for item in sub["items"]["data"]:
+                    pid=item["price"]["id"]
+                    if pid==pro_price: plan="pro"; active_cid=cust.id
+                    elif pid==ess_price and plan!="pro": plan="essentiel"; active_cid=active_cid or cust.id
             if plan=="pro": break
+        if active_cid: _sb_update_user(email,{"stripe_cid":active_cid})
         _sb_update_user(email,{"plan":plan,"active":plan is not None})
         return plan
     except Exception: return None
