@@ -474,14 +474,18 @@ def _sb_list_users():
     except Exception: return []
 
 def _sb_insert_user(email,pwd_hash):
+    """Returns (ok, detail) — detail is the HTTP status + Supabase's error body on failure, for debugging."""
     try:
         import requests
         url,key=_sb_base()
-        if not url or not key: return False
+        if not url or not key:
+            return False,"SUPABASE_URL or SUPABASE_SERVICE_KEY is missing/empty in this app's secrets."
         r=requests.post(f"{url}/rest/v1/users",headers={**_sb_headers(),"Prefer":"return=minimal"},
                          json={"email":email,"pwd_hash":pwd_hash,"stripe_cid":None,"active":False,"plan":None},timeout=6)
-        return r.status_code in (200,201)
-    except Exception: return False
+        if r.status_code in (200,201): return True,""
+        return False,f"HTTP {r.status_code}: {r.text[:300]}"
+    except Exception as e:
+        return False,f"{type(e).__name__}: {e}"
 
 def _sb_update_user(email,fields):
     try:
@@ -511,8 +515,9 @@ def _register(email,pwd):
     if not _re.match(r"[^@]+@[^@]+\.[^@]+",email): return False,"Invalid email."
     if len(pwd)<6: return False,"Password must be at least 6 characters."
     if _sb_get_user(email): return False,"Account already exists."
-    if not _sb_insert_user(email,_hash(pwd)):
-        return False,"Could not create account — storage is not configured. Contact support."
+    ok,detail=_sb_insert_user(email,_hash(pwd))
+    if not ok:
+        return False,f"Could not create account — {detail}"
     _notify_admin_new_signup(email)
     return True,"Account created!"
 
