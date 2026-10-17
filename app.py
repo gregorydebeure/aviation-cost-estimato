@@ -18,7 +18,7 @@ from pathlib import Path
 _secrets_path = Path(".streamlit/secrets.toml")
 if not _secrets_path.exists() and os.environ.get("ADMIN_EMAIL"):
     _secrets_path.parent.mkdir(exist_ok=True)
-    _keys = ["STRIPE_SECRET_KEY", "STRIPE_PRICE_ID", "ADMIN_EMAIL", "ADMIN_PASSWORD", "USERS_DB"]
+    _keys = ["STRIPE_SECRET_KEY", "STRIPE_PRICE_ESSENTIEL", "STRIPE_PRICE_PRO", "ADMIN_EMAIL", "ADMIN_PASSWORD", "USERS_DB"]
     with open(_secrets_path, "w") as f:
         for k in _keys:
             v = os.environ.get(k, "")
@@ -455,42 +455,74 @@ def _register(email,pwd):
     if len(pwd)<6: return False,"Password must be at least 6 characters."
     u=_get_users()
     if email in u: return False,"Account already exists."
-    u[email]={"pwd_hash":_hash(pwd),"stripe_cid":None,"active":False}; _save_users(u); return True,"Account created!"
+    u[email]={"pwd_hash":_hash(pwd),"stripe_cid":None,"active":False,"plan":None}; _save_users(u); return True,"Account created!"
 
 def _login(email,pwd):
     email=email.strip().lower(); u=_get_users(); rec=u.get(email)
     if not rec or rec["pwd_hash"]!=_hash(pwd): return False,"Incorrect email or password."
     return True,rec
 
+PLAN_PRICE_KEYS = {"essentiel":"STRIPE_PRICE_ESSENTIEL", "pro":"STRIPE_PRICE_PRO"}
+PLAN_LABELS = {"essentiel":"Essentiel — €15/month", "pro":"Pro — €50/month"}
+
 def _check_sub(email):
+    """Returns 'pro', 'essentiel', or None based on the customer's active Stripe subscription."""
     try:
         import stripe; stripe.api_key=st.secrets["STRIPE_SECRET_KEY"]
         u=_get_users(); cid=u.get(email,{}).get("stripe_cid")
         if not cid:
             custs=stripe.Customer.list(email=email,limit=1)
-            if not custs.data: return False
+            if not custs.data: return None
             cid=custs.data[0].id; u[email]["stripe_cid"]=cid; _save_users(u)
-        subs=stripe.Subscription.list(customer=cid,status="active",limit=1)
-        active=len(subs.data)>0; u[email]["active"]=active; _save_users(u); return active
-    except Exception: return False
+        subs=stripe.Subscription.list(customer=cid,status="active",limit=10)
+        pro_price=st.secrets.get("STRIPE_PRICE_PRO",""); ess_price=st.secrets.get("STRIPE_PRICE_ESSENTIEL","")
+        plan=None
+        for sub in subs.data:
+            for item in sub["items"]["data"]:
+                pid=item["price"]["id"]
+                if pid==pro_price: plan="pro"
+                elif pid==ess_price and plan!="pro": plan="essentiel"
+            if plan=="pro": break
+        u[email]["plan"]=plan; u[email]["active"]=plan is not None; _save_users(u); return plan
+    except Exception: return None
 
-def _checkout_url(email):
+def _checkout_url(email,plan="pro"):
     try:
         import stripe; stripe.api_key=st.secrets["STRIPE_SECRET_KEY"]
+        price=st.secrets[PLAN_PRICE_KEYS[plan]]
         s=stripe.checkout.Session.create(payment_method_types=["card"],mode="subscription",
-            customer_email=email,line_items=[{"price":st.secrets["STRIPE_PRICE_ID"],"quantity":1}],
-            success_url="https://aviation-cost-estimato-6uj3ptpc57onofwlavwhfn.streamlit.app/?subscribed=1",
-            cancel_url="https://aviation-cost-estimato-6uj3ptpc57onofwlavwhfn.streamlit.app/?cancelled=1")
+            customer_email=email,line_items=[{"price":price,"quantity":1}],metadata={"plan":plan},
+            success_url=f"https://aviation-cost-estimator.onrender.com/?subscribed={plan}",
+            cancel_url="https://aviation-cost-estimator.onrender.com/?cancelled=1")
         return s.url
     except Exception: return None
 
-def _sub_btn(email):
-    url=_checkout_url(email)
-    if url:
-        st.markdown(f'<div style="text-align:center;margin-top:.6rem"><a href="{url}" target="_blank" style="background:#C9A84C;color:#0B1629;padding:.5rem 1.2rem;border-radius:5px;font-weight:700;text-decoration:none">⭐ Subscribe — 10€/month</a></div>', unsafe_allow_html=True)
+def _market_search_checkout_url(email, meta):
+    try:
+        import stripe; stripe.api_key=st.secrets["STRIPE_SECRET_KEY"]
+        s=stripe.checkout.Session.create(
+            payment_method_types=["card"], mode="payment", customer_email=email,
+            line_items=[{"price_data":{"currency":"eur","unit_amount":30000,
+                "product_data":{"name":"Personalized Aircraft Market Search"}},"quantity":1}],
+            metadata=meta,
+            success_url="https://aviation-cost-estimator.onrender.com/?market_submitted=1",
+            cancel_url="https://aviation-cost-estimator.onrender.com/?market_cancelled=1")
+        return s.url
+    except Exception as e:
+        st.error(f"Payment error: {e}")
+        return None
+
+def _plan_buttons(email,current_plan=None):
+    """Renders a subscribe button for every plan tier above the user's current one."""
+    if current_plan not in ("essentiel","pro"):
+        url=_checkout_url(email,"essentiel")
+        if url: st.markdown(f'<div style="text-align:center;margin-top:.5rem"><a href="{url}" target="_blank" style="display:block;background:#1A3A6E;color:#D6E4F7;border:1px solid #8496B0;padding:.5rem 1.2rem;border-radius:5px;font-weight:600;text-decoration:none">Essentiel — 15€/month</a></div>', unsafe_allow_html=True)
+    if current_plan!="pro":
+        url=_checkout_url(email,"pro")
+        if url: st.markdown(f'<div style="text-align:center;margin-top:.5rem"><a href="{url}" target="_blank" style="display:block;background:#C9A84C;color:#0B1629;padding:.5rem 1.2rem;border-radius:5px;font-weight:700;text-decoration:none">⭐ {"Upgrade to Pro" if current_plan=="essentiel" else "Pro"} — 50€/month</a></div>', unsafe_allow_html=True)
 
 def render_auth():
-    for k,v in [("auth_email",None),("auth_premium",False),("auth_is_admin",False)]:
+    for k,v in [("auth_email",None),("auth_plan",None),("auth_is_admin",False)]:
         if k not in st.session_state: st.session_state[k]=v
     email=st.session_state["auth_email"]; is_admin=st.session_state["auth_is_admin"]
     with st.sidebar:
@@ -501,22 +533,28 @@ def render_auth():
                 with st.expander("👥 Users"):
                     users=_get_users()
                     for ue,ud in users.items():
-                        col="#4ADE80" if ud.get("active") else "#F87171"
-                        st.markdown(f'<div style="font-size:.75rem;border-bottom:1px solid #1A3A6E"><b>{ue}</b> <span style="color:{col}">{"✓" if ud.get("active") else "✗"}</span></div>', unsafe_allow_html=True)
+                        p=ud.get("plan")
+                        col="#4ADE80" if p=="pro" else ("#60A5FA" if p=="essentiel" else "#F87171")
+                        lbl={"pro":"Pro","essentiel":"Essentiel"}.get(p,"✗")
+                        st.markdown(f'<div style="font-size:.75rem;border-bottom:1px solid #1A3A6E"><b>{ue}</b> <span style="color:{col}">{lbl}</span></div>', unsafe_allow_html=True)
                     if st.button("🔄 Refresh",key="admin_ref",width="stretch"):
-                        for ue in list(users.keys()): users[ue]["active"]=_check_sub(ue)
+                        for ue in list(users.keys()): users[ue]["plan"]=_check_sub(ue)
                         _save_users(users); st.rerun()
             else:
                 st.markdown(f'<div style="font-size:.78rem;color:#4ADE80">✓ {email}</div>', unsafe_allow_html=True)
-                if st.session_state["auth_premium"]:
-                    st.markdown('<div style="font-size:.72rem;color:#C9A84C">⭐ Premium</div>', unsafe_allow_html=True)
+                plan=st.session_state["auth_plan"]
+                if plan=="pro":
+                    st.markdown('<div style="font-size:.72rem;color:#C9A84C">⭐ Pro plan</div>', unsafe_allow_html=True)
+                elif plan=="essentiel":
+                    st.markdown('<div style="font-size:.72rem;color:#60A5FA;margin-bottom:.4rem">✓ Essentiel plan</div>', unsafe_allow_html=True)
+                    _plan_buttons(email,current_plan="essentiel")
                 else:
                     st.markdown('<div style="font-size:.72rem;color:#F87171;margin-bottom:.4rem">⚠ No subscription</div>', unsafe_allow_html=True)
-                    _sub_btn(email)
-                    if st.button("🔄 Check subscription",key="chk_sub",width="stretch"):
-                        st.session_state["auth_premium"]=_check_sub(email); st.rerun()
+                    _plan_buttons(email,current_plan=None)
+                if st.button("🔄 Check subscription",key="chk_sub",width="stretch"):
+                    st.session_state["auth_plan"]=_check_sub(email); st.rerun()
             if st.button("🚪 Log out",key="logout",width="stretch"):
-                st.session_state["auth_email"]=None; st.session_state["auth_premium"]=False
+                st.session_state["auth_email"]=None; st.session_state["auth_plan"]=None
                 st.session_state["auth_is_admin"]=False; st.rerun()
         else:
             st.markdown('<div class="section-header">🔐 Account</div>', unsafe_allow_html=True)
@@ -530,12 +568,12 @@ def render_auth():
                         except: ae=ap=""
                         if em.strip().lower()==ae.lower() and pw==ap:
                             st.session_state["auth_email"]=em.strip().lower()
-                            st.session_state["auth_premium"]=True; st.session_state["auth_is_admin"]=True; st.rerun()
+                            st.session_state["auth_plan"]="pro"; st.session_state["auth_is_admin"]=True; st.rerun()
                         else:
                             ok,res=_login(em,pw)
                             if ok:
                                 st.session_state["auth_email"]=em.strip().lower()
-                                st.session_state["auth_premium"]=_check_sub(em.strip().lower())
+                                st.session_state["auth_plan"]=_check_sub(em.strip().lower())
                                 st.session_state["auth_is_admin"]=False; st.rerun()
                             else: st.error(res)
                     else: st.warning("Fill in all fields.")
@@ -547,32 +585,35 @@ def render_auth():
                     if pw!=pw2: st.error("Passwords do not match.")
                     elif em and pw:
                         ok,msg=_register(em,pw)
-                        if ok: st.success(msg); _sub_btn(em.strip().lower())
+                        if ok: st.success(msg); _plan_buttons(em.strip().lower(),current_plan=None)
                         else: st.error(msg)
                     else: st.warning("Fill in all fields.")
-            st.markdown('<div style="font-size:.7rem;color:#8496B0;text-align:center;margin-top:.4rem">Dashboard free · Full access 10€/month</div>', unsafe_allow_html=True)
-    return st.session_state.get("auth_premium",False)
+            st.markdown('<div style="font-size:.7rem;color:#8496B0;text-align:center;margin-top:.4rem">Dashboard free · Essentiel 15€/mo · Pro 50€/mo</div>', unsafe_allow_html=True)
+    plan=st.session_state.get("auth_plan")
+    return plan in ("essentiel","pro"), plan=="pro"
 
-def premium_gate():
+def premium_gate(required="pro"):
     email=st.session_state.get("auth_email")
-    st.markdown("""<div style="background:linear-gradient(135deg,#112244 0%,#1A3A6E 100%);
+    req_label="Pro" if required=="pro" else "Essentiel"
+    price_label=PLAN_LABELS.get(required,"")
+    st.markdown(f"""<div style="background:linear-gradient(135deg,#112244 0%,#1A3A6E 100%);
          border:1px solid #C9A84C;border-radius:12px;padding:2.5rem;text-align:center;margin:2rem 0">
         <div style="font-size:2rem;margin-bottom:.8rem">🔒</div>
-        <div style="font-size:1.3rem;font-weight:700;color:#E8C46A;margin-bottom:.5rem">Premium Feature</div>
-        <div style="font-size:.9rem;color:#8496B0;margin-bottom:1.5rem">Full access requires a subscription.<br><b style="color:#C9A84C">€10/month</b></div>
+        <div style="font-size:1.3rem;font-weight:700;color:#E8C46A;margin-bottom:.5rem">{req_label} Feature</div>
+        <div style="font-size:.9rem;color:#8496B0;margin-bottom:1.5rem">This section requires the <b style="color:#C9A84C">{price_label}</b> plan.</div>
     </div>""", unsafe_allow_html=True)
     if not email: st.info("👈 Create a free account in the sidebar.")
-    else: _sub_btn(email)
+    else: _plan_buttons(email,current_plan=st.session_state.get("auth_plan"))
 
 # ─── MAIN ────────────────────────────────────────────────────────────────────
 def main():
     for k,v in [("database",None),("cost_master",None),("pdf_report",None),
-                ("auth_email",None),("auth_premium",False),("auth_is_admin",False),
+                ("auth_email",None),("auth_plan",None),("auth_is_admin",False),
                 ("_users_db",{}),("q_legs",[{"from":"","to":"","dep_time":"08:00"}]),
                 ("q_result",None),("q_pdf",None)]:
         if k not in st.session_state: st.session_state[k]=v
 
-    is_premium=render_auth()
+    is_essentiel,is_pro=render_auth()
 
     # Header
     c1,c2=st.columns([1,6])
@@ -609,7 +650,7 @@ def main():
     costs=calculate_costs(aircraft,h_charter,h_private)
     prof=calculate_profitability(costs,commission_pct,custom_rate)
 
-    tab1,tab2,tab3,tab4,tab5=st.tabs(["📊 Dashboard","📈 Profitability","🔍 Sensitivity","💼 Cost Master","✈️ Quotation"])
+    tab1,tab2,tab3,tab4,tab5,tab6=st.tabs(["📊 Dashboard","📈 Profitability","🔍 Sensitivity","💼 Cost Master","✈️ Quotation","🌐 Market Search"])
 
     # TAB 1: DASHBOARD
     with tab1:
@@ -649,7 +690,7 @@ def main():
 
     # TAB 2: PROFITABILITY
     with tab2:
-        if not is_premium: premium_gate(); st.stop()
+        if not is_essentiel: premium_gate("essentiel"); st.stop()
         st.markdown('<div class="section-header">Charter Profitability Simulation</div>',unsafe_allow_html=True)
         if h_charter==0:
             st.warning("⚠ No charter hours configured.")
@@ -671,7 +712,7 @@ def main():
 
     # TAB 3: SENSITIVITY
     with tab3:
-        if not is_premium: premium_gate(); st.stop()
+        if not is_essentiel: premium_gate("essentiel"); st.stop()
         st.markdown('<div class="section-header">Sensitivity — Charter Hours vs Net Result</div>',unsafe_allow_html=True)
         st.caption(f"Private: {h_private}h | Commission: {commission_pct}% | Rate: € {custom_rate:,.0f}/h")
         st.plotly_chart(chart_sensitivity(aircraft,h_private,commission_pct,custom_rate),width="stretch",config={"displayModeBar":False})
@@ -688,7 +729,7 @@ def main():
 
     # TAB 4: COST MASTER
     with tab4:
-        if not is_premium: premium_gate(); st.stop()
+        if not is_pro: premium_gate("pro"); st.stop()
         st.markdown('<div class="main-title" style="font-size:1.4rem">💼 Cost Master</div>',unsafe_allow_html=True)
         cfg1,cfg2,cfg3=st.columns(3)
         with cfg1: annual_flights=st.number_input("Annual flights",min_value=1,max_value=2000,value=200,step=10)
@@ -782,8 +823,8 @@ def main():
 
     # ── TAB 5 : QUOTATION ───────────────────────────────────────────────
     with tab5:
-        if not is_premium:
-            premium_gate()
+        if not is_pro:
+            premium_gate("pro")
             st.stop()
         st.markdown("""
         <div style="background:linear-gradient(135deg,#112244 0%,#1A3A6E 100%);
@@ -814,6 +855,108 @@ def main():
                 Opens in a new tab
             </div>
         </div>""", unsafe_allow_html=True)
+
+    # ── TAB 6 : MARKET SEARCH ───────────────────────────────────────────
+    with tab6:
+        st.markdown('<div class="main-title" style="font-size:1.4rem">🌐 Personalized Aircraft Market Search</div>',unsafe_allow_html=True)
+        st.markdown('<div class="sub-title">Every active listing for your chosen model, consolidated and verified by our team</div>',unsafe_allow_html=True)
+
+        ms_cats=["All"]+sorted(df["Categorie"].dropna().unique().tolist())
+        msc1,msc2=st.columns(2)
+        with msc1: ms_cat=st.selectbox("Category",ms_cats,key="ms_cat")
+        df_ms=df if ms_cat=="All" else df[df["Categorie"]==ms_cat]
+        with msc2: ms_model_preview=st.selectbox("Aircraft model",df_ms["Modele"].tolist(),key="ms_model_preview")
+
+        st.markdown("<hr>",unsafe_allow_html=True)
+        st.markdown(f'<div class="section-header">📋 Sample Report Preview — {ms_model_preview}</div>',unsafe_allow_html=True)
+        st.caption("Illustrative data only — not real listings. Your paid report replaces every row below with verified, current market listings for this exact model.")
+
+        _sample_listings=[
+            dict(year=2016,reg="N-XXXX",hours="1,850 h",price="$18.5M",location="USA · Teterboro",
+                 maint="JSSI Enrolled",maint_color="#4ADE80",broker="Atlantic Aviation Brokers"),
+            dict(year=2014,reg="VP-XXXX",hours="2,400 h",price="$15.9M",location="UK · London",
+                 maint="OEM Program",maint_color="#60A5FA",broker="EuroCharter Sales"),
+            dict(year=2018,reg="M-XXXX",hours="1,100 h",price="$21.2M",location="UAE · Dubai",
+                 maint="JSSI Enrolled",maint_color="#4ADE80",broker="Gulf Jet Partners"),
+            dict(year=2012,reg="HB-XXXX",hours="3,650 h",price="$12.4M",location="Switzerland · Geneva",
+                 maint="Not Enrolled",maint_color="#F87171",broker="Alpine Aircraft Sales"),
+        ]
+
+        for lst in _sample_listings:
+            st.markdown(f'''<div class="metric-card" style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:1rem">
+                <div style="min-width:170px">
+                    <div style="font-size:1.05rem;font-weight:700;color:#E8C46A">{ms_model_preview} · {lst["year"]}</div>
+                    <div style="font-size:.78rem;color:#8496B0">Reg. {lst["reg"]} · {lst["location"]}</div>
+                </div>
+                <div style="text-align:center;min-width:90px">
+                    <div class="metric-label" style="margin-bottom:.1rem">Hours</div>
+                    <div style="font-size:.95rem;color:#D6E4F7;font-weight:600">{lst["hours"]}</div>
+                </div>
+                <div style="text-align:center;min-width:90px">
+                    <div class="metric-label" style="margin-bottom:.1rem">Price</div>
+                    <div style="font-size:.95rem;color:#D6E4F7;font-weight:600">{lst["price"]}</div>
+                </div>
+                <div style="text-align:center;min-width:120px">
+                    <span style="background:{lst["maint_color"]}22;color:{lst["maint_color"]};padding:3px 10px;border-radius:12px;font-size:.72rem;font-weight:700">{lst["maint"]}</span>
+                </div>
+                <div style="text-align:right;min-width:170px">
+                    <div style="font-size:.72rem;color:#8496B0">Seller broker</div>
+                    <div style="font-size:.82rem;color:#5A6B85;filter:blur(3px);user-select:none">{lst["broker"]}</div>
+                </div>
+            </div>''',unsafe_allow_html=True)
+
+        st.markdown('''<div style="text-align:center;font-size:.78rem;color:#8496B0;margin:.4rem 0 1.2rem 0">
+            🔒 Broker names, direct contacts, and exact tail numbers are unlocked in your personalized report
+        </div>''',unsafe_allow_html=True)
+
+        st.markdown("<hr>",unsafe_allow_html=True)
+        st.markdown('<div class="section-header">What You Get — € 300 Flat Fee</div>',unsafe_allow_html=True)
+        f1,f2,f3=st.columns(3)
+        with f1:
+            st.markdown('''<div class="metric-card">
+                <div class="metric-label">✓ Full Listing Set</div>
+                <div class="metric-sub">Every active listing currently on and off market for your exact model, cross-checked against our broker network — not just public ads.</div>
+            </div>''',unsafe_allow_html=True)
+        with f2:
+            st.markdown('''<div class="metric-card">
+                <div class="metric-label">✓ Verified Seller Contacts</div>
+                <div class="metric-sub">Direct broker name, email and phone routing for each listing, so you skip the blind-inquiry queue.</div>
+            </div>''',unsafe_allow_html=True)
+        with f3:
+            st.markdown('''<div class="metric-card">
+                <div class="metric-label">✓ Market Positioning</div>
+                <div class="metric-sub">Where each asking price sits versus comparable trades, plus maintenance program status (enrolled programs noted, no third-party pricing disclosed).</div>
+            </div>''',unsafe_allow_html=True)
+        st.caption("Flat fee ensures every request is a serious inquiry, not a time-waster or competitor fishing for free data. Delivered within 48 hours by our team, by email.")
+
+        st.markdown("<hr>",unsafe_allow_html=True)
+        st.markdown('<div class="section-header">Request Your Market Search</div>',unsafe_allow_html=True)
+
+        with st.form("market_search_form"):
+            _ms_models=df["Modele"].tolist()
+            _ms_default_idx=_ms_models.index(ms_model_preview) if ms_model_preview in _ms_models else 0
+            ms_model = st.selectbox("Aircraft model you're interested in", _ms_models, index=_ms_default_idx)
+            c1,c2 = st.columns(2)
+            with c1: ms_budget = st.text_input("Budget (approximate, e.g. $15M-$20M)")
+            with c2: ms_year = st.text_input("Year range (e.g. 2014-2020)")
+            c3,c4 = st.columns(2)
+            with c3: ms_hours = st.text_input("Max total hours (optional)")
+            with c4: ms_location = st.text_input("Preferred location/region (optional)")
+            ms_name = st.text_input("Your name")
+            ms_email = st.text_input("Your email")
+            ms_notes = st.text_area("Additional criteria (optional)")
+            submitted = st.form_submit_button("Proceed to Payment — € 300", width="stretch")
+
+        if submitted:
+            if not (ms_name and ms_email and ms_budget):
+                st.warning("Please fill in at least name, email, and budget.")
+            else:
+                meta = {"aircraft_model":ms_model,"budget":ms_budget,"year_range":ms_year,
+                        "max_hours":ms_hours,"location":ms_location,"client_name":ms_name,"notes":ms_notes[:450]}
+                url = _market_search_checkout_url(ms_email, meta)
+                if url:
+                    st.markdown(f'<div style="text-align:center;margin-top:.8rem"><a href="{url}" target="_blank" style="background:#C9A84C;color:#0B1629;padding:.6rem 1.5rem;border-radius:5px;font-weight:700;text-decoration:none">💳 Pay € 300 and Submit Request</a></div>', unsafe_allow_html=True)
+                    st.info("After payment, our team will prepare your personalized market report within 48 hours and send it to your email.")
 
     st.markdown("<hr>",unsafe_allow_html=True)
     st.markdown('<div style="text-align:center;font-size:.72rem;color:#4A5568">MENKOR AVIATION — Figures for simulation purposes only</div>',unsafe_allow_html=True)
