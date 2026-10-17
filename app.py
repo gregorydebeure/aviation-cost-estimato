@@ -12,6 +12,18 @@ import re as _re
 import warnings
 warnings.filterwarnings("ignore")
 
+import os
+from pathlib import Path
+
+_secrets_path = Path(".streamlit/secrets.toml")
+if not _secrets_path.exists() and os.environ.get("ADMIN_EMAIL"):
+    _secrets_path.parent.mkdir(exist_ok=True)
+    _keys = ["STRIPE_SECRET_KEY", "STRIPE_PRICE_ID", "ADMIN_EMAIL", "ADMIN_PASSWORD", "USERS_DB"]
+    with open(_secrets_path, "w") as f:
+        for k in _keys:
+            v = os.environ.get(k, "")
+            f.write(f'{k} = {v!r}\n')
+
 # ─── PAGE CONFIG & CSS ───────────────────────────────────────────────────────
 st.set_page_config(page_title="Aviation Cost Estimator", page_icon="✈",
                    layout="wide", initial_sidebar_state="expanded")
