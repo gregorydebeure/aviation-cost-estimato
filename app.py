@@ -1242,7 +1242,7 @@ def main():
         </div>''',unsafe_allow_html=True)
 
         st.markdown("<hr>",unsafe_allow_html=True)
-        with st.expander("📂 Real Example — Falcon 7X Full Market Dossier & Turnkey Program", expanded=False):
+        with st.expander("📂 Real Example — Falcon 7X Full Market Dossier & Turnkey Program", expanded=True):
             st.caption("A genuine, in-depth example of what the € 300 Market Search becomes once paired with Menkor's turnkey acquisition service — shown here for the Falcon 7X segment (24 aircraft tracked, 2007–2022).")
 
             # ── Falcon 7X market ledger ──────────────────────────────────
