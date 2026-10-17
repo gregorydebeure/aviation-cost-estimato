@@ -63,7 +63,7 @@ hr{border-color:var(--mid)!important;}
 .stButton>button{background:var(--mid)!important;color:var(--amber)!important;border:1px solid var(--gold)!important;border-radius:4px;font-weight:600;}
 .stButton>button:hover{background:var(--gold)!important;color:var(--navy)!important;}
 [data-baseweb="tab-list"]{background:var(--card);border-radius:6px;}
-[data-baseweb="tab"]{color:#C3D1E8!important;opacity:1!important;font-weight:500;}
+[data-baseweb="tab"]{color:#C3D1E8!important;opacity:1!important;font-weight:500;padding-left:14px!important;padding-right:14px!important;white-space:nowrap!important;}
 [data-baseweb="tab"] *{color:inherit!important;}
 [data-baseweb="tab"]:hover{color:var(--amber)!important;}
 [aria-selected="true"]{color:var(--amber)!important;border-bottom-color:var(--gold)!important;font-weight:700;}
@@ -520,17 +520,22 @@ def _sb_update_user(email,fields):
     except Exception: return False
 
 def _notify_admin_new_signup(email):
+    """Best-effort: registration must never fail because of this. Returns (ok, detail) for diagnostics."""
     try:
         import requests
         key=st.secrets.get("RESEND_API_KEY"); admin=st.secrets.get("ADMIN_EMAIL")
-        if not key or not admin: return
-        requests.post("https://api.resend.com/emails",
+        if not key: return False,"RESEND_API_KEY is missing/empty in this app's secrets."
+        if not admin: return False,"ADMIN_EMAIL is missing/empty in this app's secrets."
+        r=requests.post("https://api.resend.com/emails",
             headers={"Authorization":f"Bearer {key}","Content-Type":"application/json"},
             json={"from":"Aviation Cost Estimator <onboarding@resend.dev>","to":[admin],
                   "subject":"✈ New user registered — Aviation Cost Estimator",
                   "html":f"<p>A new account was just created:</p><p style='font-size:1.1rem;font-weight:700'>{email}</p>"},
             timeout=6)
-    except Exception: pass
+        if r.status_code in (200,201): return True,""
+        return False,f"HTTP {r.status_code}: {r.text[:300]}"
+    except Exception as e:
+        return False,f"{type(e).__name__}: {e}"
 
 def _register(email,pwd):
     email=email.strip().lower()
@@ -575,15 +580,25 @@ def _check_sub(email):
     except Exception: return None
 
 def _checkout_url(email,plan="pro"):
+    """Returns (url, error). error is a human-readable string on failure, never silently None without reason."""
     try:
-        import stripe; stripe.api_key=st.secrets["STRIPE_SECRET_KEY"]
-        price=st.secrets[PLAN_PRICE_KEYS[plan]]
+        import stripe
+    except ImportError:
+        return None,"The 'stripe' package isn't installed on the server (check requirements.txt)."
+    try:
+        key=st.secrets.get("STRIPE_SECRET_KEY")
+        if not key: return None,"STRIPE_SECRET_KEY is missing/empty in this app's secrets."
+        price_key=PLAN_PRICE_KEYS.get(plan)
+        price=st.secrets.get(price_key) if price_key else None
+        if not price: return None,f"{price_key} is missing/empty in this app's secrets."
+        stripe.api_key=key
         s=stripe.checkout.Session.create(payment_method_types=["card"],mode="subscription",
             customer_email=email,line_items=[{"price":price,"quantity":1}],metadata={"plan":plan},
             success_url=f"https://aviation-cost-estimator.onrender.com/?subscribed={plan}",
             cancel_url="https://aviation-cost-estimator.onrender.com/?cancelled=1")
-        return s.url
-    except Exception: return None
+        return s.url,None
+    except Exception as e:
+        return None,f"{type(e).__name__}: {e}"
 
 def _market_search_checkout_url(email, meta):
     try:
@@ -601,13 +616,16 @@ def _market_search_checkout_url(email, meta):
         return None
 
 def _plan_buttons(email,current_plan=None):
-    """Renders a subscribe button for every plan tier above the user's current one."""
+    """Renders a subscribe button for every plan tier above the user's current one.
+    Never fails silently: if Stripe checkout can't be created, shows the real error instead of nothing."""
     if current_plan not in ("essentiel","pro"):
-        url=_checkout_url(email,"essentiel")
+        url,err=_checkout_url(email,"essentiel")
         if url: st.markdown(f'<div style="text-align:center;margin-top:.5rem"><a href="{url}" target="_blank" style="display:block;background:#1A3A6E;color:#D6E4F7;border:1px solid #8496B0;padding:.5rem 1.2rem;border-radius:5px;font-weight:600;text-decoration:none">Essentiel — 15€/month</a></div>', unsafe_allow_html=True)
+        else: st.error(f"Essentiel checkout unavailable: {err}")
     if current_plan!="pro":
-        url=_checkout_url(email,"pro")
+        url,err=_checkout_url(email,"pro")
         if url: st.markdown(f'<div style="text-align:center;margin-top:.5rem"><a href="{url}" target="_blank" style="display:block;background:#C9A84C;color:#0B1629;padding:.5rem 1.2rem;border-radius:5px;font-weight:700;text-decoration:none">⭐ {"Upgrade to Pro" if current_plan=="essentiel" else "Pro"} — 50€/month</a></div>', unsafe_allow_html=True)
+        else: st.error(f"Pro checkout unavailable: {err}")
 
 def render_auth():
     for k,v in [("auth_email",None),("auth_plan",None),("auth_is_admin",False)]:
@@ -641,6 +659,27 @@ def render_auth():
                             _sb_delete_user(_diag_email)
                             st.success("✓ Supabase accepted a test write. Storage is working.")
                         else: st.error(detail)
+                with st.expander("🩺 Email notification diagnostics"):
+                    _rk=st.secrets.get("RESEND_API_KEY",""); _ae=st.secrets.get("ADMIN_EMAIL","")
+                    st.caption(f"RESEND_API_KEY: {'✓ set (' + str(len(_rk)) + ' chars)' if _rk else '✗ missing'}")
+                    st.caption(f"ADMIN_EMAIL (recipient): {_ae if _ae else '✗ missing'}")
+                    if st.button("Send test email",key="resend_test",width="stretch"):
+                        ok,detail=_notify_admin_new_signup("diagnostic-test@menkor-aviation.test")
+                        if ok: st.success(f"✓ Email sent to {_ae}. Check your inbox (and spam folder).")
+                        else: st.error(detail)
+                with st.expander("🩺 Stripe checkout diagnostics"):
+                    _sk=st.secrets.get("STRIPE_SECRET_KEY",""); _pe=st.secrets.get("STRIPE_PRICE_ESSENTIEL",""); _pp=st.secrets.get("STRIPE_PRICE_PRO","")
+                    st.caption(f"STRIPE_SECRET_KEY: {'✓ set (' + str(len(_sk)) + ' chars)' if _sk else '✗ missing'}")
+                    st.caption(f"STRIPE_PRICE_ESSENTIEL: {'✓ ' + _pe if _pe else '✗ missing'}")
+                    st.caption(f"STRIPE_PRICE_PRO: {'✓ ' + _pp if _pp else '✗ missing'}")
+                    if st.button("Test Essentiel checkout link",key="stripe_test_ess",width="stretch"):
+                        url,err=_checkout_url("diagnostic-test@menkor-aviation.test","essentiel")
+                        if url: st.success(f"✓ Checkout link created: {url}")
+                        else: st.error(err)
+                    if st.button("Test Pro checkout link",key="stripe_test_pro",width="stretch"):
+                        url,err=_checkout_url("diagnostic-test@menkor-aviation.test","pro")
+                        if url: st.success(f"✓ Checkout link created: {url}")
+                        else: st.error(err)
             else:
                 st.markdown(f'<div style="font-size:.78rem;color:#4ADE80">✓ {email}</div>', unsafe_allow_html=True)
                 plan=st.session_state["auth_plan"]
@@ -780,7 +819,7 @@ def main():
         if required is None: return base
         unlocked = is_pro or (required=="essentiel" and is_essentiel)
         if unlocked: return base
-        return f"{base} 🔒{'15€' if required=='essentiel' else '50€'}"
+        return f"{base}  🔒 {'15€/mo' if required=='essentiel' else '50€/mo'}"
 
     tab1,tab2,tab3,tab4,tab5,tab6=st.tabs([
         _tab_label("📊 Dashboard",None),
