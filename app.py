@@ -50,8 +50,10 @@ hr{border-color:var(--mid)!important;}
 .stButton>button{background:var(--mid)!important;color:var(--amber)!important;border:1px solid var(--gold)!important;border-radius:4px;font-weight:600;}
 .stButton>button:hover{background:var(--gold)!important;color:var(--navy)!important;}
 [data-baseweb="tab-list"]{background:var(--card);border-radius:6px;}
-[data-baseweb="tab"]{color:var(--slate)!important;}
-[aria-selected="true"]{color:var(--amber)!important;border-bottom-color:var(--gold)!important;}
+[data-baseweb="tab"]{color:#C3D1E8!important;opacity:1!important;font-weight:500;}
+[data-baseweb="tab"] *{color:inherit!important;}
+[data-baseweb="tab"]:hover{color:var(--amber)!important;}
+[aria-selected="true"]{color:var(--amber)!important;border-bottom-color:var(--gold)!important;font-weight:700;}
 [data-testid="stExpander"]{background:var(--card);border:1px solid var(--mid);border-radius:6px;}
 .tag-ok{background:#163A2A;color:#4ADE80;padding:2px 8px;border-radius:3px;font-size:.75rem;}
 .tag-warn{background:#3A2A10;color:#FBBF24;padding:2px 8px;border-radius:3px;font-size:.75rem;}
