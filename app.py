@@ -83,10 +83,16 @@ except Exception:
     pass  # never let a PWA injection failure break the app
 
 st.markdown("""<style>
+/* Menkor theme. Rule: every colour that sets a text colour also sets its own background, so contrast never depends on the
+   browser / OS light-dark mode or on Streamlit's default theme. Only stable hooks are used (data-testid, data-baseweb, role,
+   aria-*): no generated emotion/css-xxxx class. The same palette is declared in .streamlit/config.toml [theme]. */
 :root{--navy:#0B1629;--deep:#112244;--mid:#1A3A6E;--gold:#C9A84C;--amber:#E8C46A;
-      --slate:#B9C6DC;--light:#F0F4FB;--card:#13233F;}
+      --slate:#B9C6DC;--light:#F0F4FB;--card:#13233F;
+      --field:#0E1B33;--field-border:#6384C0;--field-hover:#162A4D;--field-off:#0C1628;--text-off:#A9B8D2;--ph:#9FB0CC;--sel:#1A3A6E;}
+html{color-scheme:dark;}
 .stApp{background-color:var(--navy)!important;color:var(--light)!important;
        font-family:'Segoe UI',system-ui,sans-serif;font-size:1.02rem;}
+[data-testid="stHeader"]{background-color:var(--navy)!important;}
 [data-testid="stSidebar"]{background-color:var(--deep)!important;border-right:1px solid var(--mid);}
 [data-testid="stSidebar"] *{color:var(--light)!important;}
 .main-title{font-size:2rem;font-weight:700;letter-spacing:.08em;color:var(--amber);text-transform:uppercase;}
@@ -99,37 +105,123 @@ st.markdown("""<style>
                 border-bottom:1px solid var(--mid);padding-bottom:.4rem;margin:1.2rem 0 .8rem 0;}
 hr{border-color:var(--mid)!important;}
 [data-testid="stMetricValue"]{color:var(--amber)!important;font-size:1.5rem!important;}
-[data-testid="stMetricLabel"]{color:var(--slate)!important;font-size:.78rem!important;}
+[data-testid="stMetricLabel"], [data-testid="stMetricLabel"] *{color:var(--slate)!important;font-size:.78rem!important;}
 [data-testid="stMetricDelta"]{color:#4ADE80!important;}
-.stButton>button{background:var(--mid)!important;color:var(--amber)!important;border:1px solid var(--gold)!important;border-radius:4px;font-weight:600;font-size:1rem;}
-.stButton>button:hover{background:var(--gold)!important;color:var(--navy)!important;}
+.tag-ok{background:#163A2A;color:#4ADE80;padding:2px 8px;border-radius:3px;font-size:.75rem;}
+.tag-warn{background:#3A2A10;color:#FBBF24;padding:2px 8px;border-radius:3px;font-size:.75rem;}
+.tag-err{background:#3A1010;color:#F87171;padding:2px 8px;border-radius:3px;font-size:.75rem;}
+.total-banner{background:linear-gradient(135deg,#112244 0%,#1A3A6E 100%);border:1px solid var(--gold);border-radius:8px;padding:1.5rem;text-align:center;margin:1.5rem 0;}
+
+/* Text */
+[data-testid="stWidgetLabel"], [data-testid="stWidgetLabel"] *{color:var(--light)!important;font-size:.98rem!important;font-weight:500!important;opacity:1!important;}
+[data-testid="stCaptionContainer"], [data-testid="stCaptionContainer"] *, [data-testid="stMarkdownContainer"] small{
+    color:var(--slate)!important;font-size:.85rem!important;opacity:1!important;}
+[data-testid="stMarkdownContainer"] p, [data-testid="stMarkdownContainer"] li{color:var(--light);}
+
+/* Buttons */
+.stButton>button, [data-testid="stBaseButton-secondary"], [data-testid="stBaseButton-primary"]{
+    background:var(--mid)!important;color:var(--amber)!important;border:1px solid var(--gold)!important;border-radius:4px;font-weight:600;font-size:1rem;}
+.stButton>button *, [data-testid="stBaseButton-secondary"] *, [data-testid="stBaseButton-primary"] *{color:inherit!important;}
+.stButton>button:hover, [data-testid="stBaseButton-secondary"]:hover, [data-testid="stBaseButton-primary"]:hover{background:var(--gold)!important;color:var(--navy)!important;}
+.stButton>button:focus-visible, [data-testid^="stBaseButton"]:focus-visible{outline:2px solid var(--amber)!important;outline-offset:2px;}
+.stButton>button:disabled, [data-testid^="stBaseButton"]:disabled{background:var(--field-off)!important;color:var(--text-off)!important;border-color:var(--mid)!important;cursor:not-allowed;}
+[data-testid="stDownloadButton"] button{background:var(--mid)!important;color:var(--amber)!important;border:1px solid var(--gold)!important;}
+[data-testid="stDownloadButton"] button:hover{background:var(--gold)!important;color:var(--navy)!important;}
+
+/* Tabs */
 [data-baseweb="tab-list"]{background:var(--card);border-radius:6px;}
 [data-baseweb="tab"]{color:#D6E4F7!important;opacity:1!important;font-weight:600;padding-left:14px!important;padding-right:14px!important;white-space:nowrap!important;}
 [data-baseweb="tab"] *{color:inherit!important;}
 [data-baseweb="tab"]:hover{color:var(--amber)!important;}
 [aria-selected="true"]{color:var(--amber)!important;border-bottom-color:var(--gold)!important;font-weight:700;}
-[data-testid="stExpander"]{background:var(--card);border:1px solid var(--mid);border-radius:6px;}
-.tag-ok{background:#163A2A;color:#4ADE80;padding:2px 8px;border-radius:3px;font-size:.75rem;}
-.tag-warn{background:#3A2A10;color:#FBBF24;padding:2px 8px;border-radius:3px;font-size:.75rem;}
-.tag-err{background:#3A1010;color:#F87171;padding:2px 8px;border-radius:3px;font-size:.75rem;}
-.total-banner{background:linear-gradient(135deg,#112244 0%,#1A3A6E 100%);border:1px solid var(--gold);border-radius:8px;padding:1.5rem;text-align:center;margin:1.5rem 0;}
-/* ── Readability pass: Streamlit's own widget labels/captions default to a low-contrast grey that is
-   hard to read for older users, including in the main content area (the sidebar override above only
-   covers the sidebar). Force every label, caption and input in the main app to a bright, legible color. */
-[data-testid="stWidgetLabel"] p, [data-testid="stWidgetLabel"] label,
-.stTextInput label, .stTextArea label, .stSelectbox label, .stNumberInput label,
-.stSlider label, .stRadio label, .stCheckbox label, .stDateInput label, .stToggle label{
-    color:var(--light)!important;font-size:.98rem!important;font-weight:500!important;opacity:1!important;}
-[data-testid="stCaptionContainer"], .stCaption, [data-testid="stMarkdownContainer"] small{
-    color:var(--slate)!important;font-size:.85rem!important;opacity:1!important;}
-.stTextInput input, .stTextArea textarea, .stNumberInput input, .stSelectbox div[data-baseweb="select"] *{
-    color:#0B1629!important;font-size:1rem!important;}
-.stTextInput input::placeholder, .stTextArea textarea::placeholder{color:#5A6B85!important;opacity:1!important;}
-[data-testid="stMarkdownContainer"] p{color:var(--light);}
+
+/* Text inputs, number inputs, text areas: dark field + light text, in every state */
+[data-baseweb="input"], [data-baseweb="base-input"], [data-baseweb="textarea"]{
+    background-color:var(--field)!important;border-color:var(--field-border)!important;border-radius:4px;}
+[data-baseweb="input"] input, [data-baseweb="base-input"] input, [data-baseweb="textarea"] textarea, [data-testid="stNumberInput"] input{
+    background-color:var(--field)!important;color:var(--light)!important;-webkit-text-fill-color:var(--light)!important;caret-color:var(--amber);font-size:1rem!important;}
+[data-baseweb="input"]:hover, [data-baseweb="base-input"]:hover, [data-baseweb="textarea"]:hover{border-color:var(--gold)!important;}
+[data-baseweb="input"]:focus-within, [data-baseweb="base-input"]:focus-within, [data-baseweb="textarea"]:focus-within{border-color:var(--amber)!important;box-shadow:0 0 0 1px var(--amber)!important;}
+[data-baseweb="input"] input::placeholder, [data-baseweb="textarea"] textarea::placeholder{color:var(--ph)!important;-webkit-text-fill-color:var(--ph)!important;opacity:1!important;}
+[data-baseweb="input"]:has(input:disabled), [data-baseweb="base-input"]:has(input:disabled), [data-baseweb="textarea"]:has(textarea:disabled){
+    background-color:var(--field-off)!important;border-color:var(--mid)!important;}
+input:disabled, textarea:disabled{background-color:var(--field-off)!important;color:var(--text-off)!important;-webkit-text-fill-color:var(--text-off)!important;opacity:1!important;cursor:not-allowed;}
+[data-testid="stNumberInput"] button{background-color:var(--field-hover)!important;color:var(--light)!important;border-color:var(--field-border)!important;}
+[data-testid="stNumberInput"] button *{color:var(--light)!important;fill:var(--light)!important;}
+[data-testid="stNumberInput"] button:hover{background-color:var(--mid)!important;}
+[data-testid="stNumberInput"] button:disabled{background-color:var(--field-off)!important;}
+[data-testid="stNumberInput"] button:disabled *{color:var(--text-off)!important;fill:var(--text-off)!important;}
+
+/* Selectboxes (Manufacturer, Aircraft model...) and multiselects */
+[data-baseweb="select"] > div{background-color:var(--field)!important;border:1px solid var(--field-border)!important;border-radius:4px;color:var(--light)!important;}
+[data-baseweb="select"] *{color:var(--light)!important;-webkit-text-fill-color:var(--light)!important;}
+[data-baseweb="select"] svg{fill:var(--amber)!important;color:var(--amber)!important;}
+[data-baseweb="select"] input::placeholder{color:var(--ph)!important;-webkit-text-fill-color:var(--ph)!important;opacity:1!important;}
+[data-baseweb="select"]:hover > div{border-color:var(--gold)!important;background-color:var(--field-hover)!important;}
+[data-baseweb="select"]:focus-within > div, [data-baseweb="select"][aria-expanded="true"] > div{border-color:var(--amber)!important;box-shadow:0 0 0 1px var(--amber)!important;}
+[data-baseweb="select"][aria-disabled="true"] > div, [data-baseweb="select"]:has(input:disabled) > div{background-color:var(--field-off)!important;border-color:var(--mid)!important;}
+[data-baseweb="select"][aria-disabled="true"] *, [data-baseweb="select"]:has(input:disabled) *{color:var(--text-off)!important;-webkit-text-fill-color:var(--text-off)!important;cursor:not-allowed;}
+[data-baseweb="tag"]{background-color:var(--mid)!important;}
+[data-baseweb="tag"] *{color:var(--light)!important;}
+
+/* Dropdown lists (rendered in a portal outside the sidebar) */
+[data-baseweb="popover"], [data-baseweb="popover"] > div{background-color:var(--deep)!important;border:1px solid var(--gold);border-radius:4px;}
+[data-baseweb="popover"] ul, [data-baseweb="menu"], [role="listbox"]{background-color:var(--deep)!important;}
+[data-baseweb="popover"] li, [role="option"]{background-color:var(--deep)!important;color:var(--light)!important;}
+[data-baseweb="popover"] li *, [role="option"] *{color:var(--light)!important;}
+[data-baseweb="popover"] li:hover, [role="option"]:hover, [role="option"][data-highlighted="true"], [role="option"][aria-selected="true"]{background-color:var(--sel)!important;}
+[role="option"][aria-selected="true"], [role="option"][aria-selected="true"] *{color:var(--amber)!important;font-weight:700;}
+[role="option"][aria-disabled="true"], [role="option"][aria-disabled="true"] *{color:var(--text-off)!important;cursor:not-allowed;}
+
+/* Radios, checkboxes, toggles (labels) */
+[data-testid="stRadio"] label, [data-testid="stRadio"] label *, [data-testid="stCheckbox"] label, [data-testid="stCheckbox"] label *,
+[data-testid="stToggle"] label, [data-testid="stToggle"] label *{color:var(--light)!important;opacity:1!important;}
+[data-testid="stRadio"] label:has(input:disabled) *, [data-testid="stCheckbox"] label:has(input:disabled) *, [data-testid="stToggle"] label:has(input:disabled) *,
+[data-testid="stWidgetLabel"]:has(+ * input:disabled) *{color:var(--text-off)!important;cursor:not-allowed;}
+[data-testid="stSlider"] [data-testid="stSliderThumbValue"], [data-testid="stSlider"] [data-testid="stTickBarMin"], [data-testid="stSlider"] [data-testid="stTickBarMax"]{color:var(--amber)!important;}
+
+/* Expanders: Cost Master fixed / variable bands, provenance, estimate notes... */
+[data-testid="stExpander"]{background-color:var(--card)!important;border:1px solid var(--mid)!important;border-radius:6px;}
+[data-testid="stExpander"] details, [data-testid="stExpander"] details > summary{background-color:var(--card)!important;color:var(--light)!important;border-radius:6px;}
+[data-testid="stExpander"] summary *{color:var(--light)!important;}
+[data-testid="stExpander"] summary svg{fill:var(--amber)!important;color:var(--amber)!important;}
+[data-testid="stExpander"] summary:hover, [data-testid="stExpander"] summary:hover *{background-color:var(--mid)!important;color:var(--amber)!important;}
+[data-testid="stExpander"] summary:focus-visible{outline:2px solid var(--amber);outline-offset:-2px;}
+[data-testid="stExpander"] details[open] > summary{border-bottom:1px solid var(--gold);border-radius:6px 6px 0 0;}
+[data-testid="stExpanderDetails"]{background-color:var(--card)!important;}
+
+/* Alerts (info / success / warning / error): dark tinted background + light text, bright border */
+[data-testid="stAlert"], [data-testid="stAlertContainer"]{background-color:#13233F!important;border:1px solid var(--mid)!important;border-left:4px solid var(--gold)!important;border-radius:6px;}
+[data-testid="stAlert"] *, [data-testid="stAlertContainer"] *{color:var(--light)!important;}
+[data-testid="stAlert"]:has([data-testid="stAlertContentWarning"]), [data-testid="stAlertContainer"]:has([data-testid="stAlertContentWarning"]){background-color:#3A2A10!important;border-left-color:#FBBF24!important;}
+[data-testid="stAlert"]:has([data-testid="stAlertContentError"]), [data-testid="stAlertContainer"]:has([data-testid="stAlertContentError"]){background-color:#3A1010!important;border-left-color:#F87171!important;}
+[data-testid="stAlert"]:has([data-testid="stAlertContentSuccess"]), [data-testid="stAlertContainer"]:has([data-testid="stAlertContentSuccess"]){background-color:#163A2A!important;border-left-color:#4ADE80!important;}
+[data-testid="stAlert"]:has([data-testid="stAlertContentInfo"]), [data-testid="stAlertContainer"]:has([data-testid="stAlertContentInfo"]){background-color:#102A4D!important;border-left-color:#60A5FA!important;}
+[data-testid="stDataFrame"]{border:1px solid var(--mid);border-radius:6px;}
+
+/* Phones */
+@media (max-width: 640px){
+  .main-title{font-size:1.25rem;letter-spacing:.04em;}
+  .sub-title{font-size:.72rem;letter-spacing:.06em;margin-bottom:1rem;}
+  .metric-value{font-size:1.3rem;} [data-testid="stMetricValue"]{font-size:1.2rem!important;}
+  .total-banner{padding:1rem;} .metric-card{padding:.8rem .9rem;}
+  [data-baseweb="tab-list"]{overflow-x:auto;}
+  [data-testid="stMainBlockContainer"], .block-container{padding-left:.8rem!important;padding-right:.8rem!important;}
+  [data-baseweb="select"] > div, [data-baseweb="input"], [data-baseweb="base-input"]{min-height:44px;}
+}
 </style>""", unsafe_allow_html=True)
 
 # ─── LOGO ────────────────────────────────────────────────────────────────────
 def _get_logo():
+    """Menkor logo as base64. Bundled file first (menkor_logo.png next to app.py or in static/), GitHub URL only as fallback."""
+    try:
+        from pathlib import Path
+        here = Path(__file__).resolve().parent
+        for p in (here / "menkor_logo.png", here / "static" / "menkor_logo.png"):
+            if p.exists():
+                return base64.b64encode(p.read_bytes()).decode()
+    except Exception:
+        pass
     try:
         import urllib.request
         url = "https://raw.githubusercontent.com/gregorydebeure/aviation-cost-estimato/main/menkor_logo.png"
@@ -824,6 +916,8 @@ def _on_search():
         st.session_state["ac_search_note"]=f"No aircraft or alias matches '{q}'." if q.strip() else ""
     st.session_state["ac_search"]=""
 
+_KEEP_KEYS=("q_margin","fleet_mf")   # widgets only shown in Custom simulation: their value survives a visit to Report reference
+
 def _bump_overrides():
     st.session_state["_ov_ver"]=st.session_state.get("_ov_ver",0)+1
 
@@ -861,7 +955,10 @@ def _results_csv(res,disp):
     rows=[("config_id",res["config_hash"]),("aircraft_id",res["aircraft_id"]),("model",res["model"]),("mode",res["mode"]),
           ("source","Menkor reference database"),("record_type",E.source_label(res.get("source_kind"))),
           ("charter_rate_source",res["charter_rate_info"]["source"]),("charter_rate_basis",res["charter_rate_info"]["basis"]),
-          ("base_update_applied",res["actualisation"]["applied"]),("base_update_inflation_pct",res["actualisation"]["inflation_pct"]),
+          ("base_update_applied",res["actualisation"]["applied"]),("base_update_adjustment_pct",res["actualisation"]["inflation_pct"]),
+          ("base_update_text",res["actualisation"].get("text","")),("base_update_delta_budget_usd",res["actualisation"].get("delta_total")),
+          ("economic_reference_date",(res.get("dates") or {}).get("economic_reference_date","unknown")),
+          ("consultation_date",(res.get("dates") or {}).get("consultation_date") or ""),("extraction_date",(res.get("dates") or {}).get("extraction_date") or ""),
           ("web_source_url",(res.get("web_source") or {}).get("url","")),("web_source_consulted",(res.get("web_source") or {}).get("access_date","")),
           ("source_currency","USD"),("display_currency",disp.ccy),("usd_to_eur_rate",disp.fx.usd_to_eur if disp.ccy=="EUR" else ""),
           ("rate_date",disp.fx.rate_date if disp.ccy=="EUR" else ""),("hours_flown",res["hours"]["flown"]),
@@ -869,6 +966,12 @@ def _results_csv(res,disp):
           ("annual_variable_usd",res["variable"].get("annual")),("annual_budget_usd",res["budget_usd"]),("cost_per_hour_usd",res["cost_per_h_usd"])]
     if res.get("fuel"):
         f=res["fuel"]; rows+=[("fuel_burn_l_per_h",f.get("burn_l_h")),("fuel_price_usd_per_l",f.get("price_usd_l")),("fuel_price_source",f.get("price_source"))]
+    fv=res.get("fuel_validity")
+    if fv:
+        rows+=[("fuel_validity_status",fv["status"]),("fuel_validity_date",fv.get("date") or ""),("fuel_validity_checked_on",fv["today"]),
+               ("fuel_validity_timezone",fv["tz"]),("fuel_expired_price_confirmed_as_historical",fv.get("confirmed",False))]
+    for fl_ in res["flags"]:
+        if fl_["level"] in ("warn","error"): rows.append((f"flag_{fl_['level']}_{fl_['code']}",fl_["text"]))
     pr=res.get("profit")
     if pr and pr.get("available"):
         rows+=[("revenue_usd",pr["revenue"]),("commission_usd",pr["commission"]),("variable_cost_all_flown_usd",pr["variable_cost_all_flown"]),
@@ -882,6 +985,10 @@ def main():
                 ("q_legs",[{"from":"","to":"","dep_time":"08:00"}]),
                 ("q_result",None),("q_pdf",None)]:
         if k not in st.session_state: st.session_state[k]=v
+
+    # Keep the value of widgets that are not drawn in every mode (Streamlit forgets a widget that is skipped for one run):
+    for _k in _KEEP_KEYS:
+        if _k in st.session_state: st.session_state[_k]=st.session_state[_k]
 
     _process_day_pass_return()
     if st.session_state.get("_day_pass_toast"):
@@ -940,15 +1047,17 @@ def main():
         if hist: st.caption("Historical sheet: totals only, detailed report still to be reconstructed.")
         elif skind=="web_estimate": st.caption("Menkor reference database — partial web estimate (Guardian Jet economics + public technical summary), not a full reference record.")
 
-        st.markdown('<div class="section-header">📈 Menkor base update</div>',unsafe_allow_html=True)
-        act_on=st.toggle("Update base costs (inflation)",value=E.ACTUALISE_DEFAULT,key="act_on",
-                         help="Maintenance & programs, crew training, hangar and handling/en-route fees are increased by the % below. Fuel, insurance, crew salaries, catering and misc are not changed.")
-        infl=st.number_input("Inflation uplift (%)",min_value=0.0,max_value=100.0,value=float(E.INFLATION_PCT_DEFAULT),step=1.0,key="infl_pct",disabled=not act_on)
         st.markdown('<div class="section-header">🧭 Calculation mode</div>',unsafe_allow_html=True)
         mode_lbl=st.radio("Calculation mode",["Report reference","Custom simulation"],key="calc_mode",label_visibility="collapsed",
                           help="Report reference = published totals with the report's own hours and fuel price. Custom simulation = recalculated from your hours, fuel and cost edits.")
         mode="reference" if mode_lbl=="Report reference" else "simulation"
         _locked=(mode=="reference")
+        st.markdown('<div class="section-header">📈 Menkor base update</div>',unsafe_allow_html=True)
+        act_on=st.toggle("Update base costs (adjustment scenario)",value=E.ACTUALISE_DEFAULT,key="act_on",disabled=_locked,
+                         help="Scenario assumption: maintenance & programs, crew training, hangar and handling/en-route fees are increased by the % below. Fuel, insurance, crew salaries, catering and misc are not changed. Applies to Custom simulation only.")
+        infl=st.number_input("Adjustment (%)",min_value=0.0,max_value=100.0,value=float(E.INFLATION_PCT_DEFAULT),step=1.0,key="infl_pct",disabled=(not act_on) or _locked)
+        if _locked: st.caption("Report reference uses the original published values only. Switch to Custom simulation to adjust costs.")
+        else: st.caption(E.adjustment_text(infl) if act_on else "Adjustment off: original Menkor reference values.")
 
         ref_h=E.num(row,"legacy_Heures_Base" if hist else "reference_annual_hours")
         ref_i=int(ref_h) if ref_h else 0
@@ -985,19 +1094,30 @@ def main():
             if manual:
                 with st.expander("Local fuel price — manual entry (no live feed)",expanded=True):
                     st.caption("No real-time price is connected: enter the quote you received.")
-                    fuel.airport_icao=st.text_input("Airport ICAO",key="fu_icao",max_chars=4).upper()
-                    fuel.airport_iata=st.text_input("Airport IATA",key="fu_iata",max_chars=3).upper()
-                    fuel.supplier=st.text_input("Supplier",key="fu_sup")
+                    if _locked: st.caption("Report reference ignores this entry (your values are kept). Switch to Custom simulation to adjust costs.")
+                    fuel.airport_icao=st.text_input("Airport ICAO",key="fu_icao",max_chars=4,disabled=_locked).upper()
+                    fuel.airport_iata=st.text_input("Airport IATA",key="fu_iata",max_chars=3,disabled=_locked).upper()
+                    fuel.supplier=st.text_input("Supplier",key="fu_sup",disabled=_locked)
                     fc1,fc2=st.columns(2)
-                    with fc1: _fp=st.number_input("Price",min_value=0.0,value=0.0,step=0.05,format="%.3f",key="fu_price")
-                    with fc2: fuel.unit=st.selectbox("Unit",["L","USG"],key="fu_unit",help="L = litre · USG = US gallon")
+                    with fc1: _fp=st.number_input("Price",min_value=0.0,value=0.0,step=0.05,format="%.3f",key="fu_price",disabled=_locked)
+                    with fc2: fuel.unit=st.selectbox("Unit",["L","USG"],key="fu_unit",help="L = litre · USG = US gallon",disabled=_locked)
                     fc3,fc4=st.columns(2)
-                    with fc3: fuel.currency=st.selectbox("Currency",["USD","EUR"],key="fu_ccy")
-                    with fc4: fuel.taxes_pct=st.number_input("Taxes (%)",min_value=0.0,value=0.0,step=1.0,key="fu_tax")
-                    fuel.fees_per_uplift=st.number_input("Fees per uplift (fixed)",min_value=0.0,value=0.0,step=50.0,key="fu_fee",help="Recorded for stopover purchases; not part of the hourly average.")
-                    fuel.validity_date=st.text_input("Quote valid until (YYYY-MM-DD)",key="fu_valid")
+                    with fc3: fuel.currency=st.selectbox("Currency",["USD","EUR"],key="fu_ccy",disabled=_locked)
+                    with fc4: fuel.taxes_pct=st.number_input("Taxes (%)",min_value=0.0,value=0.0,step=1.0,key="fu_tax",disabled=_locked)
+                    fuel.fees_per_uplift=st.number_input("Fees per uplift (fixed)",min_value=0.0,value=0.0,step=50.0,key="fu_fee",help="Recorded for stopover purchases; not part of the hourly average.",disabled=_locked)
+                    fuel.validity_date=st.text_input("Quote valid until (YYYY-MM-DD)",key="fu_valid",disabled=_locked,help=f"Compared with today's date in {E.BUSINESS_TZ_NAME}.")
                     fuel.price=_fp if _fp>0 else None
                     if fuel.price is None: st.warning("Enter the fuel price: until then the simulation is unavailable (no default value is invented).")
+                    _vs=E.validity_status(fuel.validity_date)
+                    if _vs["status"]=="invalid": st.error(_vs["message"])
+                    elif _vs["status"]=="unknown": st.warning(_vs["message"]+" The price is an unverified assumption.")
+                    elif _vs["status"]=="valid": st.caption("✓ "+_vs["message"])
+                    else:
+                        st.warning(_vs["message"]+" An expired price is not used unless you confirm it as a historical assumption.")
+                        _tok=E.fuel_confirmation_token(fuel)
+                        # the key contains the price/date signature: changing the price or the date resets the confirmation
+                        if st.checkbox("I confirm: use this expired price as a HISTORICAL assumption",key="fu_conf_"+hashlib.md5(_tok.encode()).hexdigest()[:10],disabled=_locked):
+                            fuel.expired_confirmation=_tok
 
         st.markdown('<div class="section-header">💱 Currency</div>',unsafe_allow_html=True)
         disp_ccy=st.radio("Display currency",["USD","EUR"],horizontal=True,key="disp_ccy",help="Source amounts are USD. EUR needs an explicit, dated exchange rate.")
@@ -1079,9 +1199,10 @@ def main():
             st.markdown('<div class="main-title" style="font-size:1.4rem">💼 Cost Master</div>',unsafe_allow_html=True)
             if hist:
                 st.info("Historical sheet: component detail is not available (report not yet reconstructed). Totals only.")
-            elif mode=="reference":
-                st.info("Report reference mode: published components are shown below as read-only. Switch to Custom simulation to replace components.")
             else:
+                _dis=(mode=="reference")
+                if _dis:
+                    st.info("Report reference: original published components only. Switch to Custom simulation to adjust costs. (Your simulation edits are kept below but not applied.)")
                 _rv=st.session_state.get("_ov_ver",0); _k=f"{aid}_{disp.ccy}_{disp.factor:.6f}_{_rv}"
                 if skind=="web_estimate":
                     st.info("Web estimate: only components with a known scope can be replaced — crew (aggregate, training not isolated), hangar, insurance, misc and the combined maintenance line. "
@@ -1095,7 +1216,7 @@ def main():
                         with cols[i%3]:
                             if src is None: st.markdown(f"**{label}**: not available in this source (not replaced by zero)")
                             else:
-                                v=st.number_input(f"{label} ({disp.ccy}/yr)",min_value=0.0,value=float(disp.conv(src)),step=1000.0,format="%.0f",key=f"ovf_{k}_{_k}")
+                                v=st.number_input(f"{label} ({disp.ccy}/yr)",min_value=0.0,value=float(disp.conv(src)),step=1000.0,format="%.0f",key=f"ovf_{k}_{_k}",disabled=_dis)
                                 if abs(disp.to_usd(v)-src)>0.5: ov_fixed[k]=disp.to_usd(v)
                 with st.expander("⚡ Variable costs — per flown hour (the report total already includes fuel)",expanded=True):
                     cols=st.columns(3)
@@ -1104,14 +1225,14 @@ def main():
                         with cols[i%3]:
                             if src is None: st.markdown(f"**{label}**: not available in this source (not replaced by zero)")
                             else:
-                                v=st.number_input(f"{label} ({disp.ccy}/h)",min_value=0.0,value=float(disp.conv(src)),step=10.0,format="%.0f",key=f"ovv_{k}_{_k}")
+                                v=st.number_input(f"{label} ({disp.ccy}/h)",min_value=0.0,value=float(disp.conv(src)),step=10.0,format="%.0f",key=f"ovv_{k}_{_k}",disabled=_dis)
                                 if abs(disp.to_usd(v)-src)>0.005: ov_var[k]=disp.to_usd(v)
                 with st.expander("➕ Costs not in the report (user-added)",expanded=False):
                     x1,x2=st.columns(2)
-                    with x1: _xf=st.number_input(f"Extra fixed cost ({disp.ccy}/yr)",min_value=0.0,value=0.0,step=1000.0,format="%.0f",key=f"xf_{_k}")
-                    with x2: _xv=st.number_input(f"Extra variable cost ({disp.ccy}/flown h)",min_value=0.0,value=0.0,step=10.0,format="%.0f",key=f"xv_{_k}")
+                    with x1: _xf=st.number_input(f"Extra fixed cost ({disp.ccy}/yr)",min_value=0.0,value=0.0,step=1000.0,format="%.0f",key=f"xf_{_k}",disabled=_dis)
+                    with x2: _xv=st.number_input(f"Extra variable cost ({disp.ccy}/flown h)",min_value=0.0,value=0.0,step=10.0,format="%.0f",key=f"xv_{_k}",disabled=_dis)
                     extra_fixed_usd=disp.to_usd(_xf); extra_var_usd=disp.to_usd(_xv)
-                st.button("↺ Reset all edits",key="ov_reset",on_click=_bump_overrides)
+                st.button("↺ Reset all edits",key="ov_reset",on_click=_bump_overrides,disabled=_dis)
 
     # ── The single scenario & the single result used by every tab and the PDF ─────
     scn=E.Scenario(aircraft_id=aid,mode=mode,billed_hours=float(billed),positioning_hours=float(posit),other_hours=float(other),
@@ -1180,7 +1301,11 @@ def main():
                                f"Annual fuel: {f['annual_litres']:,.0f} L ({f['annual_usg']:,.0f} US gal). {f['note']}")
             if res.get("reconciliation") and mode=="simulation":
                 rc=res["reconciliation"]
-                st.caption(f"Reconciliation: at the report's own hours and fuel price the formula gives {D(rc['simulated_at_report_conditions'])} vs published {D(rc['published_budget'])} ({rc['difference_pct']:+.2f}%). Printed hourly values are rounded; the source data are not altered.")
+                if rc.get("adjustment_delta"):
+                    st.caption(f"Reconciliation: adjusted published basis {D(rc['published_budget'])} (= original {D(rc['original_published_budget'])} + adjustment {D(rc['adjustment_delta'])}) vs simulation recalculated at the report's own hours and fuel price (burn × price) {D(rc['simulated_at_report_conditions'])}: difference {D(rc['difference'])} ({rc['difference_pct']:+.2f}%). "
+                               "It comes from the rounding of the printed hourly burn and fuel price, not from the adjustment; the source data are not altered.")
+                else:
+                    st.caption(f"Reconciliation: at the report's own hours and fuel price the formula gives {D(rc['simulated_at_report_conditions'])} vs published {D(rc['published_budget'])} ({rc['difference_pct']:+.2f}%). Printed hourly values are rounded; the source data are not altered.")
             _render_alerts(res,alerts)
             st.markdown("<hr>",unsafe_allow_html=True)
             g1,g2=st.columns(2)
@@ -1193,18 +1318,26 @@ def main():
                 if _fg is not None: st.plotly_chart(_fg,width="stretch",config={"displayModeBar":False})
                 else: st.info("Cost per hour is not applicable: annual flown hours are zero.")
             _act=res.get("actualisation") or {}
-            with st.expander("📈 Menkor base update — what was adjusted",expanded=False):
-                if _act.get("applied"):
-                    st.caption(f"Source: Menkor reference database. Values 3-4 years old, increased by {_act['inflation_pct']:g}% where listed (Menkor assumption); your edits replace these values. Fuel, insurance, crew salaries/expenses, catering and misc are not adjusted.")
-                    st.dataframe(pd.DataFrame([{"Item":i["item"],f"Base ({disp.ccy})":(disp.conv(i["before"]) if i["before"] is not None else None),
-                                                f"Updated ({disp.ccy})":(disp.conv(i["after"]) if i["after"] is not None else None),
-                                                "Uplift":(f"+{i['pct']:g}%" if i.get("pct") else ""),"Note":i.get("note","")} for i in _act["items"]]),width="stretch",hide_index=True)
-                else:
-                    st.caption("Base update is off (or not applicable to this record): raw Menkor reference values are shown.")
+            if mode=="reference":
+                st.info("Report reference — original published values. The Menkor adjustment and every cost edit apply to Custom simulation only.")
+            elif _act.get("applied"):
+                st.markdown('<div class="section-header">📈 Menkor adjustment — items increased in this simulation</div>',unsafe_allow_html=True)
+                st.caption(_act["text"]+" Your edits replace these values; fuel, insurance, crew salaries/expenses, catering and misc are not adjusted.")
+                _it=pd.DataFrame([{"Item":i["item"],f"Original ({disp.ccy})":(round(disp.conv(i["before"])) if i["before"] is not None else None),
+                                   f"Adjusted ({disp.ccy})":(round(disp.conv(i["after"])) if i["after"] is not None else None),
+                                   "Adjustment":(f"+{i['pct']:g}%" if i.get("pct") else ("replaced" if i["before"] is not None else "n/a")),
+                                   f"Difference ({disp.ccy})":(round(disp.conv(i["delta"])) if i.get("delta") is not None else None),
+                                   "Note":i.get("note","")} for i in _act["items"]])
+                st.dataframe(_it,width="stretch",hide_index=True)
+                if _act.get("delta_total") is not None:
+                    st.caption(f"Total adjustment on the published basis: {D(_act['published_budget_original'])} original budget {'+' if _act['delta_total']>=0 else '−'} {D(abs(_act['delta_total']))} = {D(_act['published_budget_adjusted'])} (adjusted published basis).")
+            else:
+                st.caption("Menkor adjustment is off (or not applicable to this record): original Menkor reference values are used.")
             with st.expander("🔎 Data provenance — extracted / calculated / converted / missing"):
                 if _prov is None: _prov=get_prov()
                 st.dataframe(_prov_table(row,_prov),width="stretch",hide_index=True)
-                st.caption("Extraction date is the processing date, not a price-validity date. Empty means missing — never zero.")
+                _d=res.get("dates") or {}
+                st.caption(f"Dates — economic reference date of the figures: {_d.get('economic_reference_date','unknown')} · consultation date (web page read): {_d.get('consultation_date') or 'n/a'} · database extraction date: {_d.get('extraction_date') or 'n/a'} (processing date, not a price-validity date). Empty means missing — never zero.")
         else:
             def _locked_metric(label):
                 return f'''<div class="metric-card" style="text-align:center">
@@ -1416,6 +1549,7 @@ def main():
             pr=res.get("profit") if res["available"] else None
             if mode=="reference":
                 st.info("Switch to **Custom simulation** to build a quotation basis (billed hours, rate and commission are needed).")
+                st.slider("Target operating margin on revenue (%)",0,40,10,step=1,key="q_margin",disabled=True)
             elif not pr or not pr.get("available"):
                 st.info("Enter a charter rate and billed hours in the sidebar to see the quotation basis."+(" "+" ".join(pr["messages"]) if pr else ""))
             else:

@@ -21,7 +21,7 @@ import json
 import math
 import re
 from dataclasses import dataclass, field, asdict
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 import pandas as pd
@@ -306,6 +306,63 @@ def _valid_date(s) -> bool:
         return False
 
 
+# ── "today" and validity of dated assumptions ────────────────────────────────
+# The current date is always computed (never hard-coded). Business time zone = Dubai (Menkor Aviation GBL), UTC+04:00, no DST:
+# a fuel quote valid "until 2026-10-18" is still valid during that whole calendar day in Dubai.
+BUSINESS_TZ_NAME = "Asia/Dubai (UTC+04:00, no daylight saving)"
+BUSINESS_TZ = timezone(timedelta(hours=4))
+
+
+def current_date(now: datetime | None = None) -> date:
+    """Today's calendar date in the business time zone (Dubai). `now` can be injected for tests."""
+    return (now or datetime.now(timezone.utc)).astimezone(BUSINESS_TZ).date()
+
+
+def validity_status(date_str, today: date | None = None) -> dict:
+    """Status of a validity date: 'unknown' (no date), 'valid' (date >= today), 'expired' (date < today), 'invalid' (malformed).
+    A malformed date is an explicit error and never silently treated as missing or valid."""
+    today = today or current_date()
+    out = dict(status="unknown", date=None, today=today.isoformat(), tz=BUSINESS_TZ_NAME, days=None, message="")
+    txt = (str(date_str).strip() if date_str is not None else "")
+    if not txt:
+        out["message"] = "Validity unknown: no validity date entered."
+        return out
+    if not _valid_date(txt):
+        out.update(status="invalid", date=txt,
+                   message=f"Invalid validity date '{txt}': expected a real calendar date in the format YYYY-MM-DD (e.g. 2026-12-31).")
+        return out
+    d = date.fromisoformat(txt)
+    out.update(date=txt, days=(d - today).days)
+    if d >= today:
+        out.update(status="valid", message=f"Valid: validity date {txt} is on or after today ({today.isoformat()}).")
+    else:
+        out.update(status="expired", message=f"EXPIRED: validity date {txt} is before today ({today.isoformat()}), {(today - d).days} day(s) ago.")
+    return out
+
+
+def fuel_confirmation_token(fc) -> str:
+    """Identifies the exact manual price + date a user confirmed. Any change of price, unit, currency, taxes or date invalidates it."""
+    return f"{fc.price}|{fc.unit}|{fc.currency}|{fc.taxes_pct}|{(fc.validity_date or '').strip()}"
+
+
+def adjustment_text(pct) -> str:
+    return (f"Menkor adjustment scenario: selected reference costs increased by {float(pct):g}%. The economic reference date is unknown; "
+            "this adjustment is an assumption, not a verified market update.")
+
+
+def dates_for(row) -> dict:
+    """The three different dates are never mixed: economic date (of the figures), consultation date (web page read), extraction date (file processing)."""
+    econ = row.get("report_date") if hasattr(row, "get") else None
+    econ = None if (econ is None or (isinstance(econ, float) and math.isnan(econ)) or str(econ).strip() in ("", "nan")) else str(econ)
+    out = dict(economic_reference_date=econ or "unknown", consultation_date=None, extraction_date=None)
+    ext = row.get("extraction_date") if hasattr(row, "get") else None
+    if ext is not None and str(ext).strip() not in ("", "nan", "None"):
+        out["extraction_date"] = str(ext)
+    if source_kind(row) == "web_estimate":
+        out["consultation_date"] = _web_source(row)[1] or None
+    return out
+
+
 @dataclass
 class Fx:
     display_ccy: str = "USD"          # 'USD' or 'EUR'
@@ -366,13 +423,14 @@ class FuelConfig:
     airport_iata: str = ""
     supplier: str = ""
     validity_date: str = ""             # ISO date entered by the user
+    expired_confirmation: str = ""      # token of the price/date the user explicitly accepted as a HISTORICAL assumption (see fuel_confirmation_token)
 
 
 # ═════════════════════════════════════════════════════════════════════════════
 # Menkor base update (inflation) — Menkor decision, applied BEFORE any user edit
 # ═════════════════════════════════════════════════════════════════════════════
 ACTUALISE_DEFAULT = True          # tests of the raw base switch this off; the product default is ON
-INFLATION_PCT_DEFAULT = 15.0      # cumulative uplift for 3-4 years of cost drift (Menkor assumption, to be reviewed)
+INFLATION_PCT_DEFAULT = 15.0      # Menkor adjustment scenario (assumption, not a verified market update; the economic date of the base is unknown)
 RECURRENT_TRAINING_PER_PILOT_USD = {"bombardier_global": 60000.0}   # Menkor figure: Global recurrent training per pilot, USD/year (current price, NOT inflated again)
 PILOTS_PER_AIRCRAFT = 2
 # category -> list of (hourly field, annual field) ; hourly-only lines use hourly x reference hours
@@ -442,13 +500,13 @@ def adjust_row(row, scn):
                 new = per_pilot * PILOTS_PER_AIRCRAFT
                 d_fixed += new - cur * (1 + pct)
                 r["annual_crew_training_fixed_usd"] = new
-                items.append(dict(item=cat, before=cur, after=new, pct=None,
+                items.append(dict(item=cat, before=cur, after=new, pct=None, delta=new - cur,
                                   note=f"Menkor recurrent training: {PILOTS_PER_AIRCRAFT} pilots x {per_pilot:,.0f} USD (current price, not inflated)"))
                 continue
         if found:
-            items.append(dict(item=cat, before=before, after=after, pct=pct * 100, note=""))
+            items.append(dict(item=cat, before=before, after=after, pct=pct * 100, delta=after - before, note=""))
         else:
-            items.append(dict(item=cat, before=None, after=None, pct=None,
+            items.append(dict(item=cat, before=None, after=None, pct=None, delta=None,
                               note="not available in this source — not adjusted, not replaced by zero"))
     tot_delta = d_fixed + d_var
     for f, dv in (("annual_fixed_cost_usd", d_fixed), ("annual_variable_cost_usd", d_var), ("annual_budget_usd", tot_delta),
@@ -487,8 +545,12 @@ class Scenario:
     def canonical(self) -> dict:
         return asdict(self)
 
-    def config_hash(self) -> str:
-        payload = json.dumps({"scenario": self.canonical(), "db": DB_VERSION, "engine": ENGINE_VERSION},
+    def config_hash(self, extra: str = "") -> str:
+        sc = self.canonical()
+        if self.mode == "reference":
+            # Report reference only depends on the aircraft and the display rate: stored custom parameters must not change its identity.
+            sc = dict(aircraft_id=sc["aircraft_id"], mode="reference", fx=sc["fx"])
+        payload = json.dumps({"scenario": sc, "db": DB_VERSION, "engine": ENGINE_VERSION, "extra": extra},
                              sort_keys=True, default=str)
         return hashlib.sha256(payload.encode()).hexdigest()[:12]
 
@@ -552,20 +614,33 @@ def _empty_result(row, scn):
         hours=dict(billed=scn.billed_hours, positioning=scn.positioning_hours, other=scn.other_hours,
                    flown=scn.flown_hours, reference=None),
         fuel={}, fixed={}, variable={}, components=[], budget_usd=None, cost_per_h_usd=None,
-        published={}, reconciliation=None, profit=None, rate_usd=None, actualisation=dict(applied=False, inflation_pct=0.0, items=[]),
+        published={}, reconciliation=None, profit=None, rate_usd=None, fuel_validity=None, dates=dates_for(row), actualisation=dict(applied=False, inflation_pct=0.0, items=[]),
         charter_rate_info=dict(source=getattr(scn, "charter_rate_source", "custom"), basis=getattr(scn, "charter_rate_basis", "")))
 
 
-def compute(row, scn: Scenario) -> dict:
-    """The only place where costs and results are calculated."""
+def compute(row, scn: Scenario, today: date | None = None) -> dict:
+    """The only place where costs and results are calculated. `today` (business-zone date) is computed unless injected by a test."""
     res = _empty_result(row, scn)
     fl = res["flags"]
+    today = today or current_date()
     if str(row.get("record_status")) == LEGACY_STATUS:
-        if getattr(scn, "actualise", False):
+        if getattr(scn, "actualise", False) and scn.mode != "reference":
             _flag(fl, "info", "actualise_na", "Menkor base update not applied: historical sheet without the cost breakdown needed (totals only).")
         return _compute_legacy(row, scn, res)
-    row, adj_items = adjust_row(row, scn)
-    res["actualisation"] = dict(applied=bool(adj_items), inflation_pct=scn.inflation_pct if adj_items else 0.0, items=adj_items)
+    orig_row = row
+    if scn.mode == "reference":
+        # Report reference is STRICTLY the original published values: no Menkor adjustment, no user edit, whatever the scenario says.
+        adj_items = []
+        res["actualisation"] = dict(applied=False, inflation_pct=0.0, items=[], reason="reference_mode")
+    else:
+        row, adj_items = adjust_row(row, scn)
+        _ob, _ab = num(orig_row, "annual_budget_usd"), num(row, "annual_budget_usd")
+        res["actualisation"] = dict(applied=bool(adj_items), inflation_pct=scn.inflation_pct if adj_items else 0.0, items=adj_items,
+                                    text=adjustment_text(scn.inflation_pct) if adj_items else "",
+                                    published_budget_original=_ob, published_budget_adjusted=_ab,
+                                    delta_total=(_ab - _ob) if (_ob is not None and _ab is not None) else None,
+                                    delta_fixed=((num(row, "annual_fixed_cost_usd") or 0) - (num(orig_row, "annual_fixed_cost_usd") or 0)) if adj_items else 0.0,
+                                    delta_variable=((num(row, "annual_variable_cost_usd") or 0) - (num(orig_row, "annual_variable_cost_usd") or 0)) if adj_items else 0.0)
 
     ref_h = num(row, "reference_annual_hours")
     fixed_src = num(row, "annual_fixed_cost_usd")
@@ -637,11 +712,29 @@ def compute(row, scn: Scenario) -> dict:
     ref_price = num(row, "reference_fuel_price_usd_per_l")
     price_usd_l, price_label = None, ""
     if scn.fuel.price_source == "manual":
+        vs = validity_status(scn.fuel.validity_date, today)
+        vs["confirmed"] = bool(vs["status"] == "expired" and scn.fuel.expired_confirmation
+                               and scn.fuel.expired_confirmation == fuel_confirmation_token(scn.fuel))
+        vs["used_as_historical"] = vs["confirmed"]
+        res["fuel_validity"] = vs
+        res["config_hash"] = scn.config_hash(extra=f"fuel_validity={vs['status']}:{vs['confirmed']}")   # the status can change with time even if the inputs do not
         price_usd_l, err = manual_price_usd_per_l(scn.fuel, scn.fx)
         price_label = "Manual local price entered by the user (no live feed)"
         if err:
             _flag(fl, "error", "price_manual", err)
             return res
+        if vs["status"] == "invalid":
+            _flag(fl, "error", "fuel_date_invalid", vs["message"] + " The calculation is not performed until the date is corrected or cleared.")
+            return res
+        if vs["status"] == "unknown":
+            _flag(fl, "warn", "fuel_validity_unknown", "Manual fuel price with unknown validity (no validity date): treat it as an unverified assumption.")
+        elif vs["status"] == "expired":
+            if not vs["confirmed"]:
+                _flag(fl, "error", "fuel_price_expired",
+                      vs["message"] + " This price is not used until you explicitly confirm it as a historical assumption (checkbox next to the fuel price), or enter a current quote.")
+                return res
+            _flag(fl, "warn", "fuel_price_expired_confirmed",
+                  vs["message"] + " Used as a HISTORICAL assumption after explicit user confirmation: not a current market price.")
     else:
         price_usd_l = ref_price
         price_label = ("Web scenario price 7.54 USD per US gallon (Guardian Jet; US gallon assumed, to confirm) — not a current market price"
@@ -700,7 +793,8 @@ def compute(row, scn: Scenario) -> dict:
                        local=dict(airport_icao=scn.fuel.airport_icao, airport_iata=scn.fuel.airport_iata,
                                   supplier=scn.fuel.supplier, price=scn.fuel.price, unit=scn.fuel.unit,
                                   currency=scn.fuel.currency, taxes_pct=scn.fuel.taxes_pct,
-                                  fees_per_uplift=scn.fuel.fees_per_uplift, validity_date=scn.fuel.validity_date)
+                                  fees_per_uplift=scn.fuel.fees_per_uplift, validity_date=scn.fuel.validity_date,
+                                  validity_status=(res.get("fuel_validity") or {}).get("status"))
                        if scn.fuel.price_source == "manual" else None)
     res["fixed"] = dict(source_total=fixed_src, override_delta=fixed_delta, extra=scn.extra_fixed or 0.0,
                         annual_total=fixed_total, includes="crew expense, crew training, hangar, insurance, aircraft misc")
@@ -755,6 +849,8 @@ def compute(row, scn: Scenario) -> dict:
             res["reconciliation"] = dict(
                 simulated_at_report_conditions=sim_ref, published_budget=budget_src,
                 difference=sim_ref - budget_src, difference_pct=(sim_ref - budget_src) / budget_src * 100,
+                original_published_budget=num(orig_row, "annual_budget_usd"),
+                adjustment_delta=(budget_src - num(orig_row, "annual_budget_usd")) if (adj_items and num(orig_row, "annual_budget_usd") is not None) else 0.0,
                 note="Printed hourly burn and fuel price are rounded: their product may differ from the published annual fuel cost. Source data are not altered to force equality.")
 
     # profitability
@@ -810,7 +906,7 @@ def _compute_reference(row, scn, res, ref_h, fixed_src, var_src, fuel_cost_src, 
     res["budget_usd"] = budget
     res["cost_per_h_usd"] = budget / ref_h
     res["available"] = True
-    _flag(fl, "info", "reference_mode", "Report reference: published totals at the report's own hours and fuel price. Switch to Custom simulation to change hours, fuel or costs.")
+    _flag(fl, "info", "reference_mode", "Report reference: published totals at the report's own hours and fuel price, original values only (no Menkor adjustment, no edit). Switch to Custom simulation to adjust costs.")
     return res
 
 
