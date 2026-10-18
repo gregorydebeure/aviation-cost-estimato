@@ -26,11 +26,12 @@ from pathlib import Path
 
 import pandas as pd
 
-ENGINE_VERSION = "2.1"
-DB_VERSION = "v16-167-models"
+ENGINE_VERSION = "2.2"
+DB_VERSION = "v17-167-models-adj15"
+BASE_FILE = "menkor_base_couts_ajustes_15pct.csv"   # Menkor cost base: selected costs already +15 % (see menkor_* metadata), originals kept in original__* columns
 _HERE = Path(__file__).resolve().parent
 # Data files live in data/. If they were uploaded flat next to app.py (GitHub web upload can flatten folders), fall back to that folder.
-DATA_DIR = _HERE / "data" if (_HERE / "data" / "menkor_base_v16.csv").exists() else (_HERE if (_HERE / "menkor_base_v16.csv").exists() else _HERE / "data")
+DATA_DIR = _HERE / "data" if (_HERE / "data" / BASE_FILE).exists() else (_HERE if (_HERE / BASE_FILE).exists() else _HERE / "data")
 
 USG_TO_L = 3.785411784          # documented in the base (README_CLAUDE.md)
 HOURS_IN_YEAR = 8760.0
@@ -81,8 +82,9 @@ def _read(name: str, **kw) -> pd.DataFrame:
 
 
 def load_base() -> pd.DataFrame:
-    """165 aircraft (144 PDF-documented + 21 historical). aircraft_id is the stable key."""
-    df = _read("menkor_base_v16.csv", dtype={"aircraft_id": "string", "report_contact_phone": "string"})
+    """167 aircraft (144 PDF-documented + 2 web scenarios + 21 historical). aircraft_id is the stable key.
+    Selected cost fields hold the Menkor-adjusted values; the original published values stay in the original__* columns (see original_view)."""
+    df = _read(BASE_FILE, dtype={"aircraft_id": "string", "report_contact_phone": "string"}).copy()
     df["aircraft_id"] = df["aircraft_id"].astype(str)
     df["has_detail"] = df["record_status"] != LEGACY_STATUS
     df["source_kind"] = df["record_status"].map(
@@ -176,7 +178,7 @@ def charter_disclaimers(e: dict) -> list:
         out.append("Fuel, taxes / airport fees and positioning terms of this price are unknown.")
     if e.get("region"):
         out.append(f"Market: {e['region']}.")
-    out.append("The cost update (inflation) is never applied to this price.")
+    out.append("The Menkor cost-base adjustment is never applied to this price.")
     return out
 
 
@@ -345,9 +347,6 @@ def fuel_confirmation_token(fc) -> str:
     return f"{fc.price}|{fc.unit}|{fc.currency}|{fc.taxes_pct}|{(fc.validity_date or '').strip()}"
 
 
-def adjustment_text(pct) -> str:
-    return (f"Menkor adjustment scenario: selected reference costs increased by {float(pct):g}%. The economic reference date is unknown; "
-            "this adjustment is an assumption, not a verified market update.")
 
 
 def dates_for(row) -> dict:
@@ -410,12 +409,17 @@ class Display:
 # ═════════════════════════════════════════════════════════════════════════════
 @dataclass
 class FuelConfig:
-    price_source: str = "report"        # 'report' (reference_fuel_price_usd_per_l) | 'manual'
+    price_source: str = "report"        # 'report' (reference_fuel_price_usd_per_l) | 'average' (user's annual planning assumption: `price` per litre in `currency`)
+                                        # | 'manual' (ADVANCED module: dated local quote with airport/supplier/taxes/fees/validity)
+                                        # | 'benchmark' (regional refinery benchmark, data/fuel_regional_benchmarks.csv): `benchmark_region` selects the row,
+                                        #   `price` (USD/L) is None = the benchmark itself, or the user's own value (= "User-adjusted annual fuel price assumption")
     burn_method: str = "published"      # 'published' | 'derived' | 'custom'
     custom_burn_l_h: float | None = None
-    # manual local price (all optional metadata, recorded in results/exports)
+    benchmark_region: str = ""          # region_id of fuel_regional_benchmarks.csv (benchmark method only)
+    # 'average': price = average price PER LITRE (taxes and fuel fees included, per the user's operating habits), currency = 'USD' | 'EUR'.
+    # 'manual' (advanced): price in `unit`, with the optional metadata below, recorded in results/exports.
     price: float | None = None
-    unit: str = "L"                     # 'L' | 'USG'
+    unit: str = "L"                     # 'L' | 'USG' (advanced module only; the average price is always per litre)
     currency: str = "USD"               # 'USD' | 'EUR'
     taxes_pct: float = 0.0              # taxes applied on the price
     fees_per_uplift: float = 0.0        # fixed fees per uplift (in `currency`) — not part of the hourly average
@@ -427,97 +431,83 @@ class FuelConfig:
 
 
 # ═════════════════════════════════════════════════════════════════════════════
-# Menkor base update (inflation) — Menkor decision, applied BEFORE any user edit
+# Menkor cost base — the adjustment lives IN THE DATA (base CSV), never in the engine
 # ═════════════════════════════════════════════════════════════════════════════
-ACTUALISE_DEFAULT = True          # tests of the raw base switch this off; the product default is ON
-INFLATION_PCT_DEFAULT = 15.0      # Menkor adjustment scenario (assumption, not a verified market update; the economic date of the base is unknown)
-RECURRENT_TRAINING_PER_PILOT_USD = {"bombardier_global": 60000.0}   # Menkor figure: Global recurrent training per pilot, USD/year (current price, NOT inflated again)
-PILOTS_PER_AIRCRAFT = 2
-# category -> list of (hourly field, annual field) ; hourly-only lines use hourly x reference hours
-ACTUALISED = {
+# The base file stores, for the selected lines (maintenance, airport fees, crew training, hangar) and the totals that contain them, the
+# Menkor-adjusted values (+15 %, Menkor assumption). The original published values are kept in `original__<field>` columns.
+#   * Custom simulation reads the stored (adjusted) fields.      * Report reference reads the original__ values only (original_view).
+# There is no adjustment switch, percentage input or recalculation of the adjustment anywhere in the application.
+ORIGINAL_PREFIX = "original__"
+# lines described in the "original vs Menkor base" table: label -> (kind, [(hourly field, annual field)])
+MENKOR_BASE_LINES = {
     "Maintenance & maintenance programs": dict(kind="var", pairs=[("hourly_airframe_maintenance_usd", "annual_airframe_maintenance_usd"),
                                                                     ("hourly_engine_apu_maintenance_usd", "annual_engine_apu_maintenance_usd")],
-                                               scale_only=["hourly_maintenance_total_usd"], web_pairs=[("hourly_maintenance_total_usd", None)]),
-    "Handling & en-route / airport fees": dict(kind="var", pairs=[("hourly_airport_fees_usd", None)], scale_only=[]),
-    "Crew training": dict(kind="fixed", pairs=[(None, "annual_crew_training_fixed_usd")], scale_only=[]),
-    "Hangar": dict(kind="fixed", pairs=[(None, "annual_hangar_fixed_usd")], scale_only=[]),
+                                               web_pairs=[("hourly_maintenance_total_usd", None)]),
+    "Handling & en-route / airport fees": dict(kind="var", pairs=[("hourly_airport_fees_usd", None)]),
+    "Crew training": dict(kind="fixed", pairs=[(None, "annual_crew_training_fixed_usd")]),
+    "Hangar": dict(kind="fixed", pairs=[(None, "annual_hangar_fixed_usd")]),
 }
 
 
-def recurrent_training_override(aircraft_id: str):
-    """Annual crew training for the models with a Menkor recurrent-training price (per pilot x pilots), else None."""
-    for prefix, per_pilot in RECURRENT_TRAINING_PER_PILOT_USD.items():
-        if str(aircraft_id).startswith(prefix):
-            return per_pilot
-    return None
-
-
-def adjust_row(row, scn):
-    """Return (row2, items). Scales the listed ACTUALISED source values by the scenario's inflation, then moves the published
-    totals by exactly the same amounts, so components still add up to the totals (no double counting, rounding rows unchanged).
-    Fuel, insurance, crew salaries/expenses, catering, crew travel and misc are NOT touched. Missing values stay missing."""
-    if not getattr(scn, "actualise", False) or str(row.get("record_status")) == LEGACY_STATUS:
-        return row, []
-    pct = float(scn.inflation_pct) / 100.0
-    ref_h = num(row, "reference_annual_hours")
-    if not ref_h:
-        return row, []
+def original_view(row):
+    """The record with every `original__<field>` value written back into <field>: the strictly original published values
+    (used by Report reference). Fields without an original__ value are unchanged; nothing is recalculated."""
     r = row.copy()
+    for c in row.index:
+        if isinstance(c, str) and c.startswith(ORIGINAL_PREFIX):
+            f = c[len(ORIGINAL_PREFIX):]
+            if f in r.index and pd.notna(row[c]):
+                r[f] = row[c]
+    return r
+
+
+def menkor_base_info(row) -> dict:
+    """Metadata of the Menkor cost base for this record (from the data file, not computed)."""
+    def g(k):
+        v = row.get(k)
+        return None if v is None or (not isinstance(v, str) and pd.isna(v)) else v
+    applied = str(g("menkor_adjustment_applied")).strip().lower() in ("true", "1", "yes")
+    pct = float(g("menkor_adjustment_pct") or 0.0)
+    return dict(version=g("menkor_base_version"), applied=applied, pct=pct, status=g("menkor_adjustment_status"),
+                method=g("menkor_adjustment_method"), processing_date=g("menkor_adjustment_processing_date"),
+                economic_reference_date=g("menkor_economic_reference_date") or "unknown",
+                delta_fixed=g("menkor_delta_fixed_usd"), delta_variable=g("menkor_delta_variable_usd"), delta_budget=g("menkor_delta_budget_usd"))
+
+
+def menkor_base_text(info: dict) -> str:
+    if not info.get("applied"):
+        return "Menkor cost base: no adjustment for this record (original published values)."
+    return (f"Menkor cost base: selected costs (maintenance, airport fees, crew training, hangar) include a Menkor adjustment of +{info['pct']:g}% "
+            "applied to the original published values; fuel, insurance, crew salaries and expenses, catering and misc are unchanged. "
+            "It is a Menkor assumption, not verified market inflation; the economic reference date is unknown. "
+            "The original published values are kept separately and are used by Report reference.")
+
+
+def menkor_base_items(row, orig) -> list:
+    """Original vs Menkor-base values of the adjusted lines (read from the data, annual USD)."""
+    ref_h = num(orig, "reference_annual_hours")
     web = source_kind(row) == "web_estimate"
-    d_fixed = d_var = 0.0
     items = []
-
-    def scaled(field):
-        v = num(r, field)
-        if v is None:
-            return None
-        r[field] = v * (1.0 + pct)
-        return v
-
-    for cat, spec in ACTUALISED.items():
+    if not ref_h:
+        return items
+    for cat, spec in MENKOR_BASE_LINES.items():
         before = after = 0.0
         found = False
-        pairs = spec["pairs"] if not web else spec.get("web_pairs", spec["pairs"])
-        for hf, af in pairs:
-            ann = num(row, af) if af else None
-            hr = num(row, hf) if hf else None
-            base_annual = ann if ann is not None else (hr * ref_h if hr is not None else None)
-            if base_annual is None:
+        for hf, af in (spec.get("web_pairs", spec["pairs"]) if web else spec["pairs"]):
+            def annual(r):
+                a = num(r, af) if af else None
+                h = num(r, hf) if hf else None
+                return a if a is not None else (h * ref_h if h is not None else None)
+            b0, b1 = annual(orig), annual(row)
+            if b0 is None or b1 is None:
                 continue
-            found = True
-            if hf: scaled(hf)
-            if af: scaled(af)
-            before += base_annual; after += base_annual * (1 + pct)
-            delta = base_annual * pct
-            if spec["kind"] == "fixed": d_fixed += delta
-            else: d_var += delta
-        for hf in spec.get("scale_only", []):
-            if not web: scaled(hf)
-        if cat == "Crew training":
-            per_pilot = recurrent_training_override(row["aircraft_id"])
-            cur = num(row, "annual_crew_training_fixed_usd")
-            if per_pilot is not None and cur is not None:       # replaces the (inflated) base value; not inflated again
-                new = per_pilot * PILOTS_PER_AIRCRAFT
-                d_fixed += new - cur * (1 + pct)
-                r["annual_crew_training_fixed_usd"] = new
-                items.append(dict(item=cat, before=cur, after=new, pct=None, delta=new - cur,
-                                  note=f"Menkor recurrent training: {PILOTS_PER_AIRCRAFT} pilots x {per_pilot:,.0f} USD (current price, not inflated)"))
-                continue
+            found = True; before += b0; after += b1
         if found:
-            items.append(dict(item=cat, before=before, after=after, pct=pct * 100, delta=after - before, note=""))
+            items.append(dict(item=cat, before=before, after=after, pct=((after / before - 1.0) * 100.0) if before else None, delta=after - before,
+                              note="Menkor recurrent training price (Global)" if cat == "Crew training" and before and abs(after / before - 1.15) > 1e-6 else ""))
         else:
-            items.append(dict(item=cat, before=None, after=None, pct=None, delta=None,
-                              note="not available in this source — not adjusted, not replaced by zero"))
-    tot_delta = d_fixed + d_var
-    for f, dv in (("annual_fixed_cost_usd", d_fixed), ("annual_variable_cost_usd", d_var), ("annual_budget_usd", tot_delta),
-                  ("fixed_excluding_crew_expense_usd", d_fixed)):
-        v = num(r, f)
-        if v is not None: r[f] = v + dv
-    for f, dv in (("total_cost_per_h_from_annual_usd", tot_delta), ("variable_cost_per_h_from_annual_usd", d_var),
-                  ("nonfuel_variable_cost_per_h_usd", d_var), ("variable_cost_per_h_displayed_sum_usd", d_var)):
-        v = num(r, f)
-        if v is not None: r[f] = v + dv / ref_h
-    return r, items
+            items.append(dict(item=cat, before=None, after=None, pct=None, delta=None, note="not available in this source — not adjusted, not replaced by zero"))
+    return items
 
 
 @dataclass
@@ -537,8 +527,6 @@ class Scenario:
     extra_fixed: float = 0.0            # annual USD cost added by the user (not in report)
     extra_var_h: float = 0.0            # USD per flown hour added by the user (not in report)
     fx: Fx = field(default_factory=Fx)
-    actualise: bool = field(default_factory=lambda: ACTUALISE_DEFAULT)   # Menkor base update (inflation) on/off
-    inflation_pct: float = INFLATION_PCT_DEFAULT
     charter_rate_source: str = "custom"      # 'custom' | 'estimate_ref' | 'estimate_low' | 'estimate_high' (Menkor charter price file)
     charter_rate_basis: str = ""            # short description of the estimate used (scope, confidence, consultation date)
 
@@ -562,6 +550,80 @@ class Scenario:
 # ═════════════════════════════════════════════════════════════════════════════
 # Fuel helpers
 # ═════════════════════════════════════════════════════════════════════════════
+AVERAGE_PRICE_LABEL = "Average fuel price — annual planning assumption"
+AVERAGE_PRICE_NATURE = ("Average fuel price entered by the user as an annual planning assumption; it includes the fuel taxes and fees that normally apply "
+                        "according to the operating habits. It is not a verified local price and not a real-time price.")
+
+
+BENCHMARK_FILE = "fuel_regional_benchmarks.csv"
+BENCHMARK_DISCLAIMER = ("Refinery market benchmark — not an into-wing price. Adjust the average price to reflect your fuel contracts, "
+                        "delivery charges and applicable non-recoverable taxes.")
+BENCHMARK_USER_ADJUSTED = "User-adjusted annual fuel price assumption."
+BENCHMARK_NATURE = ("Weekly refinery market benchmark (IATA Fuel Price Monitor, Platts data). Not a real-time feed, not an annual average, not a forecast, "
+                    "not an average price delivered to the aircraft: no regional mark-up is added.")
+
+
+def usd_per_l_from_us_cents_per_usg(cents) -> float:
+    """price_usd_per_l = cents per US gallon / 100 / 3.785411784 (full precision kept; round only for display)."""
+    return float(cents) / 100.0 / USG_TO_L
+
+
+def load_fuel_benchmarks() -> pd.DataFrame:
+    """Separate table (independent from the aircraft base). Adds price_usd_per_l computed from the stored source price. Empty frame if the file is absent."""
+    f = DATA_DIR / BENCHMARK_FILE
+    if not f.exists():
+        f = _HERE / BENCHMARK_FILE
+    if not f.exists():
+        return pd.DataFrame()
+    d = pd.read_csv(f, dtype=str, keep_default_na=False)
+    d["price_us_cents_per_us_gallon"] = pd.to_numeric(d["price_us_cents_per_us_gallon"], errors="coerce")
+    d["price_usd_per_l"] = d["price_us_cents_per_us_gallon"].map(lambda v: usd_per_l_from_us_cents_per_usg(v) if pd.notna(v) and v > 0 else None)
+    return d
+
+
+def benchmark_row(region_id: str):
+    d = load_fuel_benchmarks()
+    if d.empty or not region_id:
+        return None
+    m = d[d["region_id"] == region_id]
+    return None if m.empty else m.iloc[0]
+
+
+def benchmark_price_info(fc: "FuelConfig"):
+    """Return (info dict or None, error or None) for the benchmark method. price_used = user value if set, else the exact benchmark."""
+    r = benchmark_row(fc.benchmark_region)
+    if r is None:
+        return None, "Main refuelling region not selected or not found in the benchmark table."
+    bench = r["price_usd_per_l"]
+    if bench is None or pd.isna(bench):
+        return None, "Benchmark price missing for this region."
+    used = bench if fc.price is None else float(fc.price)
+    if used <= 0:
+        return None, "Average fuel price used must be greater than zero."
+    adjusted = not math.isclose(used, float(bench), rel_tol=0, abs_tol=5e-4)   # displayed precision is 3 decimals
+    if not adjusted:
+        used = float(bench)                                                     # an untouched (rounded) field keeps the exact benchmark
+    return dict(region_id=r["region_id"], region=r["region"], period_start=r["period_start"], period_end=r["period_end"], period_label=r["period_label"],
+                benchmark=r["benchmark"], source_cents_usg=float(r["price_us_cents_per_us_gallon"]), benchmark_usd_l=float(bench), used_usd_l=float(used),
+                user_adjusted=adjusted, nature="user hypothesis" if adjusted else "refinery reference",
+                disclaimer=BENCHMARK_DISCLAIMER, adjusted_text=BENCHMARK_USER_ADJUSTED if adjusted else "", url_1=r["source_url_1"], url_2=r["source_url_2"],
+                publisher=r["source_publisher"], licence_note=r["licence_note"], currency="USD", unit="USD per litre"), None
+
+
+def average_price_usd_per_l(fc: FuelConfig, fx: Fx):
+    """Average planning price: ONE price per litre + its currency. Returns (usd_per_litre or None, error or None).
+    No airport, supplier, separate taxes, per-uplift fees or validity date take part in it. EUR needs an explicit dated rate (same rule as everywhere)."""
+    if fc.price is None or fc.price <= 0:
+        return None, "Average fuel price not entered."
+    if fc.currency == "USD":
+        return float(fc.price), None
+    if fc.currency == "EUR":
+        if not fx.is_valid():
+            return None, "Average fuel price is in EUR: enter a dated EUR/USD rate to convert it."
+        return float(fc.price) / fx.usd_to_eur, None
+    return None, f"Unknown currency '{fc.currency}'."
+
+
 def manual_price_usd_per_l(fc: FuelConfig, fx: Fx):
     """Return (usd_per_litre or None, error or None). Taxes included, per-uplift fees excluded."""
     if fc.price is None or fc.price <= 0:
@@ -614,7 +676,7 @@ def _empty_result(row, scn):
         hours=dict(billed=scn.billed_hours, positioning=scn.positioning_hours, other=scn.other_hours,
                    flown=scn.flown_hours, reference=None),
         fuel={}, fixed={}, variable={}, components=[], budget_usd=None, cost_per_h_usd=None,
-        published={}, reconciliation=None, profit=None, rate_usd=None, fuel_validity=None, dates=dates_for(row), actualisation=dict(applied=False, inflation_pct=0.0, items=[]),
+        published={}, reconciliation=None, profit=None, rate_usd=None, fuel_validity=None, fuel_benchmark=None, dates=dates_for(row), menkor_base=dict(applied=False, pct=0.0, items=[], text=""),
         charter_rate_info=dict(source=getattr(scn, "charter_rate_source", "custom"), basis=getattr(scn, "charter_rate_basis", "")))
 
 
@@ -624,23 +686,21 @@ def compute(row, scn: Scenario, today: date | None = None) -> dict:
     fl = res["flags"]
     today = today or current_date()
     if str(row.get("record_status")) == LEGACY_STATUS:
-        if getattr(scn, "actualise", False) and scn.mode != "reference":
-            _flag(fl, "info", "actualise_na", "Menkor base update not applied: historical sheet without the cost breakdown needed (totals only).")
         return _compute_legacy(row, scn, res)
-    orig_row = row
+    orig_row = original_view(row)
+    info = menkor_base_info(row)
     if scn.mode == "reference":
-        # Report reference is STRICTLY the original published values: no Menkor adjustment, no user edit, whatever the scenario says.
-        adj_items = []
-        res["actualisation"] = dict(applied=False, inflation_pct=0.0, items=[], reason="reference_mode")
+        # Report reference is STRICTLY the original published values (original__ columns): no Menkor adjustment, no user edit, whatever the scenario says.
+        row = orig_row
+        res["menkor_base"] = dict(info, applied=False, reason="reference_mode", items=[], text="Report reference: original published values (the Menkor cost-base adjustment is not used).")
     else:
-        row, adj_items = adjust_row(row, scn)
+        # Custom simulation reads the Menkor cost base as stored (adjustment already in the data); nothing is adjusted here.
         _ob, _ab = num(orig_row, "annual_budget_usd"), num(row, "annual_budget_usd")
-        res["actualisation"] = dict(applied=bool(adj_items), inflation_pct=scn.inflation_pct if adj_items else 0.0, items=adj_items,
-                                    text=adjustment_text(scn.inflation_pct) if adj_items else "",
-                                    published_budget_original=_ob, published_budget_adjusted=_ab,
-                                    delta_total=(_ab - _ob) if (_ob is not None and _ab is not None) else None,
-                                    delta_fixed=((num(row, "annual_fixed_cost_usd") or 0) - (num(orig_row, "annual_fixed_cost_usd") or 0)) if adj_items else 0.0,
-                                    delta_variable=((num(row, "annual_variable_cost_usd") or 0) - (num(orig_row, "annual_variable_cost_usd") or 0)) if adj_items else 0.0)
+        res["menkor_base"] = dict(info, items=menkor_base_items(row, orig_row) if info["applied"] else [], text=menkor_base_text(info),
+                                  published_budget_original=_ob, published_budget_adjusted=_ab,
+                                  delta_total=(_ab - _ob) if (_ob is not None and _ab is not None and info["applied"]) else None,
+                                  delta_fixed=((num(row, "annual_fixed_cost_usd") or 0) - (num(orig_row, "annual_fixed_cost_usd") or 0)) if info["applied"] else 0.0,
+                                  delta_variable=((num(row, "annual_variable_cost_usd") or 0) - (num(orig_row, "annual_variable_cost_usd") or 0)) if info["applied"] else 0.0)
 
     ref_h = num(row, "reference_annual_hours")
     fixed_src = num(row, "annual_fixed_cost_usd")
@@ -711,7 +771,26 @@ def compute(row, scn: Scenario, today: date | None = None) -> dict:
     # fuel price (USD per litre)
     ref_price = num(row, "reference_fuel_price_usd_per_l")
     price_usd_l, price_label = None, ""
-    if scn.fuel.price_source == "manual":
+    if scn.fuel.price_source == "average":
+        price_usd_l, err = average_price_usd_per_l(scn.fuel, scn.fx)
+        price_label = AVERAGE_PRICE_LABEL + " (user hypothesis, not a verified or real-time price)"
+        if err:
+            _flag(fl, "error", "price_average", err)
+            return res
+        _flag(fl, "info", "fuel_average_assumption", AVERAGE_PRICE_NATURE)
+    elif scn.fuel.price_source == "benchmark":
+        binfo, err = benchmark_price_info(scn.fuel)
+        if err:
+            _flag(fl, "error", "price_benchmark", err)
+            return res
+        res["fuel_benchmark"] = binfo
+        res["config_hash"] = scn.config_hash(extra=f"bench={binfo['region_id']}:{binfo['period_end']}:{binfo['source_cents_usg']}:{binfo['used_usd_l']:.8f}")   # a refreshed table changes the id
+        price_usd_l = binfo["used_usd_l"]
+        price_label = ("Regional refinery benchmark, user-adjusted (user hypothesis)" if binfo["user_adjusted"] else "Regional refinery benchmark (not an into-wing price)")
+        _flag(fl, "info", "fuel_benchmark", BENCHMARK_DISCLAIMER)
+        if binfo["user_adjusted"]:
+            _flag(fl, "info", "fuel_benchmark_adjusted", BENCHMARK_USER_ADJUSTED)
+    elif scn.fuel.price_source == "manual":
         vs = validity_status(scn.fuel.validity_date, today)
         vs["confirmed"] = bool(vs["status"] == "expired" and scn.fuel.expired_confirmation
                                and scn.fuel.expired_confirmation == fuel_confirmation_token(scn.fuel))
@@ -719,7 +798,7 @@ def compute(row, scn: Scenario, today: date | None = None) -> dict:
         res["fuel_validity"] = vs
         res["config_hash"] = scn.config_hash(extra=f"fuel_validity={vs['status']}:{vs['confirmed']}")   # the status can change with time even if the inputs do not
         price_usd_l, err = manual_price_usd_per_l(scn.fuel, scn.fx)
-        price_label = "Manual local price entered by the user (no live feed)"
+        price_label = "Advanced local quote entered by the user (no live feed)"
         if err:
             _flag(fl, "error", "price_manual", err)
             return res
@@ -740,7 +819,7 @@ def compute(row, scn: Scenario, today: date | None = None) -> dict:
         price_label = ("Web scenario price 7.54 USD per US gallon (Guardian Jet; US gallon assumed, to confirm) — not a current market price"
                        if kind == "web_estimate" else "Report reference price (reference_fuel_price_usd_per_l) — not a current market price")
         if price_usd_l is None:
-            _flag(fl, "error", "no_ref_price", "Report fuel price missing — enter a manual fuel price.")
+            _flag(fl, "error", "no_ref_price", "Report fuel price missing — enter an average fuel price.")
             return res
 
     fuel_h = burn * price_usd_l
@@ -795,7 +874,11 @@ def compute(row, scn: Scenario, today: date | None = None) -> dict:
                                   currency=scn.fuel.currency, taxes_pct=scn.fuel.taxes_pct,
                                   fees_per_uplift=scn.fuel.fees_per_uplift, validity_date=scn.fuel.validity_date,
                                   validity_status=(res.get("fuel_validity") or {}).get("status"))
-                       if scn.fuel.price_source == "manual" else None)
+                       if scn.fuel.price_source == "manual" else None,
+                       average=dict(price=scn.fuel.price, currency=scn.fuel.currency, price_usd_l=price_usd_l, nature=AVERAGE_PRICE_NATURE,
+                                    fx_rate=(scn.fx.usd_to_eur if scn.fuel.currency == "EUR" else None), fx_date=(scn.fx.rate_date if scn.fuel.currency == "EUR" else None))
+                       if scn.fuel.price_source == "average" else None,
+                       benchmark=res.get("fuel_benchmark") if scn.fuel.price_source == "benchmark" else None)
     res["fixed"] = dict(source_total=fixed_src, override_delta=fixed_delta, extra=scn.extra_fixed or 0.0,
                         annual_total=fixed_total, includes="crew expense, crew training, hangar, insurance, aircraft misc")
     res["variable"] = dict(nonfuel_per_h=nonfuel_h, fuel_per_h=fuel_h, per_h=var_h, annual=var_annual,
@@ -819,7 +902,7 @@ def compute(row, scn: Scenario, today: date | None = None) -> dict:
     comps.append(dict(category="Fixed", key="rounding_fixed", label="Rounding vs printed fixed total",
                       annual_usd=fixed_total - sum_fx, hourly_usd=None, edited=False, source_value=None, rounding=True))
     comps.append(dict(category="Variable", key="fuel", label="Fuel", annual_usd=H * fuel_h, hourly_usd=fuel_h,
-                      edited=scn.fuel.price_source == "manual" or method == "custom", source_value=None))
+                      edited=scn.fuel.price_source in ("manual", "average", "benchmark") or method == "custom", source_value=None))
     # airframe / engine hourly from annual ÷ ref hours when not edited (more precise than rounded hourly)
     vs = 0.0
     for k, label, s, eff, ed in var_rows:
@@ -850,7 +933,7 @@ def compute(row, scn: Scenario, today: date | None = None) -> dict:
                 simulated_at_report_conditions=sim_ref, published_budget=budget_src,
                 difference=sim_ref - budget_src, difference_pct=(sim_ref - budget_src) / budget_src * 100,
                 original_published_budget=num(orig_row, "annual_budget_usd"),
-                adjustment_delta=(budget_src - num(orig_row, "annual_budget_usd")) if (adj_items and num(orig_row, "annual_budget_usd") is not None) else 0.0,
+                adjustment_delta=(budget_src - num(orig_row, "annual_budget_usd")) if (info["applied"] and num(orig_row, "annual_budget_usd") is not None) else 0.0,
                 note="Printed hourly burn and fuel price are rounded: their product may differ from the published annual fuel cost. Source data are not altered to force equality.")
 
     # profitability
@@ -906,7 +989,7 @@ def _compute_reference(row, scn, res, ref_h, fixed_src, var_src, fuel_cost_src, 
     res["budget_usd"] = budget
     res["cost_per_h_usd"] = budget / ref_h
     res["available"] = True
-    _flag(fl, "info", "reference_mode", "Report reference: published totals at the report's own hours and fuel price, original values only (no Menkor adjustment, no edit). Switch to Custom simulation to adjust costs.")
+    _flag(fl, "info", "reference_mode", "Report reference: published totals at the report's own hours and fuel price, original published values only (the Menkor cost-base adjustment and every edit are not used). Switch to Custom simulation to adjust costs.")
     return res
 
 
@@ -1067,7 +1150,7 @@ def sensitivity_billed_hours(row, scn: Scenario, hours_list):
 def sensitivity_fuel_price(row, scn: Scenario, prices_usd_l):
     out = []
     for p in prices_usd_l:
-        fc = FuelConfig(**{**scn.fuel.__dict__, "price_source": "manual", "price": p, "unit": "L", "currency": "USD", "taxes_pct": 0.0})
+        fc = FuelConfig(**{**scn.fuel.__dict__, "price_source": "average", "price": p, "unit": "L", "currency": "USD", "taxes_pct": 0.0})
         r = compute(row, Scenario(**{**scn.__dict__, "fuel": fc}))
         out.append((p, r["cost_per_h_usd"] if r["available"] else None, r["budget_usd"] if r["available"] else None))
     return out

@@ -142,3 +142,9 @@ Le rapport Lockheed Jetstar II/731 imprime un prix moyen d’occasion de 0 USD. 
 8. 07_texte_source_par_page.csv et les illustrations restent réservés aux PDF. Aucune page HTML complète n’est recopiée. Les URL, faits chiffrés, unités et catégories utiles sont conservés dans 11 et la provenance; le schéma existant de 01/04 reste inchangé (92 colonnes détaillées).
 
 Source primaire pour le changement de nom : GE Aerospace, « Passport, Catalyst making news at EBACE », 29 mai 2018, https://www.geaerospace.com/news/articles/product/passport-catalyst-making-news-ebace.
+
+## fuel_regional_benchmarks.csv (separate from the aircraft base)
+Weekly regional jet fuel benchmarks, IATA Fuel Price Monitor (Platts data, published under licence from S&P Global Energy). Week ending 2026-10-09.
+`price_us_cents_per_us_gallon` is the source figure; the application computes USD/L = cents / 100 / 3.785411784 at full precision (3 decimals displayed only).
+These are REFINERY market benchmarks, not into-wing prices: no regional mark-up is added. Not a real-time feed, not an annual average, not a forecast.
+The licence/terms of use were not reviewed: automated or commercial redistribution is NOT cleared. Update with `tools/update_fuel_benchmarks.py`.

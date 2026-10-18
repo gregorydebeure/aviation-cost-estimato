@@ -13,7 +13,7 @@ from io import BytesIO
 from pathlib import Path
 from xml.sax.saxutils import escape
 
-from menkor_engine import USG_TO_L, current_date, BUSINESS_TZ_NAME, adjustment_text
+from menkor_engine import USG_TO_L, current_date, BUSINESS_TZ_NAME, AVERAGE_PRICE_LABEL
 
 _HERE = Path(__file__).resolve().parent
 _FONT_FILES = {"MenkorSans": "LiberationSans-Regular.ttf", "MenkorSans-Bold": "LiberationSans-Bold.ttf", "MenkorSans-Italic": "LiberationSans-Italic.ttf"}
@@ -162,7 +162,7 @@ def build_report_pdf(res: dict, disp, alerts: list, logo_bytes: bytes | None = N
     kind = res.get("source_kind")
     pr = res.get("profit")
     fv = res.get("fuel_validity")
-    act = res.get("actualisation") or {}
+    act = res.get("menkor_base") or {}
     dts = res.get("dates") or {}
     fuel = res.get("fuel") or {}
 
@@ -174,13 +174,23 @@ def build_report_pdf(res: dict, disp, alerts: list, logo_bytes: bytes | None = N
         W.append("Historical sheet: totals only, currency not documented (treated as USD, unverified), fuel not separable.")
     W.append(f"Economic reference date of the figures: {dts.get('economic_reference_date', 'unknown')}. Consultation date and extraction date are processing dates, not validity dates.")
     if is_ref:
-        W.append("Report reference: original published values, hours and fuel price of the report. No Menkor adjustment and no user edit are applied.")
+        W.append("Report reference: original published values, hours and fuel price of the report. The Menkor cost-base adjustment and user edits are not used.")
     elif act.get("applied"):
-        W.append(act.get("text") or adjustment_text(act["inflation_pct"]))
+        W.append(act.get("text") or "Menkor cost base: selected costs include a Menkor adjustment applied to the original published values.")
         if act.get("delta_total") is not None:
-            W.append(f"Adjustment impact on the published basis: {M(act['published_budget_original'])} original budget, {'+' if act['delta_total'] >= 0 else '−'} {M(abs(act['delta_total']))} = {M(act['published_budget_adjusted'])}.")
+            W.append(f"Menkor cost base on the published basis: {M(act['published_budget_original'])} original budget {'+' if act['delta_total'] >= 0 else '−'} {M(abs(act['delta_total']))} = {M(act['published_budget_adjusted'])}.")
     else:
-        W.append("No Menkor adjustment applied: original reference values are used.")
+        W.append("Menkor cost base: no adjustment for this record (original published values).")
+    avg = fuel.get("average")
+    if avg and avg.get("price"):
+        W.append(f"Fuel: average price of {avg['currency']} {avg['price']:,.3f} per litre, entered by the user as an annual planning assumption. "
+                 "It includes the fuel taxes and fees that normally apply according to the operating habits. "
+                 "It is a user hypothesis, not a verified local price and not a real-time price.")
+    bm = fuel.get("benchmark")
+    if bm:
+        W.append(f"Fuel: regional market benchmark, {bm['region']} ({bm['period_label']}): {bm['benchmark_usd_l']:.3f} USD/L. " + bm["disclaimer"])
+        if bm["user_adjusted"]:
+            W.append(f"{bm['adjusted_text']} Price used: {bm['used_usd_l']:.3f} USD/L (user hypothesis).")
     if fv:
         if fv["status"] == "expired":
             W.append(f"Fuel price EXPIRED: valid until {fv['date']}, checked {fv['today']} ({BUSINESS_TZ_NAME}). "
@@ -288,15 +298,15 @@ def build_report_pdf(res: dict, disp, alerts: list, logo_bytes: bytes | None = N
         A.append(["Web source", f"{ws.get('url') or 'n/a'} — consultation date {ws.get('access_date') or 'n/a'} (not a validity date) · USD and US gallon assumed — to confirm"])
     A.append(["Dates (never mixed)", f"economic reference date: {dts.get('economic_reference_date', 'unknown')} · web consultation date: {dts.get('consultation_date') or 'n/a'} · database extraction date: {dts.get('extraction_date') or 'n/a'}"])
     if act.get("applied"):
-        A.append(["Menkor adjustment", act.get("text", "")])
+        A.append(["Menkor cost base", f"version {act.get('version') or 'n/a'} · status {act.get('status') or 'n/a'} · " + act.get("text", "")])
         for it in act["items"]:
             if it["before"] is None:
                 A.append(["  · " + it["item"], it["note"]])
             else:
-                A.append(["  · " + it["item"], f"{M(it['before'])} → {M(it['after'])} ({M(it['delta'])})" + (f" (+{it['pct']:g}%)" if it.get("pct") else "") + (f" — {it['note']}" if it.get("note") else "")])
-        A.append(["  · scope", "Fuel, insurance, crew salaries/expenses, catering, crew travel and misc are not adjusted. User edits replace the adjusted values."])
+                A.append(["  · " + it["item"], f"{M(it['before'])} → {M(it['after'])} ({M(it['delta'])})" + (f" ({fmt_pct(it['pct'], 1, sign=True)})" if it.get("pct") is not None else "") + (f" — {it['note']}" if it.get("note") else "")])
+        A.append(["  · scope", "Fuel, insurance, crew salaries/expenses, catering, crew travel and misc are unchanged in the base. User edits replace the base values."])
     else:
-        A.append(["Menkor adjustment", "Not applied (original reference values)"])
+        A.append(["Menkor cost base", "Not used: original published values" if is_ref else "No adjustment for this record (original published values)"])
     A.append(["Currency", disp.note()])
     sc = res["scenario"]
     if is_ref:
@@ -312,7 +322,18 @@ def build_report_pdf(res: dict, disp, alerts: list, logo_bytes: bytes | None = N
         A.append(["Fuel burn (average economic assumption)", (f"{bl:,.0f} L/h = {bl / USG_TO_L:,.1f} US gal/h — {fuel.get('burn_label', '')}" if bl else "n/a")])
         pu = fuel.get("price_usd_l")
         if pu is not None:
-            A.append(["Fuel price", f"{pu:.4f} USD/L (= {pu * USG_TO_L:.3f} USD/US gal) — {fuel.get('price_label', '')}"])
+            A.append(["Average fuel price (user hypothesis)" if avg else "Fuel price",
+                      f"{pu:.4f} USD/L (= {pu * USG_TO_L:.3f} USD/US gal) — {fuel.get('price_label', '')}"])
+        if avg and avg.get("price"):
+            conv = (f" · converted at {avg['fx_rate']:g} EUR per 1 USD (rate dated {avg['fx_date']})" if avg.get("currency") == "EUR" and avg.get("fx_rate") else "")
+            A.append(["Average price entered", f"{avg['currency']} {avg['price']:,.3f} per litre, taxes and fuel fees included per operating habits{conv}"])
+        if bm:
+            A.append(["Fuel price method", "Regional market benchmark" + (" — " + bm["adjusted_text"] if bm["user_adjusted"] else "")])
+            A.append(["Main refuelling region", bm["region"]])
+            A.append(["Benchmark period", f"{bm['period_label']} ({bm['period_start']} to {bm['period_end']}) — {bm['benchmark']}"])
+            A.append(["Benchmark price", f"{bm['source_cents_usg']:.2f} US cents per US gallon = {bm['benchmark_usd_l']:.3f} USD/L (refinery reference)"])
+            A.append(["Price used", f"{bm['used_usd_l']:.3f} USD/L — " + ("user hypothesis" if bm["user_adjusted"] else "refinery reference")])
+            A.append(["Benchmark source", f"{bm['publisher']} · {bm['url_1']}"])
         loc = fuel.get("local")
         if loc:
             A.append(["Local fuel entry", f"ICAO {loc['airport_icao'] or '-'} / IATA {loc['airport_iata'] or '-'} · supplier {loc['supplier'] or '-'} · "
@@ -347,7 +368,7 @@ def build_report_pdf(res: dict, disp, alerts: list, logo_bytes: bytes | None = N
     items = [x["text"] for x in res["flags"]] + [a["text"] for a in alerts]
     items += ["Seats-occupied range (seats_full_range) is not the manufacturer's maximum range; ferry range is reported separately.",
               "The fuel burn is an average economic assumption, not a flight-planning calculation.",
-              "No real-time fuel price is used: prices are the report's reference price or a manual entry.",
+              "No real-time fuel price is used: the fuel price is the report's reference price, an average price entered by the user, a weekly regional refinery benchmark (not an into-wing price) or an advanced dated local quote.",
               "Figures are for simulation purposes only. The source database's commercial redistribution rights must be verified before publication."]
     story.append(section("C. Data alerts and limits", *[P("• " + t, sSm) for t in items[:1]]))
     for t in items[1:]:

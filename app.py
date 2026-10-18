@@ -948,6 +948,12 @@ def _prov_table(row,prov):
     out=p.rename(columns={"field":"Field","value":"Value","unit":"Unit","source_file":"Source","source_page":"Page"})[["Field","Value","Unit","Data class","Source","Page"]]
     out["Value"]=out["Value"].fillna("missing")
     out["Source"]=out["Source"].map(E.public_source)
+    _of={c[len(E.ORIGINAL_PREFIX):] for c in row.index if isinstance(c,str) and c.startswith(E.ORIGINAL_PREFIX)}
+    def _base_val(f):
+        if f not in _of: return ""
+        v=E.num(row,f); o=E.num(E.original_view(row),f)
+        return f"{v:,.2f}" if (v is not None and o is not None and abs(v-o)>1e-9) else ""
+    out["Menkor base value"]=out["Field"].map(_base_val)
     return out.reset_index(drop=True)
 
 def _results_csv(res,disp):
@@ -955,8 +961,10 @@ def _results_csv(res,disp):
     rows=[("config_id",res["config_hash"]),("aircraft_id",res["aircraft_id"]),("model",res["model"]),("mode",res["mode"]),
           ("source","Menkor reference database"),("record_type",E.source_label(res.get("source_kind"))),
           ("charter_rate_source",res["charter_rate_info"]["source"]),("charter_rate_basis",res["charter_rate_info"]["basis"]),
-          ("base_update_applied",res["actualisation"]["applied"]),("base_update_adjustment_pct",res["actualisation"]["inflation_pct"]),
-          ("base_update_text",res["actualisation"].get("text","")),("base_update_delta_budget_usd",res["actualisation"].get("delta_total")),
+          ("menkor_base_version",res["menkor_base"].get("version")),("menkor_base_adjustment_applied_in_this_result",res["menkor_base"]["applied"]),
+          ("menkor_base_adjustment_pct",res["menkor_base"].get("pct")),("menkor_base_adjustment_status",res["menkor_base"].get("status")),
+          ("menkor_base_text",res["menkor_base"].get("text","")),("original_published_budget_usd",res["menkor_base"].get("published_budget_original")),
+          ("menkor_base_delta_budget_usd",res["menkor_base"].get("delta_total")),
           ("economic_reference_date",(res.get("dates") or {}).get("economic_reference_date","unknown")),
           ("consultation_date",(res.get("dates") or {}).get("consultation_date") or ""),("extraction_date",(res.get("dates") or {}).get("extraction_date") or ""),
           ("web_source_url",(res.get("web_source") or {}).get("url","")),("web_source_consulted",(res.get("web_source") or {}).get("access_date","")),
@@ -966,6 +974,20 @@ def _results_csv(res,disp):
           ("annual_variable_usd",res["variable"].get("annual")),("annual_budget_usd",res["budget_usd"]),("cost_per_hour_usd",res["cost_per_h_usd"])]
     if res.get("fuel"):
         f=res["fuel"]; rows+=[("fuel_burn_l_per_h",f.get("burn_l_h")),("fuel_price_usd_per_l",f.get("price_usd_l")),("fuel_price_source",f.get("price_source"))]
+        _av=f.get("average")
+        if _av:
+            rows+=[("fuel_price_nature","Average fuel price - annual planning assumption entered by the user (includes applicable fuel taxes and fees per operating habits); not a verified local price, not a real-time price"),
+                   ("fuel_average_price_per_litre",_av["price"]),("fuel_average_price_currency",_av["currency"]),
+                   ("fuel_average_price_usd_per_litre",_av["price_usd_l"]),("fuel_average_fx_usd_to_eur",_av.get("fx_rate") or ""),("fuel_average_fx_date",_av.get("fx_date") or "")]
+    _bm=(res.get("fuel") or {}).get("benchmark")
+    if _bm:
+        rows+=[("fuel_price_method","Regional market benchmark"),("fuel_benchmark_region",_bm["region"]),("fuel_benchmark_region_id",_bm["region_id"]),
+               ("fuel_benchmark_period",_bm["period_label"]),("fuel_benchmark_period_start",_bm["period_start"]),("fuel_benchmark_period_end",_bm["period_end"]),
+               ("fuel_benchmark_source",_bm["benchmark"]),("fuel_benchmark_source_url",_bm["url_1"]),
+               ("fuel_benchmark_price_us_cents_per_us_gallon",_bm["source_cents_usg"]),("fuel_benchmark_price_usd_per_l",_bm["benchmark_usd_l"]),
+               ("fuel_price_used_usd_per_l",_bm["used_usd_l"]),("fuel_price_currency_unit",_bm["unit"]),("fuel_price_user_adjusted",_bm["user_adjusted"]),
+               ("fuel_price_qualification","user hypothesis" if _bm["user_adjusted"] else "refinery reference"),
+               ("fuel_price_disclaimer",_bm["disclaimer"]),("fuel_price_adjusted_text",_bm["adjusted_text"])]
     fv=res.get("fuel_validity")
     if fv:
         rows+=[("fuel_validity_status",fv["status"]),("fuel_validity_date",fv.get("date") or ""),("fuel_validity_checked_on",fv["today"]),
@@ -1052,12 +1074,6 @@ def main():
                           help="Report reference = published totals with the report's own hours and fuel price. Custom simulation = recalculated from your hours, fuel and cost edits.")
         mode="reference" if mode_lbl=="Report reference" else "simulation"
         _locked=(mode=="reference")
-        st.markdown('<div class="section-header">📈 Menkor base update</div>',unsafe_allow_html=True)
-        act_on=st.toggle("Update base costs (adjustment scenario)",value=E.ACTUALISE_DEFAULT,key="act_on",disabled=_locked,
-                         help="Scenario assumption: maintenance & programs, crew training, hangar and handling/en-route fees are increased by the % below. Fuel, insurance, crew salaries, catering and misc are not changed. Applies to Custom simulation only.")
-        infl=st.number_input("Adjustment (%)",min_value=0.0,max_value=100.0,value=float(E.INFLATION_PCT_DEFAULT),step=1.0,key="infl_pct",disabled=(not act_on) or _locked)
-        if _locked: st.caption("Report reference uses the original published values only. Switch to Custom simulation to adjust costs.")
-        else: st.caption(E.adjustment_text(infl) if act_on else "Adjustment off: original Menkor reference values.")
 
         ref_h=E.num(row,"legacy_Heures_Base" if hist else "reference_annual_hours")
         ref_i=int(ref_h) if ref_h else 0
@@ -1078,8 +1094,10 @@ def main():
             st.markdown('<div class="section-header">⛽ Fuel (litres)</div>',unsafe_allow_html=True)
             rp=E.num(row,"reference_fuel_price_usd_per_l")
             _cv=_convs[(_convs["aircraft_id"]==aid)&(_convs["field"]=="reference_fuel_price_usd_per_l")]
-            src_opts=[f"Report price ({rp:.3f} USD/L)" if rp else "Report price (missing)","Manual local price"]
-            ps=st.radio("Fuel price source",src_opts,key=f"fps_{aid}",disabled=_locked)
+            _bdf=E.load_fuel_benchmarks()
+            src_opts=[f"Report price ({rp:.3f} USD/L)" if rp else "Report price (missing)","My average fuel price"]
+            if len(_bdf): src_opts.append("Regional market benchmark")
+            ps=st.radio("Fuel price method",src_opts,key=f"fps_{aid}",disabled=_locked)
             if len(_cv): st.caption(f"Report prints {_cv.iloc[0]['source_value']} {_cv.iloc[0]['source_unit']} → {float(_cv.iloc[0]['converted_value']):.3f} USD/L (1 US gal = 3.785411784 L; GAL assumed US gallon, to confirm).")
             bm_opts={"Published hourly burn":"published","Derived from annual volume":"derived","Custom burn (L/h)":"custom"}
             bm=st.selectbox("Burn method",list(bm_opts),key=f"bm_{aid}",disabled=_locked,
@@ -1089,11 +1107,43 @@ def main():
             cburn=None
             if bm_opts[bm]=="custom":
                 cburn=st.number_input("Average burn (L/h)",min_value=0.0,value=float(_pb or 0.0),step=10.0,key=f"cb_{aid}",disabled=_locked)
-            manual=(ps==src_opts[1])
-            fuel=E.FuelConfig(price_source="manual" if manual else "report",burn_method=bm_opts[bm],custom_burn_l_h=cburn)
-            if manual:
-                with st.expander("Local fuel price — manual entry (no live feed)",expanded=True):
-                    st.caption("No real-time price is connected: enter the quote you received.")
+            average=(ps==src_opts[1]); bench_on=(len(src_opts)>2 and ps==src_opts[2])
+            fuel=E.FuelConfig(price_source="average" if average else ("benchmark" if bench_on else "report"),burn_method=bm_opts[bm],custom_burn_l_h=cburn)
+            if bench_on:
+                with st.expander("Regional market benchmark — annual planning assumption",expanded=True):
+                    st.warning(E.BENCHMARK_DISCLAIMER)
+                    if _locked: st.caption("Report reference ignores this entry (your values are kept). Switch to Custom simulation to adjust costs.")
+                    _rid=_bdf["region_id"].tolist(); _rname=dict(zip(_bdf["region_id"],_bdf["region"]))
+                    fuel.benchmark_region=st.selectbox("Main refuelling region",_rid,format_func=lambda x:_rname[x],key="fu_bm_region",disabled=_locked,
+                                                       help="Main refuelling region: the aircraft record does not determine all of its fuel purchases.")
+                    _br=_bdf[_bdf["region_id"]==fuel.benchmark_region].iloc[0]
+                    st.caption(f"Reference: {_br['benchmark']} · {_br['period_label']} ({_br['period_start']} to {_br['period_end']}) · "
+                               f"{float(_br['price_us_cents_per_us_gallon']):.2f} US cents per US gallon = {float(_br['price_usd_per_l']):.3f} USD/L. "
+                               "Weekly refinery reference: not a real-time feed, not an annual average, not a forecast.")
+                    _pu=st.number_input("Average fuel price used (USD/L)",min_value=0.0,value=round(float(_br["price_usd_per_l"]),3),step=0.01,format="%.3f",
+                                        key="fu_bm_price_"+fuel.benchmark_region,disabled=_locked,
+                                        help="Pre-filled with the benchmark of the selected region; you can edit it.")
+                    fuel.price=_pu if _pu>0 else None
+                    _bi,_be=E.benchmark_price_info(fuel)
+                    if _be: st.warning(_be)
+                    elif _bi["user_adjusted"]: st.caption(E.BENCHMARK_USER_ADJUSTED)
+            if average:
+                with st.expander("Average fuel price — annual planning assumption",expanded=True):
+                    st.caption("One average price per litre for the whole year. It includes the fuel taxes and fees that normally apply, "
+                               "according to your operating habits. It is a planning hypothesis: not a verified local price and not a real-time price.")
+                    if _locked: st.caption("Report reference ignores this entry (your values are kept). Switch to Custom simulation to adjust costs.")
+                    ac1,ac2=st.columns(2)
+                    with ac1: _ap=st.number_input("Average price per litre",min_value=0.0,value=0.0,step=0.05,format="%.3f",key="fu_avg_price",disabled=_locked)
+                    with ac2: fuel.currency=st.selectbox("Currency of the average price",["USD","EUR"],key="fu_avg_ccy",disabled=_locked,
+                                                         help="EUR is converted with the dated exchange rate entered in the Currency section.")
+                    fuel.price=_ap if _ap>0 else None
+                    if fuel.price is None: st.warning("Enter the average price per litre: until then the simulation is unavailable (no default value is invented).")
+            # Advanced module — kept separate from the annual-planning path. Off by default.
+            with st.expander("🔧 Advanced — dated local fuel quote (optional)",expanded=False):
+                st.caption("For a specific quote only (airport, supplier, taxes, fees, validity date). Not needed for the annual planning assumption. No real-time price is connected.")
+                _adv=st.checkbox("Use a detailed local quote instead of the fuel price source above",key="fu_adv_on",disabled=_locked)
+                if _adv:
+                    fuel=E.FuelConfig(price_source="manual",burn_method=bm_opts[bm],custom_burn_l_h=cburn)
                     if _locked: st.caption("Report reference ignores this entry (your values are kept). Switch to Custom simulation to adjust costs.")
                     fuel.airport_icao=st.text_input("Airport ICAO",key="fu_icao",max_chars=4,disabled=_locked).upper()
                     fuel.airport_iata=st.text_input("Airport IATA",key="fu_iata",max_chars=3,disabled=_locked).upper()
@@ -1239,7 +1289,7 @@ def main():
                    charter_rate=(rate_in if rate_in>0 else None),charter_rate_ccy=rate_ccy,commission_pct=float(commission_pct),
                    other_commercial_fees=float(disp.to_usd(fees_in)),fuel=fuel,fixed_overrides=ov_fixed,var_overrides_h=ov_var,
                    extra_fixed=float(extra_fixed_usd),extra_var_h=float(extra_var_usd),fx=fx,
-                   actualise=bool(act_on),inflation_pct=float(infl),charter_rate_source=rate_source,charter_rate_basis=rate_basis)
+                   charter_rate_source=rate_source,charter_rate_basis=rate_basis)
     res=E.compute(row,scn)
     alerts=E.alerts_for(row,_checks,_conflicts,_convs)
     perf=E.performance_summary(row)
@@ -1302,8 +1352,8 @@ def main():
             if res.get("reconciliation") and mode=="simulation":
                 rc=res["reconciliation"]
                 if rc.get("adjustment_delta"):
-                    st.caption(f"Reconciliation: adjusted published basis {D(rc['published_budget'])} (= original {D(rc['original_published_budget'])} + adjustment {D(rc['adjustment_delta'])}) vs simulation recalculated at the report's own hours and fuel price (burn × price) {D(rc['simulated_at_report_conditions'])}: difference {D(rc['difference'])} ({rc['difference_pct']:+.2f}%). "
-                               "It comes from the rounding of the printed hourly burn and fuel price, not from the adjustment; the source data are not altered.")
+                    st.caption(f"Reconciliation: Menkor cost base {D(rc['published_budget'])} (= original published {D(rc['original_published_budget'])} + Menkor base adjustment {D(rc['adjustment_delta'])}) vs simulation recalculated at the report's own hours and fuel price (burn × price) {D(rc['simulated_at_report_conditions'])}: difference {D(rc['difference'])} ({rc['difference_pct']:+.2f}%). "
+                               "It comes from the rounding of the printed hourly burn and fuel price, not from the Menkor base adjustment; the source data are not altered.")
                 else:
                     st.caption(f"Reconciliation: at the report's own hours and fuel price the formula gives {D(rc['simulated_at_report_conditions'])} vs published {D(rc['published_budget'])} ({rc['difference_pct']:+.2f}%). Printed hourly values are rounded; the source data are not altered.")
             _render_alerts(res,alerts)
@@ -1317,22 +1367,22 @@ def main():
                 _fg=chart_per_hour(res,disp)
                 if _fg is not None: st.plotly_chart(_fg,width="stretch",config={"displayModeBar":False})
                 else: st.info("Cost per hour is not applicable: annual flown hours are zero.")
-            _act=res.get("actualisation") or {}
+            _mb=res.get("menkor_base") or {}
             if mode=="reference":
-                st.info("Report reference — original published values. The Menkor adjustment and every cost edit apply to Custom simulation only.")
-            elif _act.get("applied"):
-                st.markdown('<div class="section-header">📈 Menkor adjustment — items increased in this simulation</div>',unsafe_allow_html=True)
-                st.caption(_act["text"]+" Your edits replace these values; fuel, insurance, crew salaries/expenses, catering and misc are not adjusted.")
-                _it=pd.DataFrame([{"Item":i["item"],f"Original ({disp.ccy})":(round(disp.conv(i["before"])) if i["before"] is not None else None),
-                                   f"Adjusted ({disp.ccy})":(round(disp.conv(i["after"])) if i["after"] is not None else None),
-                                   "Adjustment":(f"+{i['pct']:g}%" if i.get("pct") else ("replaced" if i["before"] is not None else "n/a")),
-                                   f"Difference ({disp.ccy})":(round(disp.conv(i["delta"])) if i.get("delta") is not None else None),
-                                   "Note":i.get("note","")} for i in _act["items"]])
-                st.dataframe(_it,width="stretch",hide_index=True)
-                if _act.get("delta_total") is not None:
-                    st.caption(f"Total adjustment on the published basis: {D(_act['published_budget_original'])} original budget {'+' if _act['delta_total']>=0 else '−'} {D(abs(_act['delta_total']))} = {D(_act['published_budget_adjusted'])} (adjusted published basis).")
+                st.info("Report reference — original published values. Cost edits and the Menkor cost base apply to Custom simulation only.")
+            elif _mb.get("applied"):
+                with st.expander("📋 Menkor cost base — original published values vs base values (read-only)",expanded=False):
+                    st.caption(_mb["text"]+" Your edits replace these values.")
+                    _it=pd.DataFrame([{"Item":i["item"],f"Original published ({disp.ccy})":(round(disp.conv(i["before"])) if i["before"] is not None else None),
+                                       f"Menkor base ({disp.ccy})":(round(disp.conv(i["after"])) if i["after"] is not None else None),
+                                       "Change":(f"{i['pct']:+.1f}%" if i.get("pct") is not None else "n/a"),
+                                       f"Difference ({disp.ccy})":(round(disp.conv(i["delta"])) if i.get("delta") is not None else None),
+                                       "Note":i.get("note","")} for i in _mb["items"]])
+                    st.dataframe(_it,width="stretch",hide_index=True)
+                    if _mb.get("delta_total") is not None:
+                        st.caption(f"Total on the published basis: {D(_mb['published_budget_original'])} original budget {'+' if _mb['delta_total']>=0 else '−'} {D(abs(_mb['delta_total']))} = {D(_mb['published_budget_adjusted'])} (Menkor cost base).")
             else:
-                st.caption("Menkor adjustment is off (or not applicable to this record): original Menkor reference values are used.")
+                st.caption("Menkor cost base: no adjustment for this record (original published values).")
             with st.expander("🔎 Data provenance — extracted / calculated / converted / missing"):
                 if _prov is None: _prov=get_prov()
                 st.dataframe(_prov_table(row,_prov),width="stretch",hide_index=True)
@@ -1452,7 +1502,7 @@ def main():
                     _t=_t.rename(columns={"model":"Model","manufacturer":"Manufacturer","source_kind":"Source"})
                     st.dataframe(_t,width="stretch",hide_index=True)
                 else:
-                    st.info("Fleet comparison unavailable with the current fuel inputs (e.g. a manual fuel price must be entered).")
+                    st.info("Fleet comparison unavailable with the current fuel inputs (e.g. an average fuel price must be entered).")
 
     # TAB 4: COST MASTER — results (editors were rendered above)
     with tab4:
