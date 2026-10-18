@@ -14,6 +14,7 @@ warnings.filterwarnings("ignore")
 
 import os
 from pathlib import Path
+import streamlit.components.v1 as components
 
 try:
     # Platforms like Render have no native st.secrets support, only plain env vars — bridge them into
@@ -40,6 +41,46 @@ except Exception:
 # ─── PAGE CONFIG & CSS ───────────────────────────────────────────────────────
 st.set_page_config(page_title="Aviation Cost Estimator", page_icon="✈",
                    layout="wide", initial_sidebar_state="expanded")
+
+# ─── PWA (installable Android/iOS app) ───────────────────────────────────────
+# Streamlit doesn't expose <head>, so this injects the manifest/meta tags into
+# the REAL page head via window.parent — standard trick for Streamlit + PWA.
+# Requires: .streamlit/config.toml with enableStaticServing = true, and the
+# static/ folder (manifest.json, sw.js, icons) committed next to this file.
+try:
+    components.html("""
+    <script>
+    (function(){
+      try {
+        var d = window.parent.document;
+        function addLink(rel, href, attrs){
+          if (d.querySelector('link[rel="'+rel+'"][href="'+href+'"]')) return;
+          var l = d.createElement('link'); l.rel = rel; l.href = href;
+          if (attrs) for (var k in attrs) l.setAttribute(k, attrs[k]);
+          d.head.appendChild(l);
+        }
+        function addMeta(name, content){
+          if (d.querySelector('meta[name="'+name+'"]')) return;
+          var m = d.createElement('meta'); m.name = name; m.content = content;
+          d.head.appendChild(m);
+        }
+        addLink('manifest', '/app/static/manifest.json');
+        addLink('icon', '/app/static/icon-192.png', {sizes:'192x192'});
+        addLink('apple-touch-icon', '/app/static/apple-touch-icon.png');
+        addMeta('theme-color', '#0B1629');
+        addMeta('mobile-web-app-capable', 'yes');
+        addMeta('apple-mobile-web-app-capable', 'yes');
+        addMeta('apple-mobile-web-app-status-bar-style', 'black-translucent');
+        addMeta('apple-mobile-web-app-title', 'Menkor Cost');
+        if ('serviceWorker' in navigator) {
+          navigator.serviceWorker.register('/app/static/sw.js').catch(function(){});
+        }
+      } catch (e) {}
+    })();
+    </script>
+    """, height=0, width=0)
+except Exception:
+    pass  # never let a PWA injection failure break the app
 
 st.markdown("""<style>
 :root{--navy:#0B1629;--deep:#112244;--mid:#1A3A6E;--gold:#C9A84C;--amber:#E8C46A;
@@ -1197,52 +1238,58 @@ def main():
         msc1,msc2=st.columns(2)
         with msc1: ms_cat=st.selectbox("Category",ms_cats,key="ms_cat")
         df_ms=df if ms_cat=="All" else df[df["Categorie"]==ms_cat]
-        with msc2: ms_model_preview=st.selectbox("Aircraft model",df_ms["Modele"].tolist(),key="ms_model_preview")
+        _ms_list=df_ms["Modele"].tolist()
+        _F7X="Dassault Falcon 7X"
+        _ms_def=_ms_list.index(_F7X) if _F7X in _ms_list else 0
+        with msc2: ms_model_preview=st.selectbox("Aircraft model",_ms_list,index=_ms_def,key="ms_model_preview")
+        _is_f7x=(ms_model_preview==_F7X)
 
-        st.markdown("<hr>",unsafe_allow_html=True)
-        st.markdown(f'<div class="section-header">📋 Sample Report Preview — {ms_model_preview}</div>',unsafe_allow_html=True)
-        st.caption("Illustrative data only — not real listings. Your paid report replaces every row below with verified, current market listings for this exact model.")
+        if not _is_f7x:
+            st.markdown("<hr>",unsafe_allow_html=True)
+            st.markdown(f'<div class="section-header">📋 Sample Report Preview — {ms_model_preview}</div>',unsafe_allow_html=True)
+            st.caption("Illustrative data only — not real listings. Your paid report replaces every row below with verified, current market listings for this exact model.")
 
-        _sample_listings=[
-            dict(year=2016,reg="N-XXXX",hours="1,850 h",price="$18.5M",location="USA · Teterboro",
-                 maint="JSSI Enrolled",maint_color="#4ADE80",broker="Atlantic Aviation Brokers"),
-            dict(year=2014,reg="VP-XXXX",hours="2,400 h",price="$15.9M",location="UK · London",
-                 maint="OEM Program",maint_color="#60A5FA",broker="EuroCharter Sales"),
-            dict(year=2018,reg="M-XXXX",hours="1,100 h",price="$21.2M",location="UAE · Dubai",
-                 maint="JSSI Enrolled",maint_color="#4ADE80",broker="Gulf Jet Partners"),
-            dict(year=2012,reg="HB-XXXX",hours="3,650 h",price="$12.4M",location="Switzerland · Geneva",
-                 maint="Not Enrolled",maint_color="#F87171",broker="Alpine Aircraft Sales"),
-        ]
+            _sample_listings=[
+                dict(year=2016,reg="N-XXXX",hours="1,850 h",price="$18.5M",location="USA · Teterboro",
+                     maint="JSSI Enrolled",maint_color="#4ADE80",broker="Atlantic Aviation Brokers"),
+                dict(year=2014,reg="VP-XXXX",hours="2,400 h",price="$15.9M",location="UK · London",
+                     maint="OEM Program",maint_color="#60A5FA",broker="EuroCharter Sales"),
+                dict(year=2018,reg="M-XXXX",hours="1,100 h",price="$21.2M",location="UAE · Dubai",
+                     maint="JSSI Enrolled",maint_color="#4ADE80",broker="Gulf Jet Partners"),
+                dict(year=2012,reg="HB-XXXX",hours="3,650 h",price="$12.4M",location="Switzerland · Geneva",
+                     maint="Not Enrolled",maint_color="#F87171",broker="Alpine Aircraft Sales"),
+            ]
 
-        for lst in _sample_listings:
-            st.markdown(f'''<div class="metric-card" style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:1rem">
-                <div style="min-width:170px">
-                    <div style="font-size:1.05rem;font-weight:700;color:#E8C46A">{ms_model_preview} · {lst["year"]}</div>
-                    <div style="font-size:.78rem;color:#8496B0">Reg. {lst["reg"]} · {lst["location"]}</div>
-                </div>
-                <div style="text-align:center;min-width:90px">
-                    <div class="metric-label" style="margin-bottom:.1rem">Hours</div>
-                    <div style="font-size:.95rem;color:#D6E4F7;font-weight:600">{lst["hours"]}</div>
-                </div>
-                <div style="text-align:center;min-width:90px">
-                    <div class="metric-label" style="margin-bottom:.1rem">Price</div>
-                    <div style="font-size:.95rem;color:#D6E4F7;font-weight:600">{lst["price"]}</div>
-                </div>
-                <div style="text-align:center;min-width:120px">
-                    <span style="background:{lst["maint_color"]}22;color:{lst["maint_color"]};padding:3px 10px;border-radius:12px;font-size:.72rem;font-weight:700">{lst["maint"]}</span>
-                </div>
-                <div style="text-align:right;min-width:170px">
-                    <div style="font-size:.72rem;color:#8496B0">Seller broker</div>
-                    <div style="font-size:.82rem;color:#5A6B85;filter:blur(3px);user-select:none">{lst["broker"]}</div>
-                </div>
+            for lst in _sample_listings:
+                st.markdown(f'''<div class="metric-card" style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:1rem">
+                    <div style="min-width:170px">
+                        <div style="font-size:1.05rem;font-weight:700;color:#E8C46A">{ms_model_preview} · {lst["year"]}</div>
+                        <div style="font-size:.78rem;color:#8496B0">Reg. {lst["reg"]} · {lst["location"]}</div>
+                    </div>
+                    <div style="text-align:center;min-width:90px">
+                        <div class="metric-label" style="margin-bottom:.1rem">Hours</div>
+                        <div style="font-size:.95rem;color:#D6E4F7;font-weight:600">{lst["hours"]}</div>
+                    </div>
+                    <div style="text-align:center;min-width:90px">
+                        <div class="metric-label" style="margin-bottom:.1rem">Price</div>
+                        <div style="font-size:.95rem;color:#D6E4F7;font-weight:600">{lst["price"]}</div>
+                    </div>
+                    <div style="text-align:center;min-width:120px">
+                        <span style="background:{lst["maint_color"]}22;color:{lst["maint_color"]};padding:3px 10px;border-radius:12px;font-size:.72rem;font-weight:700">{lst["maint"]}</span>
+                    </div>
+                    <div style="text-align:right;min-width:170px">
+                        <div style="font-size:.72rem;color:#8496B0">Seller broker</div>
+                        <div style="font-size:.82rem;color:#5A6B85;filter:blur(3px);user-select:none">{lst["broker"]}</div>
+                    </div>
+                </div>''',unsafe_allow_html=True)
+
+            st.markdown('''<div style="text-align:center;font-size:.78rem;color:#8496B0;margin:.4rem 0 1.2rem 0">
+                🔒 Broker names, direct contacts, and exact tail numbers are unlocked in your personalized report
             </div>''',unsafe_allow_html=True)
 
-        st.markdown('''<div style="text-align:center;font-size:.78rem;color:#8496B0;margin:.4rem 0 1.2rem 0">
-            🔒 Broker names, direct contacts, and exact tail numbers are unlocked in your personalized report
-        </div>''',unsafe_allow_html=True)
-
         st.markdown("<hr>",unsafe_allow_html=True)
-        with st.expander("📂 Real Example — Falcon 7X Full Market Dossier & Turnkey Program", expanded=True):
+        _f7x_ctx=st.container() if _is_f7x else st.expander("📂 Real Example — Falcon 7X Full Market Dossier & Turnkey Program", expanded=False)
+        with _f7x_ctx:
             st.caption("A genuine, in-depth example of what the € 300 Market Search becomes once paired with Menkor's turnkey acquisition service — shown here for the Falcon 7X segment (24 aircraft tracked, 2007–2022).")
 
             # ── Falcon 7X market ledger ──────────────────────────────────
