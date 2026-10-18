@@ -167,13 +167,8 @@ def get_aliases():
 
 
 @st.cache_data(show_spinner=False)
-def get_charter_rates():
-    return E.load_charter_rates()
-
-
-@st.cache_data(show_spinner=False)
-def get_charter_cats():
-    return E.load_charter_categories()
+def get_charter_prices():
+    return E.load_charter_prices()
 
 
 def get_active_db():
@@ -809,8 +804,8 @@ def premium_gate(required="pro"):
 # ─── MAIN ────────────────────────────────────────────────────────────────────
 
 _RS_CUSTOM="Custom rate"
-_RS_LOW="Menkor estimate — low"; _RS_MID="Menkor estimate — midpoint"; _RS_HIGH="Menkor estimate — high"
-_RS_MAP={_RS_LOW:("estimate_low","low_eur"),_RS_MID:("estimate_mid","mid_eur"),_RS_HIGH:("estimate_high","high_eur")}
+_RS_REF="Menkor estimate — reference"; _RS_LOW="Menkor estimate — low"; _RS_HIGH="Menkor estimate — high"
+_RS_MAP={_RS_REF:("estimate_ref","reference"),_RS_LOW:("estimate_low","low"),_RS_HIGH:("estimate_high","high")}
 
 def _use_hist_rate(aid,val):
     """on_click callback: copy the historical (unverified) rate of the old base into the rate field."""
@@ -865,7 +860,7 @@ def _results_csv(res,disp):
     """CSV export of the current result with its assumptions and exchange rate (same engine result as screen/PDF)."""
     rows=[("config_id",res["config_hash"]),("aircraft_id",res["aircraft_id"]),("model",res["model"]),("mode",res["mode"]),
           ("source","Menkor reference database"),("record_type",E.source_label(res.get("source_kind"))),
-          ("charter_rate_source",res["charter_rate_info"]["source"]),("charter_rate_category",res["charter_rate_info"]["category"]),
+          ("charter_rate_source",res["charter_rate_info"]["source"]),("charter_rate_basis",res["charter_rate_info"]["basis"]),
           ("base_update_applied",res["actualisation"]["applied"]),("base_update_inflation_pct",res["actualisation"]["inflation_pct"]),
           ("web_source_url",(res.get("web_source") or {}).get("url","")),("web_source_consulted",(res.get("web_source") or {}).get("access_date","")),
           ("source_currency","USD"),("display_currency",disp.ccy),("usd_to_eur_rate",disp.fx.usd_to_eur if disp.ccy=="EUR" else ""),
@@ -1022,24 +1017,41 @@ def main():
             st.button("Use historical rate",key=f"uh_{aid}",on_click=_use_hist_rate,args=(aid,hist_rate))
         else:
             st.caption("No charter price in the source: enter your own rate (nothing is assumed).")
-        _est=E.charter_estimate(aid,get_charter_rates(),get_charter_cats())
-        rate_source="custom"; rate_cat=""
-        if _est:
-            st.caption(f"Menkor indicative rate — {_est['category']} ({_est['seats']} seats): € {_est['low_eur']:,.0f} – {_est['high_eur']:,.0f} per flight hour (midpoint € {_est['mid_eur']:,.0f}). "
-                       "Market estimate from the Menkor rate grid, not a quotation; category assigned from the public size class. You can switch to a custom rate at any time.")
-            _rs=st.radio("Charter rate to use",[_RS_MID,_RS_LOW,_RS_HIGH,_RS_CUSTOM],key=f"rsrc_{aid}",
-                         help="Pick the low / midpoint / high of the Menkor estimate, or enter your own rate.")
+        _est=E.charter_estimate(aid,get_charter_prices())
+        rate_source="custom"; rate_basis=""
+        _sym={"USD":"$","EUR":"€"}
+        _opts=[_RS_CUSTOM]
+        if _est and _est["available"]:
+            _c=_sym[_est["currency"]]
+            _rng=(f" (published range {_c} {_est['low']:,.0f} – {_est['high']:,.0f})" if _est["low"] and _est["high"] else "")
+            st.markdown(f'<div class="metric-sub">💡 <b>Charter price estimate:</b> {_c} {_est["reference"]:,.0f} per billable flight hour{_rng}. '
+                        f'<i>Indicative estimate from public listings — not a quotation.</i></div>',unsafe_allow_html=True)
+            _opts=[_RS_REF]+([_RS_LOW,_RS_HIGH] if (_est["low"] and _est["high"]) else [])+[_RS_CUSTOM]
+            if not _est["auto_prefill"]:
+                st.warning("Not pre-selected: "+("proxy price of a related model" if _est["scope"]=="family_proxy" else "configuration or match to confirm")+
+                           f" (confidence: {_est['confidence']}). Pick “{_RS_REF}” only after checking it, or enter your own rate.")
+            _rs=st.radio("Charter rate to use",_opts,index=(0 if _est["auto_prefill"] else len(_opts)-1),key=f"rsrc_{aid}",
+                         help="Use the estimate (reference / low / high of the published range) or enter your own rate. You stay in control of the final price.")
+            with st.expander("ℹ About this estimate — read before quoting",expanded=False):
+                for _t in E.charter_disclaimers(_est): st.markdown("• "+_t)
+                st.caption(f"Source: {_est['source_name']} — listing “{_est['source_model']}”. {_est['source_url'] or ''}".strip())
+                if _est["alt_reference"]: st.caption(f"Second public reference: {_sym.get(_est['alt_currency'],'')} {_est['alt_reference']:,.0f}/h ({_est['alt_url']}).")
+                if _est["notes"]: st.caption("File note: "+_est["notes"])
+        elif _est:
+            st.caption("No public charter price found for this exact model (nothing is replaced by zero or by another model): a manual quote is needed — enter your own rate.")
+            _rs=_RS_CUSTOM
         else:
-            st.caption("No Menkor rate estimate for this aircraft type (airliner / VIP / regional): enter your own rate.")
             _rs=_RS_CUSTOM
         if _rs!=_RS_CUSTOM:
-            rate_source,_k=_RS_MAP[_rs]; rate_cat=_est["category"]
-            rate_in=float(_est[_k]); rate_ccy="EUR"
-            st.markdown(f'<div class="metric-sub">Rate used: <b>€ {rate_in:,.0f} / billed hour</b> (EUR grid — needs the dated USD → EUR rate above to be converted).</div>',unsafe_allow_html=True)
+            rate_source,_k=_RS_MAP[_rs]; rate_in=float(_est[_k]); rate_ccy=_est["currency"]
+            rate_basis=f"{_est['scope']}; confidence {_est['confidence']}; consulted {_est['access_date']}"
+            st.markdown(f'<div class="metric-sub">Rate used: <b>{_sym[rate_ccy]} {rate_in:,.0f} / billed hour</b> — estimate'
+                        +(" (EUR: needs the dated USD → EUR rate above to be converted)." if rate_ccy=="EUR" else ".")+'</div>',unsafe_allow_html=True)
         else:
             rc1,rc2=st.columns([2,1])
-            with rc1: rate_in=st.number_input("Rate per billed hour",min_value=0.0,value=0.0,step=100.0,format="%.0f",key=f"rate_{aid}")
-            with rc2: rate_ccy=st.selectbox("Rate ccy",["USD","EUR"],key=f"rateccy_{aid}")
+            _dv=float(_est["reference"]) if (_est and _est["available"] and _est["auto_prefill"]) else 0.0
+            with rc1: rate_in=st.number_input("Rate per billed hour",min_value=0.0,value=_dv,step=100.0,format="%.0f",key=f"rate_{aid}")
+            with rc2: rate_ccy=st.selectbox("Rate ccy",["USD","EUR"],index=(["USD","EUR"].index(_est["currency"]) if (_est and _est["available"]) else 0),key=f"rateccy_{aid}")
         commission_pct=st.slider("Commission (%)",0,25,10,step=1)
         fees_in=st.number_input(f"Other commercial fees / year ({disp.ccy}) — not already in the report",min_value=0.0,value=0.0,step=1000.0,format="%.0f")
 
@@ -1106,7 +1118,7 @@ def main():
                    charter_rate=(rate_in if rate_in>0 else None),charter_rate_ccy=rate_ccy,commission_pct=float(commission_pct),
                    other_commercial_fees=float(disp.to_usd(fees_in)),fuel=fuel,fixed_overrides=ov_fixed,var_overrides_h=ov_var,
                    extra_fixed=float(extra_fixed_usd),extra_var_h=float(extra_var_usd),fx=fx,
-                   actualise=bool(act_on),inflation_pct=float(infl),charter_rate_source=rate_source,charter_rate_category=rate_cat)
+                   actualise=bool(act_on),inflation_pct=float(infl),charter_rate_source=rate_source,charter_rate_basis=rate_basis)
     res=E.compute(row,scn)
     alerts=E.alerts_for(row,_checks,_conflicts,_convs)
     perf=E.performance_summary(row)
@@ -1239,6 +1251,8 @@ def main():
                     r_=pr["operating_result"]; cov=pr["coverage_pct"]
                     badge=('<span class="tag-ok">✓ POSITIVE OPERATING RESULT</span>' if r_>=0 else
                            ('<span class="tag-warn">⚠ BELOW BREAK-EVEN</span>' if (cov or 0)>=70 else '<span class="tag-err">✗ NEGATIVE OPERATING RESULT</span>'))
+                    if res["charter_rate_info"]["source"]!="custom":
+                        st.warning("The charter price used here is an ESTIMATE (indicative public listing price, "+res["charter_rate_info"]["basis"]+"): not a quotation and not operator net revenue; taxes, airport fees and positioning may be billed on top. Replace it with your own rate for a client quote.")
                     st.markdown(f"**Status:** {badge} — Coverage: **{cov:.1f}%** (net revenue after commission and fees ÷ total costs)",unsafe_allow_html=True)
                     h1,h2,h3,h4=st.columns(4)
                     h1.metric("Total flown hours",f"{pr['flown_hours']:g} h"); h2.metric("Billed hours",f"{pr['billed_hours']:g} h")

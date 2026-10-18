@@ -116,31 +116,68 @@ def source_label(kind):
     return SOURCE_LABELS.get(kind, str(kind))
 
 
-def load_charter_rates() -> pd.DataFrame:
-    """Menkor indicative charter-rate grid (EUR per flight hour, low/high per size category)."""
-    return _read("menkor_charter_rates.csv")
+def load_charter_prices() -> pd.DataFrame:
+    """Menkor indicative charter-price file: one row per aircraft_id (167). Strings; numbers parsed on use. Nothing is imputed."""
+    return _read("menkor_tarifs_charter.csv", dtype=str)
 
 
-def load_charter_categories() -> pd.DataFrame:
-    """aircraft_id -> rate-grid category (assigned from the public size class; blank = no matching category)."""
-    return _read("categorie_charter.csv", dtype=str).fillna("")
-
-
-def charter_estimate(aircraft_id, rates=None, cats=None):
-    """Indicative charter rate for the aircraft's size category, or None. EUR per flight hour: low / midpoint / high.
-    An estimate to propose and to customise — not a quotation. No category -> None (nothing is invented)."""
-    rates = load_charter_rates() if rates is None else rates
-    cats = load_charter_categories() if cats is None else cats
-    c = cats[cats["aircraft_id"] == str(aircraft_id)]
-    if c.empty or not c.iloc[0]["category"]:
+def _f(x):
+    try:
+        v = float(x)
+    except (TypeError, ValueError):
         return None
-    r = rates[rates["category"] == c.iloc[0]["category"]]
+    return v if v == v else None
+
+
+def _s(x):
+    return None if x is None or (isinstance(x, float) and x != x) or str(x).strip() == "" else str(x).strip()
+
+
+def charter_estimate(aircraft_id, prices=None):
+    """Indicative charter price (per billable flight hour, whole aircraft) for this exact aircraft_id, or None if the id is unknown.
+    `available` is False when the file has no usable public price: nothing is replaced by zero or by another model.
+    `auto_prefill` follows the file (False = proxy / low confidence / configuration to confirm: shown, never pre-selected)."""
+    prices = load_charter_prices() if prices is None else prices
+    r = prices[prices["aircraft_id"] == str(aircraft_id)]
     if r.empty:
         return None
     r = r.iloc[0]
-    lo, hi = float(r["eur_per_hour_low"]), float(r["eur_per_hour_high"])
-    return dict(category=str(r["category"]), seats=str(r["seats"]), low_eur=lo, high_eur=hi, mid_eur=(lo + hi) / 2.0,
-                cruise_kts=float(r["cruise_kts"]), basis=str(c.iloc[0]["basis"]), currency="EUR")
+    ref = _f(r.get("charter_rate_reference_per_hour"))
+    ccy = _s(r.get("currency"))
+    avail = ref is not None and ref > 0 and ccy in ("USD", "EUR") and _s(r.get("reference_method")) != "unavailable"
+    return dict(
+        available=bool(avail), reference=ref if avail else None, low=_f(r.get("charter_rate_low_per_hour")) if avail else None,
+        high=_f(r.get("charter_rate_high_per_hour")) if avail else None, currency=ccy,
+        method=_s(r.get("reference_method")), scope=_s(r.get("match_scope")), confidence=_s(r.get("confidence")),
+        auto_prefill=bool(avail and str(r.get("auto_prefill_allowed")).strip().lower() == "true"), action=_s(r.get("claude_action")),
+        source_name=_s(r.get("source_name")), source_model=_s(r.get("source_model")), source_url=_s(r.get("source_url")),
+        region=_s(r.get("market_region")), access_date=_s(r.get("access_date")), effective_date=_s(r.get("price_effective_date")),
+        fuel=_s(r.get("fuel_inclusion")), taxes=_s(r.get("taxes_and_fees")), positioning=_s(r.get("positioning")),
+        alt_reference=_f(r.get("alternative_rate_reference")), alt_currency=_s(r.get("alternative_currency")), alt_url=_s(r.get("alternative_source_url")),
+        notes=_s(r.get("notes")), unit=_s(r.get("rate_unit")))
+
+
+def charter_disclaimers(e: dict) -> list:
+    """Plain-language caveats shown with every proposed charter price (screens, PDF)."""
+    out = ["ESTIMATE — indicative customer charter price taken from a public broker listing. It is not a Menkor quotation, not an observed average of transactions, and not operator net revenue.",
+           f"Whole aircraft, per billable flight hour. Page consulted {e['access_date'] or 'n/a'} (consultation date, not a validity date"
+           + (f"; stated period: {e['effective_date']}" if e.get("effective_date") else "; effective date unknown") + ")."]
+    scope = {"exact_model": "Matched to this exact model.",
+             "family_proxy": "PROXY: price of a related model or family — confirm the match before using it.",
+             "configuration_review": "Configuration to confirm: the source page mixes several configurations."}.get(e.get("scope"), "Match to the model not stated.")
+    out.append(f"{scope} Confidence: {e.get('confidence') or 'n/a'}.")
+    if e.get("method") == "published_range_midpoint_not_observed_mean":
+        out.append("The reference is the midpoint of a published range, not an observed mean.")
+    elif e.get("method") == "single_aircraft_advertised_reference":
+        out.append("The reference is the advertised price of one aircraft, not a model average.")
+    if e.get("fuel") == "included_with_standard_surcharge_per_publisher_guide":
+        out.append("Per the broker's guide: fuel is included with a standard surcharge; taxes, airport fees and crew overnights are extra; positioning is charged additionally if required.")
+    else:
+        out.append("Fuel, taxes / airport fees and positioning terms of this price are unknown.")
+    if e.get("region"):
+        out.append(f"Market: {e['region']}.")
+    out.append("The cost update (inflation) is never applied to this price.")
+    return out
 
 
 def load_aliases() -> pd.DataFrame:
@@ -444,8 +481,8 @@ class Scenario:
     fx: Fx = field(default_factory=Fx)
     actualise: bool = field(default_factory=lambda: ACTUALISE_DEFAULT)   # Menkor base update (inflation) on/off
     inflation_pct: float = INFLATION_PCT_DEFAULT
-    charter_rate_source: str = "custom"      # 'custom' | 'estimate_low' | 'estimate_mid' | 'estimate_high' (Menkor rate grid)
-    charter_rate_category: str = ""          # rate-grid category when an estimate is used
+    charter_rate_source: str = "custom"      # 'custom' | 'estimate_ref' | 'estimate_low' | 'estimate_high' (Menkor charter price file)
+    charter_rate_basis: str = ""            # short description of the estimate used (scope, confidence, consultation date)
 
     def canonical(self) -> dict:
         return asdict(self)
@@ -516,7 +553,7 @@ def _empty_result(row, scn):
                    flown=scn.flown_hours, reference=None),
         fuel={}, fixed={}, variable={}, components=[], budget_usd=None, cost_per_h_usd=None,
         published={}, reconciliation=None, profit=None, rate_usd=None, actualisation=dict(applied=False, inflation_pct=0.0, items=[]),
-        charter_rate_info=dict(source=getattr(scn, "charter_rate_source", "custom"), category=getattr(scn, "charter_rate_category", "")))
+        charter_rate_info=dict(source=getattr(scn, "charter_rate_source", "custom"), basis=getattr(scn, "charter_rate_basis", "")))
 
 
 def compute(row, scn: Scenario) -> dict:

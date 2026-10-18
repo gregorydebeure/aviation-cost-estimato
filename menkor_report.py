@@ -122,7 +122,8 @@ def build_report_pdf(res: dict, disp, alerts: list, logo_bytes: bytes | None = N
         if res.get("rate_usd"):
             cri = res.get("charter_rate_info") or {}
             src_txt = ("custom rate entered by the user" if cri.get("source", "custom") == "custom" else
-                       f"Menkor indicative rate grid — {cri.get('category', '')}, {cri['source'].replace('estimate_', '')} of the range (EUR grid; a market estimate, not a quotation)")
+                       f"ESTIMATE from the Menkor indicative charter price file ({cri['source'].replace('estimate_', '')}) — {cri.get('basis', '')}; "
+                       "a public broker listing, not a quotation, not operator net revenue; taxes, fees and positioning may be extra")
             A.append(["Charter rate", f"{m(res['rate_usd'])} per billed hour (entered {sc['charter_rate']:g} {sc['charter_rate_ccy']}) — {src_txt}"])
         A.append(["Commission / other commercial fees", f"{sc['commission_pct']:g}% of revenue / {m(sc['other_commercial_fees'])} per year"])
     story.append(table(A, [62 * mm, 112 * mm], header=False))
