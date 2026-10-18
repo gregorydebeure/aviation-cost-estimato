@@ -28,7 +28,9 @@ import pandas as pd
 
 ENGINE_VERSION = "2.1"
 DB_VERSION = "v16-167-models"
-DATA_DIR = Path(__file__).resolve().parent / "data"
+_HERE = Path(__file__).resolve().parent
+# Data files live in data/. If they were uploaded flat next to app.py (GitHub web upload can flatten folders), fall back to that folder.
+DATA_DIR = _HERE / "data" if (_HERE / "data" / "menkor_base_v16.csv").exists() else (_HERE if (_HERE / "menkor_base_v16.csv").exists() else _HERE / "data")
 
 USG_TO_L = 3.785411784          # documented in the base (README_CLAUDE.md)
 HOURS_IN_YEAR = 8760.0
