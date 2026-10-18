@@ -1,0 +1,168 @@
+aircraft_id,category,basis
+beechcraft_beechjet_400,Light jet,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+beechcraft_beechjet_400a,Light jet,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+beechcraft_premier_i,Light jet,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+beechcraft_premier_ia,Light jet,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+boeing_bbj,,VIP airliner / airliner: not covered by the rate grid
+boeing_bbj2,,VIP airliner / airliner: not covered by the rate grid
+boeing_bbj3,,VIP airliner / airliner: not covered by the rate grid
+bombardier_global_5000,Ultra long range,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+bombardier_global_6000,Ultra long range,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+bombardier_global_7500,Ultra long range,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+bombardier_global_express,Ultra long range,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+bombardier_global_express_xrs,Ultra long range,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+cessna_citation_bravo,Light jet,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+cessna_citation_cj1,Very light / entry,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+cessna_citation_cj2,Light jet,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+cessna_citation_cj2_plus,Light jet,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+cessna_citation_cj3,Light jet,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+cessna_citation_cj3_plus,Light jet,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+cessna_citation_cj4,Super light,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+cessna_citation_encore,Light jet,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+cessna_citation_excel,Midsize,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+cessna_citation_i_isp,Very light / entry,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+cessna_citation_iii,Midsize,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+cessna_citation_jet,Very light / entry,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+cessna_citation_latitude,Super midsize,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+cessna_citation_mustang,Very light / entry,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+cessna_citation_sovereign,Super midsize,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+cessna_citation_v_ultra,Light jet,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+cessna_citation_x,Super midsize,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+cessna_citation_xls,Midsize,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+cessna_citation_xls_plus,Midsize,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+challenger_300,Super midsize,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+challenger_350,Super midsize,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+challenger_600,Heavy,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+challenger_601_3a,Heavy,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+challenger_604,Heavy,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+challenger_605,Heavy,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+challenger_650,Heavy,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+challenger_850,,Regional-jet conversion (15-19 seats): not covered by the rate grid
+challenger_850_cs,,Regional-jet conversion (15-19 seats): not covered by the rate grid
+challenger_870c,,Regional-jet conversion (15-19 seats): not covered by the rate grid
+cirrus_vision_sf50,Very light / entry,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+dassault_falcon_10,Light jet,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+dassault_falcon_200,Midsize,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+dassault_falcon_2000,Super midsize,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+dassault_falcon_2000dx,Super midsize,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+dassault_falcon_2000ex_easy,Super midsize,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+dassault_falcon_2000lx,Super midsize,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+dassault_falcon_2000lxs,Super midsize,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+dassault_falcon_2000s,Super midsize,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+dassault_falcon_20c,Midsize,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+dassault_falcon_20c_5,Midsize,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+dassault_falcon_20f,Midsize,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+dassault_falcon_20f_5,Midsize,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+dassault_falcon_50,Super midsize,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+dassault_falcon_50_40,Super midsize,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+dassault_falcon_50ex,Super midsize,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+dassault_falcon_7x,Ultra long range,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+dassault_falcon_8x,Ultra long range,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+dassault_falcon_900,Heavy,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+dassault_falcon_900b,Heavy,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+dassault_falcon_900c,Heavy,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+dassault_falcon_900dx,Heavy,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+dassault_falcon_900ex,Heavy,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+dassault_falcon_900ex_easy,Heavy,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+dassault_falcon_900lx,Heavy,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+dornier_328,,Turboprop/regional/airliner with 12+ seats: not covered by the rate grid
+dornier_328_business,,Turboprop/regional/airliner with 12+ seats: not covered by the rate grid
+eclipse_500,Very light / entry,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+eclipse_550,Very light / entry,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+embraer_erj_145er,,Turboprop/regional/airliner with 12+ seats: not covered by the rate grid
+embraer_erj_170lr,,Turboprop/regional/airliner with 12+ seats: not covered by the rate grid
+embraer_legacy_450,Midsize,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+embraer_legacy_500,Super midsize,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+embraer_legacy_600,Heavy,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+embraer_legacy_650,Heavy,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+embraer_lineage_1000,,Turboprop/regional/airliner with 12+ seats: not covered by the rate grid
+embraer_lineage_1000e,,Turboprop/regional/airliner with 12+ seats: not covered by the rate grid
+embraer_phenom_100,Very light / entry,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+embraer_phenom_100ev,Very light / entry,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+embraer_phenom_300,Super light,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+embraer_praetor_500,Super midsize,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+embraer_praetor_600,Super midsize,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+flaris_lar01,Very light / entry,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+fokker_100er,,Turboprop/regional/airliner with 12+ seats: not covered by the rate grid
+gulfstream_g100,Midsize,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+gulfstream_g150,Midsize,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+gulfstream_g200,Super midsize,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+gulfstream_g280,Super midsize,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+gulfstream_g300,Heavy,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+gulfstream_g350,Heavy,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+gulfstream_g400,Heavy,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+gulfstream_g450,Heavy,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+gulfstream_g500,Ultra long range,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+gulfstream_g500_2003_2012_model,Ultra long range,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+gulfstream_g550,Ultra long range,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+gulfstream_g650,Ultra long range,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+gulfstream_g650er,Ultra long range,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+gulfstream_ii,Heavy,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+gulfstream_ii_b,Heavy,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+gulfstream_ii_b_hushkit,Heavy,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+gulfstream_ii_hushkit,Heavy,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+gulfstream_ii_sp,Heavy,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+gulfstream_ii_sp_hushkit,Heavy,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+gulfstream_iii,Heavy,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+gulfstream_iv,Heavy,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+gulfstream_ivsp,Heavy,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+gulfstream_v,Ultra long range,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+hawker_1000,Midsize,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+hawker_4000,Super midsize,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+hawker_400xp,Light jet,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+hawker_400xpr,Light jet,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+hawker_700,Midsize,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+hawker_750,Midsize,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+hawker_800a,Midsize,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+hawker_800sp,Midsize,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+hawker_800xp,Midsize,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+hawker_800xpi,Midsize,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+hawker_850xp,Midsize,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+hawker_900xp,Midsize,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+honda_hondajet,Very light / entry,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+iai_1123_commodore_jet,Light jet,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+iai_astra_sp,Midsize,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+iai_westwind_1,Midsize,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+iai_westwind_2,Midsize,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+learjet_31,Light jet,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+learjet_31a,Light jet,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+learjet_31aer,Light jet,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+learjet_35a,Light jet,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+learjet_36a,Light jet,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+learjet_40,Light jet,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+learjet_40xr,Light jet,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+learjet_45,Light jet,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+learjet_45xr,Light jet,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+learjet_55,Midsize,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+learjet_55c,Midsize,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+learjet_60,Midsize,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+learjet_60xr,Midsize,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+learjet_70,Super light,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+learjet_75,Super light,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+lockheed_jetstar_ii_731,Midsize,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+mitsubishi_diamond_1a,Light jet,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+nextant_400xt,Light jet,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+nextant_400xti,Light jet,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+pilatus_pc_24,Super light,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+sabreliner_sabre_65,Midsize,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"
+airbus_318,,VIP airliner / airliner: not covered by the rate grid
+airbus_319,,VIP airliner / airliner: not covered by the rate grid
+airbus_320,,VIP airliner / airliner: not covered by the rate grid
+airbus_321,,VIP airliner / airliner: not covered by the rate grid
+airbus_340,,VIP airliner / airliner: not covered by the rate grid
+airbus_acj319neo,,VIP airliner / airliner: not covered by the rate grid
+airbus_acj320neo,,VIP airliner / airliner: not covered by the rate grid
+bae_rj_70,,VIP airliner / airliner: not covered by the rate grid
+bae_rj_85,,VIP airliner / airliner: not covered by the rate grid
+boeing_737_500,,VIP airliner / airliner: not covered by the rate grid
+boeing_737_600,,VIP airliner / airliner: not covered by the rate grid
+boeing_737_700,,VIP airliner / airliner: not covered by the rate grid
+boeing_747_100,,VIP airliner / airliner: not covered by the rate grid
+boeing_747_200,,VIP airliner / airliner: not covered by the rate grid
+boeing_747_400,,VIP airliner / airliner: not covered by the rate grid
+boeing_747sp,,VIP airliner / airliner: not covered by the rate grid
+boeing_757_200er,,VIP airliner / airliner: not covered by the rate grid
+boeing_767_200er,,VIP airliner / airliner: not covered by the rate grid
+boeing_767_300er,,VIP airliner / airliner: not covered by the rate grid
+boeing_787_8,,VIP airliner / airliner: not covered by the rate grid
+challenger_601_1a,Heavy,"Assigned from public size class (seats, range, speed) — to be reviewed by Menkor"

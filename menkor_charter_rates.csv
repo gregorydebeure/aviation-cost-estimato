@@ -1,0 +1,9 @@
+category,seats,eur_per_hour_low,eur_per_hour_high,cruise_kts
+Turboprop,6-8,3000,4500,280
+Very light / entry,4-5,4000,6000,350
+Light jet,6-8,5000,7500,400
+Super light,7-8,6500,9500,420
+Midsize,7-9,8000,12000,430
+Super midsize,8-10,10000,14500,450
+Heavy,10-14,12500,18000,470
+Ultra long range,12-16,15500,22500,490

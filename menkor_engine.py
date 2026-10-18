@@ -109,6 +109,40 @@ def load_inventory() -> pd.DataFrame:
     return _read("inventaire_sources.csv", dtype=str)
 
 
+SOURCE_LABELS = {"pdf_acc": "Menkor reference", "web_estimate": "Web estimate (partial)", "historical": "Historical sheet"}
+
+
+def source_label(kind):
+    return SOURCE_LABELS.get(kind, str(kind))
+
+
+def load_charter_rates() -> pd.DataFrame:
+    """Menkor indicative charter-rate grid (EUR per flight hour, low/high per size category)."""
+    return _read("menkor_charter_rates.csv")
+
+
+def load_charter_categories() -> pd.DataFrame:
+    """aircraft_id -> rate-grid category (assigned from the public size class; blank = no matching category)."""
+    return _read("categorie_charter.csv", dtype=str).fillna("")
+
+
+def charter_estimate(aircraft_id, rates=None, cats=None):
+    """Indicative charter rate for the aircraft's size category, or None. EUR per flight hour: low / midpoint / high.
+    An estimate to propose and to customise — not a quotation. No category -> None (nothing is invented)."""
+    rates = load_charter_rates() if rates is None else rates
+    cats = load_charter_categories() if cats is None else cats
+    c = cats[cats["aircraft_id"] == str(aircraft_id)]
+    if c.empty or not c.iloc[0]["category"]:
+        return None
+    r = rates[rates["category"] == c.iloc[0]["category"]]
+    if r.empty:
+        return None
+    r = r.iloc[0]
+    lo, hi = float(r["eur_per_hour_low"]), float(r["eur_per_hour_high"])
+    return dict(category=str(r["category"]), seats=str(r["seats"]), low_eur=lo, high_eur=hi, mid_eur=(lo + hi) / 2.0,
+                cruise_kts=float(r["cruise_kts"]), basis=str(c.iloc[0]["basis"]), currency="EUR")
+
+
 def load_aliases() -> pd.DataFrame:
     return _read("aliases_modeles.csv", dtype=str)
 
@@ -410,6 +444,8 @@ class Scenario:
     fx: Fx = field(default_factory=Fx)
     actualise: bool = field(default_factory=lambda: ACTUALISE_DEFAULT)   # Menkor base update (inflation) on/off
     inflation_pct: float = INFLATION_PCT_DEFAULT
+    charter_rate_source: str = "custom"      # 'custom' | 'estimate_low' | 'estimate_mid' | 'estimate_high' (Menkor rate grid)
+    charter_rate_category: str = ""          # rate-grid category when an estimate is used
 
     def canonical(self) -> dict:
         return asdict(self)
@@ -479,7 +515,8 @@ def _empty_result(row, scn):
         hours=dict(billed=scn.billed_hours, positioning=scn.positioning_hours, other=scn.other_hours,
                    flown=scn.flown_hours, reference=None),
         fuel={}, fixed={}, variable={}, components=[], budget_usd=None, cost_per_h_usd=None,
-        published={}, reconciliation=None, profit=None, rate_usd=None, actualisation=dict(applied=False, inflation_pct=0.0, items=[]))
+        published={}, reconciliation=None, profit=None, rate_usd=None, actualisation=dict(applied=False, inflation_pct=0.0, items=[]),
+        charter_rate_info=dict(source=getattr(scn, "charter_rate_source", "custom"), category=getattr(scn, "charter_rate_category", "")))
 
 
 def compute(row, scn: Scenario) -> dict:

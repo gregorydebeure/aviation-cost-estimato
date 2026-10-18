@@ -166,6 +166,16 @@ def get_aliases():
     return E.load_aliases()
 
 
+@st.cache_data(show_spinner=False)
+def get_charter_rates():
+    return E.load_charter_rates()
+
+
+@st.cache_data(show_spinner=False)
+def get_charter_cats():
+    return E.load_charter_categories()
+
+
 def get_active_db():
     return get_base()
 
@@ -798,9 +808,13 @@ def premium_gate(required="pro"):
 
 # ─── MAIN ────────────────────────────────────────────────────────────────────
 
+_RS_CUSTOM="Custom rate"
+_RS_LOW="Menkor estimate — low"; _RS_MID="Menkor estimate — midpoint"; _RS_HIGH="Menkor estimate — high"
+_RS_MAP={_RS_LOW:("estimate_low","low_eur"),_RS_MID:("estimate_mid","mid_eur"),_RS_HIGH:("estimate_high","high_eur")}
+
 def _use_hist_rate(aid,val):
     """on_click callback: copy the historical (unverified) rate of the old base into the rate field."""
-    st.session_state[f"rate_{aid}"]=float(val); st.session_state[f"rateccy_{aid}"]="EUR"
+    st.session_state[f"rate_{aid}"]=float(val); st.session_state[f"rateccy_{aid}"]="EUR"; st.session_state[f"rsrc_{aid}"]=_RS_CUSTOM
 
 def _on_search():
     """Quick find: resolves an id, a model name or an alias (e.g. 'Global 7000' -> Global 7500) to ONE aircraft."""
@@ -850,7 +864,8 @@ def _prov_table(row,prov):
 def _results_csv(res,disp):
     """CSV export of the current result with its assumptions and exchange rate (same engine result as screen/PDF)."""
     rows=[("config_id",res["config_hash"]),("aircraft_id",res["aircraft_id"]),("model",res["model"]),("mode",res["mode"]),
-          ("source","Menkor reference database"),("source_kind",res.get("source_kind")),
+          ("source","Menkor reference database"),("record_type",E.source_label(res.get("source_kind"))),
+          ("charter_rate_source",res["charter_rate_info"]["source"]),("charter_rate_category",res["charter_rate_info"]["category"]),
           ("base_update_applied",res["actualisation"]["applied"]),("base_update_inflation_pct",res["actualisation"]["inflation_pct"]),
           ("web_source_url",(res.get("web_source") or {}).get("url","")),("web_source_consulted",(res.get("web_source") or {}).get("access_date","")),
           ("source_currency","USD"),("display_currency",disp.ccy),("usd_to_eur_rate",disp.fx.usd_to_eur if disp.ccy=="EUR" else ""),
@@ -1007,9 +1022,24 @@ def main():
             st.button("Use historical rate",key=f"uh_{aid}",on_click=_use_hist_rate,args=(aid,hist_rate))
         else:
             st.caption("No charter price in the source: enter your own rate (nothing is assumed).")
-        rc1,rc2=st.columns([2,1])
-        with rc1: rate_in=st.number_input("Rate per billed hour",min_value=0.0,value=0.0,step=100.0,format="%.0f",key=f"rate_{aid}")
-        with rc2: rate_ccy=st.selectbox("Rate ccy",["USD","EUR"],key=f"rateccy_{aid}")
+        _est=E.charter_estimate(aid,get_charter_rates(),get_charter_cats())
+        rate_source="custom"; rate_cat=""
+        if _est:
+            st.caption(f"Menkor indicative rate — {_est['category']} ({_est['seats']} seats): € {_est['low_eur']:,.0f} – {_est['high_eur']:,.0f} per flight hour (midpoint € {_est['mid_eur']:,.0f}). "
+                       "Market estimate from the Menkor rate grid, not a quotation; category assigned from the public size class. You can switch to a custom rate at any time.")
+            _rs=st.radio("Charter rate to use",[_RS_MID,_RS_LOW,_RS_HIGH,_RS_CUSTOM],key=f"rsrc_{aid}",
+                         help="Pick the low / midpoint / high of the Menkor estimate, or enter your own rate.")
+        else:
+            st.caption("No Menkor rate estimate for this aircraft type (airliner / VIP / regional): enter your own rate.")
+            _rs=_RS_CUSTOM
+        if _rs!=_RS_CUSTOM:
+            rate_source,_k=_RS_MAP[_rs]; rate_cat=_est["category"]
+            rate_in=float(_est[_k]); rate_ccy="EUR"
+            st.markdown(f'<div class="metric-sub">Rate used: <b>€ {rate_in:,.0f} / billed hour</b> (EUR grid — needs the dated USD → EUR rate above to be converted).</div>',unsafe_allow_html=True)
+        else:
+            rc1,rc2=st.columns([2,1])
+            with rc1: rate_in=st.number_input("Rate per billed hour",min_value=0.0,value=0.0,step=100.0,format="%.0f",key=f"rate_{aid}")
+            with rc2: rate_ccy=st.selectbox("Rate ccy",["USD","EUR"],key=f"rateccy_{aid}")
         commission_pct=st.slider("Commission (%)",0,25,10,step=1)
         fees_in=st.number_input(f"Other commercial fees / year ({disp.ccy}) — not already in the report",min_value=0.0,value=0.0,step=1000.0,format="%.0f")
 
@@ -1076,7 +1106,7 @@ def main():
                    charter_rate=(rate_in if rate_in>0 else None),charter_rate_ccy=rate_ccy,commission_pct=float(commission_pct),
                    other_commercial_fees=float(disp.to_usd(fees_in)),fuel=fuel,fixed_overrides=ov_fixed,var_overrides_h=ov_var,
                    extra_fixed=float(extra_fixed_usd),extra_var_h=float(extra_var_usd),fx=fx,
-                   actualise=bool(act_on),inflation_pct=float(infl))
+                   actualise=bool(act_on),inflation_pct=float(infl),charter_rate_source=rate_source,charter_rate_category=rate_cat)
     res=E.compute(row,scn)
     alerts=E.alerts_for(row,_checks,_conflicts,_convs)
     perf=E.performance_summary(row)
@@ -1271,6 +1301,8 @@ def main():
                     if len(_web): st.caption("Web estimates (Guardian Jet scenario, 300 h) are listed in the table but kept out of the chart: they are not equivalent to the full Menkor reference records.")
                     _t=cs.assign(**{f"Annual budget ({disp.ccy})":[round(disp.conv(x)) for x in cs["budget_usd"]],
                                     f"Cost/h ({disp.ccy})":[(round(disp.conv(x)) if (x is not None and x==x) else None) for x in cs["cost_per_h_usd"]]})[["model","manufacturer","source_kind",f"Annual budget ({disp.ccy})",f"Cost/h ({disp.ccy})"]]
+                    _t["source_kind"]=_t["source_kind"].map(E.source_label)
+                    _t=_t.rename(columns={"model":"Model","manufacturer":"Manufacturer","source_kind":"Source"})
                     st.dataframe(_t,width="stretch",hide_index=True)
                 else:
                     st.info("Fleet comparison unavailable with the current fuel inputs (e.g. a manual fuel price must be entered).")
