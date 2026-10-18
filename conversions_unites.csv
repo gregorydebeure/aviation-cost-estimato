@@ -1,0 +1,95 @@
+﻿aircraft_id,field,source_value,source_unit,converted_value,converted_unit,formula,note
+challenger_300,seats_full_range_km,3445,SM,5544.19008,km,SM * 1.609344,Conversion exacte des unités; précision source conservée
+challenger_300,normal_cruise_kmh,528,MPH,849.733632,km/h,MPH * 1.609344,Conversion exacte des unités; précision source conservée
+challenger_300,reference_fuel_price_usd_per_l,4.25,USD/GAL,1.122731223,USD/L,USD/USGAL / 3.785411784,GAL interprété comme US gallon pour ce rapport américain; convention à confirmer auprès de la source
+challenger_300,annual_fuel_volume_l,100100,GAL,378919.7195784,L,USGAL * 3.785411784,GAL interprété comme US gallon pour ce rapport américain; convention à confirmer auprès de la source
+challenger_300,cabin_volume_m3,1246.15,ft3,35.287038381,m3,ft3 * 0.028316846592,Conversion exacte des unités; précision source conservée
+challenger_300,cabin_height_m,73,inch,1.8542,m,(feet * 12 + inches) * 0.0254,Conversion exacte des unités; précision source conservée
+challenger_300,cabin_width_m,86,inch,2.1844,m,(feet * 12 + inches) * 0.0254,Conversion exacte des unités; précision source conservée
+challenger_300,cabin_length_m,343,inch,8.7122,m,(feet * 12 + inches) * 0.0254,Conversion exacte des unités; précision source conservée
+challenger_300,maximum_takeoff_weight_kg,38850,lb,17622.0635745,kg,lb * 0.45359237,Conversion exacte des unités; précision source conservée
+challenger_300,maximum_landing_weight_kg,33750,lb,15308.7424875,kg,lb * 0.45359237,Conversion exacte des unités; précision source conservée
+challenger_300,basic_operating_weight_kg,24100,lb,10931.576117,kg,lb * 0.45359237,Conversion exacte des unités; précision source conservée
+challenger_300,usable_fuel_weight_kg,14045,lb,6370.70483665,kg,lb * 0.45359237,Conversion exacte des unités; précision source conservée
+challenger_300,payload_full_fuel_kg,1095,lb,496.68364515,kg,lb * 0.45359237,Conversion exacte des unités; précision source conservée
+challenger_300,balanced_field_length_m,4689,ft,1429.2072,m,ft * 0.3048,Conversion exacte des unités; précision source conservée
+challenger_300,landing_distance_m,2927,ft,892.1496,m,ft * 0.3048,Conversion exacte des unités; précision source conservée
+challenger_300,service_ceiling_m,45000,ft,13716.0,m,ft * 0.3048,Conversion exacte des unités; précision source conservée
+challenger_300,block_speed_kmh,515,MPH,828.81216,km/h,MPH * 1.609344,Conversion exacte des unités; précision source conservée
+challenger_300,long_range_cruise_kmh,515,MPH,828.81216,km/h,MPH * 1.609344,Conversion exacte des unités; précision source conservée
+challenger_300,fuel_burn_l_per_h,286,GAL/h,1082.627770224,L/h,USGAL/h * 3.785411784,GAL interprété comme US gallon pour ce rapport américain; convention à confirmer auprès de la source
+bombardier_global_5000,seats_full_range_km,5841,SM,9400.178304,km,SM * 1.609344,Conversion exacte des unités; précision source conservée
+bombardier_global_5000,normal_cruise_kmh,562,MPH,904.451328,km/h,MPH * 1.609344,Conversion exacte des unités; précision source conservée
+bombardier_global_5000,reference_fuel_price_usd_per_l,4.25,USD/GAL,1.122731223,USD/L,USD/USGAL / 3.785411784,GAL interprété comme US gallon pour ce rapport américain; convention à confirmer auprès de la source
+bombardier_global_5000,annual_fuel_volume_l,170800,GAL,646548.3327072,L,USGAL * 3.785411784,GAL interprété comme US gallon pour ce rapport américain; convention à confirmer auprès de la source
+bombardier_global_5000,cabin_volume_m3,2169.27,ft3,61.426885807,m3,ft3 * 0.028316846592,Conversion exacte des unités; précision source conservée
+bombardier_global_5000,cabin_height_m,75,inch,1.905,m,(feet * 12 + inches) * 0.0254,Conversion exacte des unités; précision source conservée
+bombardier_global_5000,cabin_width_m,98,inch,2.4892,m,(feet * 12 + inches) * 0.0254,Conversion exacte des unités; précision source conservée
+bombardier_global_5000,cabin_length_m,510,inch,12.954,m,(feet * 12 + inches) * 0.0254,Conversion exacte des unités; précision source conservée
+bombardier_global_5000,maximum_takeoff_weight_kg,92500,lb,41957.294225,kg,lb * 0.45359237,Conversion exacte des unités; précision source conservée
+bombardier_global_5000,maximum_landing_weight_kg,78600,lb,35652.360282,kg,lb * 0.45359237,Conversion exacte des unités; précision source conservée
+bombardier_global_5000,basic_operating_weight_kg,49589,lb,22493.19203593,kg,lb * 0.45359237,Conversion exacte des unités; précision source conservée
+bombardier_global_5000,usable_fuel_weight_kg,37985,lb,17229.70617445,kg,lb * 0.45359237,Conversion exacte des unités; précision source conservée
+bombardier_global_5000,payload_full_fuel_kg,2857,lb,1295.91340109,kg,lb * 0.45359237,Conversion exacte des unités; précision source conservée
+bombardier_global_5000,balanced_field_length_m,5401,ft,1646.2248,m,ft * 0.3048,Conversion exacte des unités; précision source conservée
+bombardier_global_5000,landing_distance_m,2800,ft,853.44,m,ft * 0.3048,Conversion exacte des unités; précision source conservée
+bombardier_global_5000,service_ceiling_m,51000,ft,15544.8,m,ft * 0.3048,Conversion exacte des unités; précision source conservée
+bombardier_global_5000,block_speed_kmh,548,MPH,881.920512,km/h,MPH * 1.609344,Conversion exacte des unités; précision source conservée
+bombardier_global_5000,long_range_cruise_kmh,529,MPH,851.342976,km/h,MPH * 1.609344,Conversion exacte des unités; précision source conservée
+bombardier_global_5000,fuel_burn_l_per_h,488,GAL/h,1847.280950592,L/h,USGAL/h * 3.785411784,GAL interprété comme US gallon pour ce rapport américain; convention à confirmer auprès de la source
+bombardier_global_express_xrs,seats_full_range_km,6801,SM,10945.148544,km,SM * 1.609344,Conversion exacte des unités; précision source conservée
+bombardier_global_express_xrs,normal_cruise_kmh,562,MPH,904.451328,km/h,MPH * 1.609344,Conversion exacte des unités; précision source conservée
+bombardier_global_express_xrs,reference_fuel_price_usd_per_l,4.25,USD/GAL,1.122731223,USD/L,USD/USGAL / 3.785411784,GAL interprété comme US gallon pour ce rapport américain; convention à confirmer auprès de la source
+bombardier_global_express_xrs,annual_fuel_volume_l,179550,GAL,679670.6858172,L,USGAL * 3.785411784,GAL interprété comme US gallon pour ce rapport américain; convention à confirmer auprès de la source
+bombardier_global_express_xrs,cabin_volume_m3,2467.01,ft3,69.857943711,m3,ft3 * 0.028316846592,Conversion exacte des unités; précision source conservée
+bombardier_global_express_xrs,cabin_height_m,75,inch,1.905,m,(feet * 12 + inches) * 0.0254,Conversion exacte des unités; précision source conservée
+bombardier_global_express_xrs,cabin_width_m,98,inch,2.4892,m,(feet * 12 + inches) * 0.0254,Conversion exacte des unités; précision source conservée
+bombardier_global_express_xrs,cabin_length_m,580,inch,14.732,m,(feet * 12 + inches) * 0.0254,Conversion exacte des unités; précision source conservée
+bombardier_global_express_xrs,maximum_takeoff_weight_kg,98000,lb,44452.05226,kg,lb * 0.45359237,Conversion exacte des unités; précision source conservée
+bombardier_global_express_xrs,maximum_landing_weight_kg,78600,lb,35652.360282,kg,lb * 0.45359237,Conversion exacte des unités; précision source conservée
+bombardier_global_express_xrs,basic_operating_weight_kg,49920,lb,22643.3311104,kg,lb * 0.45359237,Conversion exacte des unités; précision source conservée
+bombardier_global_express_xrs,usable_fuel_weight_kg,43526,lb,19743.06149662,kg,lb * 0.45359237,Conversion exacte des unités; précision source conservée
+bombardier_global_express_xrs,payload_full_fuel_kg,2348,lb,1065.03488476,kg,lb * 0.45359237,Conversion exacte des unités; précision source conservée
+bombardier_global_express_xrs,balanced_field_length_m,6015,ft,1833.372,m,ft * 0.3048,Conversion exacte des unités; précision source conservée
+bombardier_global_express_xrs,landing_distance_m,2800,ft,853.44,m,ft * 0.3048,Conversion exacte des unités; précision source conservée
+bombardier_global_express_xrs,service_ceiling_m,51000,ft,15544.8,m,ft * 0.3048,Conversion exacte des unités; précision source conservée
+bombardier_global_express_xrs,block_speed_kmh,548,MPH,881.920512,km/h,MPH * 1.609344,Conversion exacte des unités; précision source conservée
+bombardier_global_express_xrs,long_range_cruise_kmh,529,MPH,851.342976,km/h,MPH * 1.609344,Conversion exacte des unités; précision source conservée
+bombardier_global_express_xrs,fuel_burn_l_per_h,513,GAL/h,1941.916245192,L/h,USGAL/h * 3.785411784,GAL interprété comme US gallon pour ce rapport américain; convention à confirmer auprès de la source
+bombardier_global_express,seats_full_range_km,6672,SM,10737.543168,km,SM * 1.609344,Conversion exacte des unités; précision source conservée
+bombardier_global_express,normal_cruise_kmh,562,MPH,904.451328,km/h,MPH * 1.609344,Conversion exacte des unités; précision source conservée
+bombardier_global_express,reference_fuel_price_usd_per_l,4.25,USD/GAL,1.122731223,USD/L,USD/USGAL / 3.785411784,GAL interprété comme US gallon pour ce rapport américain; convention à confirmer auprès de la source
+bombardier_global_express,annual_fuel_volume_l,180600,GAL,683645.3681904,L,USGAL * 3.785411784,GAL interprété comme US gallon pour ce rapport américain; convention à confirmer auprès de la source
+bombardier_global_express,cabin_volume_m3,2467.01,ft3,69.857943711,m3,ft3 * 0.028316846592,Conversion exacte des unités; précision source conservée
+bombardier_global_express,cabin_height_m,75,inch,1.905,m,(feet * 12 + inches) * 0.0254,Conversion exacte des unités; précision source conservée
+bombardier_global_express,cabin_width_m,98,inch,2.4892,m,(feet * 12 + inches) * 0.0254,Conversion exacte des unités; précision source conservée
+bombardier_global_express,cabin_length_m,580,inch,14.732,m,(feet * 12 + inches) * 0.0254,Conversion exacte des unités; précision source conservée
+bombardier_global_express,maximum_takeoff_weight_kg,95000,lb,43091.27515,kg,lb * 0.45359237,Conversion exacte des unités; précision source conservée
+bombardier_global_express,maximum_landing_weight_kg,78600,lb,35652.360282,kg,lb * 0.45359237,Conversion exacte des unités; précision source conservée
+bombardier_global_express,basic_operating_weight_kg,49043,lb,22245.53060191,kg,lb * 0.45359237,Conversion exacte des unités; précision source conservée
+bombardier_global_express,usable_fuel_weight_kg,42079,lb,19086.71333723,kg,lb * 0.45359237,Conversion exacte des unités; précision source conservée
+bombardier_global_express,payload_full_fuel_kg,1747,lb,792.42587039,kg,lb * 0.45359237,Conversion exacte des unités; précision source conservée
+bombardier_global_express,balanced_field_length_m,6015,ft,1833.372,m,ft * 0.3048,Conversion exacte des unités; précision source conservée
+bombardier_global_express,landing_distance_m,2800,ft,853.44,m,ft * 0.3048,Conversion exacte des unités; précision source conservée
+bombardier_global_express,service_ceiling_m,51000,ft,15544.8,m,ft * 0.3048,Conversion exacte des unités; précision source conservée
+bombardier_global_express,block_speed_kmh,548,MPH,881.920512,km/h,MPH * 1.609344,Conversion exacte des unités; précision source conservée
+bombardier_global_express,long_range_cruise_kmh,516,MPH,830.421504,km/h,MPH * 1.609344,Conversion exacte des unités; précision source conservée
+bombardier_global_express,fuel_burn_l_per_h,516,GAL/h,1953.272480544,L/h,USGAL/h * 3.785411784,GAL interprété comme US gallon pour ce rapport américain; convention à confirmer auprès de la source
+bombardier_global_6000,reference_fuel_price_usd_per_l,7.54,USD/USGAL,1.991857274780439,USD/L,"7.54 / 3.785411784; gallon US supposé pour cette source américaine, à confirmer",USGAL supposé; à confirmer
+bombardier_global_6000,fuel_burn_l_per_h,512,USGAL/h,1938.130833408,L/h,USGAL/h * 3.785411784; convention US à confirmer,USGAL supposé; à confirmer
+bombardier_global_7500,reference_fuel_price_usd_per_l,7.54,USD/USGAL,1.991857274780439,USD/L,"7.54 / 3.785411784; gallon US supposé pour cette source américaine, à confirmer",USGAL supposé; à confirmer
+bombardier_global_7500,fuel_burn_l_per_h,528,USGAL/h,1998.697421952,L/h,USGAL/h * 3.785411784; convention US à confirmer,USGAL supposé; à confirmer
+bombardier_global_6000,seats_full_range_km,5743,NM,10636.036,km,NM * 1.852,Conversion exacte; fiche technique ACC web
+bombardier_global_6000,cabin_height_m,75,inch,1.905,m,inch * 0.0254,Conversion exacte; fiche technique ACC web
+bombardier_global_6000,cabin_width_m,98,inch,2.4892,m,inch * 0.0254,Conversion exacte; fiche technique ACC web
+bombardier_global_6000,cabin_length_m,580,inch,14.732,m,inch * 0.0254,Conversion exacte; fiche technique ACC web
+bombardier_global_6000,balanced_field_length_m,6314,ft,1924.5072,m,ft * 0.3048,Conversion exacte; fiche technique ACC web
+bombardier_global_6000,landing_distance_m,2800,ft,853.44,m,ft * 0.3048,Conversion exacte; fiche technique ACC web
+bombardier_global_6000,service_ceiling_m,51000,ft,15544.8,m,ft * 0.3048,Conversion exacte; fiche technique ACC web
+bombardier_global_7500,seats_full_range_km,7300,NM,13519.6,km,NM * 1.852,Conversion exacte; fiche technique ACC web
+bombardier_global_7500,cabin_height_m,74,inch,1.8796,m,inch * 0.0254,Conversion exacte; fiche technique ACC web
+bombardier_global_7500,cabin_width_m,96,inch,2.4384,m,inch * 0.0254,Conversion exacte; fiche technique ACC web
+bombardier_global_7500,cabin_length_m,653,inch,16.5862,m,inch * 0.0254,Conversion exacte; fiche technique ACC web
+bombardier_global_7500,balanced_field_length_m,5800,ft,1767.84,m,ft * 0.3048,Conversion exacte; fiche technique ACC web
+bombardier_global_7500,landing_distance_m,2520,ft,768.096,m,ft * 0.3048,Conversion exacte; fiche technique ACC web
+bombardier_global_7500,service_ceiling_m,51000,ft,15544.8,m,ft * 0.3048,Conversion exacte; fiche technique ACC web

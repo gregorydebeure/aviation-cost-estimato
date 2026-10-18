@@ -1,0 +1,12 @@
+﻿legacy_field,new_field,migration_status,instruction_fr
+Modele,model,direct,Nom à normaliser avec un identifiant stable
+Categorie,,missing_from_pdf,Classification de la base historique; pas fournie par le PDF
+Couts_Fixes_Annuels,annual_fixed_cost_usd,review_currency_and_scope,Le total du PDF inclut crew expense et training. Ne pas ajouter crew expense une seconde fois.
+Couts_Equipe_Annuels,annual_crew_expense_fixed_usd,review_scope,Crew expense seul; ne pas considérer comme tout le budget équipage. Devise historique non documentée.
+Cout_Horaire_Charter,variable_cost_per_h_from_annual_usd,review_currency_and_scope,Le PDF ne distingue pas coûts charter et privés.
+Cout_Horaire_Prive,,missing_from_pdf,Aucun coefficient privé fourni; ne pas appliquer arbitrairement 0.82.
+Heures_Base,reference_annual_hours,direct,"Heures du scénario de référence, pas une limite annuelle."
+Taux_Charter_EUR_h,,missing_from_pdf,Tarif commercial absent du rapport. Ne pas inventer ou convertir un coût en prix de vente.
+Vitesse_Croisiere_km_h,normal_cruise_kmh,direct,"Pour durée de trajet, block_speed_kmh est distinct; ne pas substituer silencieusement."
+Autonomie_km,seats_full_range_km,rename,"Nommer Portee_sieges_occupes_km, ne pas appeler portée maximale constructeur."
+Passagers_Max,maximum_passengers_report,scope_required,Capacité publiée dans ce rapport; ne prouve pas la capacité maximale certifiée de toutes configurations.

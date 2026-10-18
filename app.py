@@ -138,255 +138,138 @@ def _get_logo():
     except Exception:
         return ""
 
-# ─── DATABASE ────────────────────────────────────────────────────────────────
-def get_default_data():
-    data = [
-        {"Modele":"Airbus 318","Categorie":"ACJ / VIP Airliner","Couts_Fixes_Annuels":219176,"Couts_Equipe_Annuels":450113,"Cout_Horaire_Charter":4481,"Cout_Horaire_Prive":3674,"Heures_Base":350,"Taux_Charter_EUR_h":6500,"Vitesse_Croisiere_km_h":869,"Autonomie_km":6862,"Passagers_Max":19},
-        {"Modele":"Airbus 319","Categorie":"ACJ / VIP Airliner","Couts_Fixes_Annuels":225763,"Couts_Equipe_Annuels":450113,"Cout_Horaire_Charter":4338,"Cout_Horaire_Prive":3557,"Heures_Base":350,"Taux_Charter_EUR_h":7000,"Vitesse_Croisiere_km_h":869,"Autonomie_km":11014,"Passagers_Max":19},
-        {"Modele":"Airbus 320","Categorie":"ACJ / VIP Airliner","Couts_Fixes_Annuels":253951,"Couts_Equipe_Annuels":361286,"Cout_Horaire_Charter":5000,"Cout_Horaire_Prive":4100,"Heures_Base":100,"Taux_Charter_EUR_h":8500,"Vitesse_Croisiere_km_h":869,"Autonomie_km":8938,"Passagers_Max":150},
-        {"Modele":"Airbus 321","Categorie":"ACJ / VIP Airliner","Couts_Fixes_Annuels":277688,"Couts_Equipe_Annuels":450113,"Cout_Horaire_Charter":5331,"Cout_Horaire_Prive":4371,"Heures_Base":350,"Taux_Charter_EUR_h":9000,"Vitesse_Croisiere_km_h":822,"Autonomie_km":8288,"Passagers_Max":19},
-        {"Modele":"Airbus 340","Categorie":"ACJ / VIP Airliner","Couts_Fixes_Annuels":360066,"Couts_Equipe_Annuels":471643,"Cout_Horaire_Charter":11019,"Cout_Horaire_Prive":9036,"Heures_Base":100,"Taux_Charter_EUR_h":28000,"Vitesse_Croisiere_km_h":835,"Autonomie_km":12640,"Passagers_Max":400},
-        {"Modele":"Airbus ACJ319neo","Categorie":"ACJ / VIP Airliner","Couts_Fixes_Annuels":279335,"Couts_Equipe_Annuels":376048,"Cout_Horaire_Charter":3817,"Cout_Horaire_Prive":3130,"Heures_Base":350,"Taux_Charter_EUR_h":9500,"Vitesse_Croisiere_km_h":869,"Autonomie_km":12501,"Passagers_Max":19},
-        {"Modele":"Airbus ACJ320neo","Categorie":"ACJ / VIP Airliner","Couts_Fixes_Annuels":310659,"Couts_Equipe_Annuels":376048,"Cout_Horaire_Charter":3833,"Cout_Horaire_Prive":3143,"Heures_Base":350,"Taux_Charter_EUR_h":10000,"Vitesse_Croisiere_km_h":869,"Autonomie_km":11299,"Passagers_Max":19},
-        {"Modele":"BAE RJ-70","Categorie":"Regional Jet / VIP","Couts_Fixes_Annuels":222678,"Couts_Equipe_Annuels":372857,"Cout_Horaire_Charter":4357,"Cout_Horaire_Prive":3573,"Heures_Base":100,"Taux_Charter_EUR_h":4500,"Vitesse_Croisiere_km_h":755,"Autonomie_km":3250,"Passagers_Max":20},
-        {"Modele":"BAE RJ-85","Categorie":"Regional Jet / VIP","Couts_Fixes_Annuels":271095,"Couts_Equipe_Annuels":372857,"Cout_Horaire_Charter":4033,"Cout_Horaire_Prive":3307,"Heures_Base":100,"Taux_Charter_EUR_h":4800,"Vitesse_Croisiere_km_h":755,"Autonomie_km":3366,"Passagers_Max":20},
-        {"Modele":"Beechcraft Beechjet 400","Categorie":"Light Jet","Couts_Fixes_Annuels":34901,"Couts_Equipe_Annuels":245619,"Cout_Horaire_Charter":1823,"Cout_Horaire_Prive":1495,"Heures_Base":250,"Taux_Charter_EUR_h":2200,"Vitesse_Croisiere_km_h":826,"Autonomie_km":2061,"Passagers_Max":7},
-        {"Modele":"Boeing 737-700","Categorie":"VIP Airliner / BBJ","Couts_Fixes_Annuels":225028,"Couts_Equipe_Annuels":419143,"Cout_Horaire_Charter":4669,"Cout_Horaire_Prive":3829,"Heures_Base":100,"Taux_Charter_EUR_h":8000,"Vitesse_Croisiere_km_h":838,"Autonomie_km":7226,"Passagers_Max":140},
-        {"Modele":"Boeing 747-400","Categorie":"VIP Wide-Body","Couts_Fixes_Annuels":276703,"Couts_Equipe_Annuels":471643,"Cout_Horaire_Charter":15263,"Cout_Horaire_Prive":12516,"Heures_Base":100,"Taux_Charter_EUR_h":65000,"Vitesse_Croisiere_km_h":913,"Autonomie_km":14626,"Passagers_Max":420},
-        {"Modele":"Boeing BBJ","Categorie":"ACJ / VIP Airliner","Couts_Fixes_Annuels":218956,"Couts_Equipe_Annuels":469635,"Cout_Horaire_Charter":3763,"Cout_Horaire_Prive":3086,"Heures_Base":350,"Taux_Charter_EUR_h":9000,"Vitesse_Croisiere_km_h":871,"Autonomie_km":11100,"Passagers_Max":19},
-        {"Modele":"Bombardier Challenger 604","Categorie":"Large Jet","Couts_Fixes_Annuels":376651,"Couts_Equipe_Annuels":237726,"Cout_Horaire_Charter":2726,"Cout_Horaire_Prive":2450,"Heures_Base":350,"Taux_Charter_EUR_h":5200,"Vitesse_Croisiere_km_h":850,"Autonomie_km":6786,"Passagers_Max":10},
-        {"Modele":"Bombardier Global 5000","Categorie":"Ultra Long Range Jet","Couts_Fixes_Annuels":702952,"Couts_Equipe_Annuels":426052,"Cout_Horaire_Charter":4051,"Cout_Horaire_Prive":3646,"Heures_Base":350,"Taux_Charter_EUR_h":9000,"Vitesse_Croisiere_km_h":904,"Autonomie_km":9390,"Passagers_Max":13},
-        {"Modele":"Challenger 350","Categorie":"Super Midsize Jet","Couts_Fixes_Annuels":93921,"Couts_Equipe_Annuels":394305,"Cout_Horaire_Charter":2353,"Cout_Horaire_Prive":1929,"Heures_Base":350,"Taux_Charter_EUR_h":4000,"Vitesse_Croisiere_km_h":850,"Autonomie_km":5784,"Passagers_Max":8},
-        {"Modele":"Dassault Falcon 7X","Categorie":"Ultra Long Range Jet","Couts_Fixes_Annuels":588918,"Couts_Equipe_Annuels":377505,"Cout_Horaire_Charter":2994,"Cout_Horaire_Prive":2695,"Heures_Base":350,"Taux_Charter_EUR_h":9500,"Vitesse_Croisiere_km_h":904,"Autonomie_km":9924,"Passagers_Max":12},
-        {"Modele":"Dassault Falcon 8X","Categorie":"Ultra Long Range Jet","Couts_Fixes_Annuels":598153,"Couts_Equipe_Annuels":377505,"Cout_Horaire_Charter":2958,"Cout_Horaire_Prive":2662,"Heures_Base":350,"Taux_Charter_EUR_h":10500,"Vitesse_Croisiere_km_h":903,"Autonomie_km":11365,"Passagers_Max":12},
-        {"Modele":"Beechcraft Beechjet 400A","Categorie":"Light Jet","Couts_Fixes_Annuels":36260,"Couts_Equipe_Annuels":245619,"Cout_Horaire_Charter":1568,"Cout_Horaire_Prive":1286,"Heures_Base":250,"Taux_Charter_EUR_h":2300,"Vitesse_Croisiere_km_h":832,"Autonomie_km":2133,"Passagers_Max":7},
-        {"Modele":"Beechcraft Premier I","Categorie":"Light Jet","Couts_Fixes_Annuels":35998,"Couts_Equipe_Annuels":136880,"Cout_Horaire_Charter":1254,"Cout_Horaire_Prive":1028,"Heures_Base":250,"Taux_Charter_EUR_h":1800,"Vitesse_Croisiere_km_h":789,"Autonomie_km":1536,"Passagers_Max":7},
-        {"Modele":"Beechcraft Premier IA","Categorie":"Light Jet","Couts_Fixes_Annuels":41947,"Couts_Equipe_Annuels":136880,"Cout_Horaire_Charter":1236,"Cout_Horaire_Prive":1013,"Heures_Base":250,"Taux_Charter_EUR_h":1900,"Vitesse_Croisiere_km_h":789,"Autonomie_km":1536,"Passagers_Max":7},
-        {"Modele":"Boeing 737-500","Categorie":"VIP Airliner / BBJ","Couts_Fixes_Annuels":242553,"Couts_Equipe_Annuels":419143,"Cout_Horaire_Charter":5456,"Cout_Horaire_Prive":4474,"Heures_Base":100,"Taux_Charter_EUR_h":7500,"Vitesse_Croisiere_km_h":839,"Autonomie_km":5424,"Passagers_Max":150},
-        {"Modele":"Boeing 737-600","Categorie":"VIP Airliner / BBJ","Couts_Fixes_Annuels":231007,"Couts_Equipe_Annuels":419143,"Cout_Horaire_Charter":4544,"Cout_Horaire_Prive":3726,"Heures_Base":100,"Taux_Charter_EUR_h":7800,"Vitesse_Croisiere_km_h":837,"Autonomie_km":7073,"Passagers_Max":119},
-        {"Modele":"Boeing 747-100","Categorie":"VIP Wide-Body","Couts_Fixes_Annuels":273066,"Couts_Equipe_Annuels":471643,"Cout_Horaire_Charter":19415,"Cout_Horaire_Prive":15920,"Heures_Base":100,"Taux_Charter_EUR_h":55000,"Vitesse_Croisiere_km_h":890,"Autonomie_km":11195,"Passagers_Max":400},
-        {"Modele":"Boeing 747-200","Categorie":"VIP Wide-Body","Couts_Fixes_Annuels":289890,"Couts_Equipe_Annuels":471643,"Cout_Horaire_Charter":18520,"Cout_Horaire_Prive":15186,"Heures_Base":100,"Taux_Charter_EUR_h":58000,"Vitesse_Croisiere_km_h":890,"Autonomie_km":12640,"Passagers_Max":350},
-        {"Modele":"Boeing 747SP","Categorie":"VIP Wide-Body","Couts_Fixes_Annuels":239780,"Couts_Equipe_Annuels":471643,"Cout_Horaire_Charter":15953,"Cout_Horaire_Prive":13081,"Heures_Base":100,"Taux_Charter_EUR_h":60000,"Vitesse_Croisiere_km_h":902,"Autonomie_km":13723,"Passagers_Max":331},
-        {"Modele":"Boeing 757-200ER","Categorie":"VIP Airliner / BBJ","Couts_Fixes_Annuels":274945,"Couts_Equipe_Annuels":471643,"Cout_Horaire_Charter":5939,"Cout_Horaire_Prive":4870,"Heures_Base":100,"Taux_Charter_EUR_h":12000,"Vitesse_Croisiere_km_h":850,"Autonomie_km":11159,"Passagers_Max":200},
-        {"Modele":"Boeing 767-200ER","Categorie":"VIP Wide-Body","Couts_Fixes_Annuels":384835,"Couts_Equipe_Annuels":471643,"Cout_Horaire_Charter":6537,"Cout_Horaire_Prive":5360,"Heures_Base":100,"Taux_Charter_EUR_h":15000,"Vitesse_Croisiere_km_h":850,"Autonomie_km":13145,"Passagers_Max":181},
-        {"Modele":"Boeing 767-300ER","Categorie":"VIP Wide-Body","Couts_Fixes_Annuels":380439,"Couts_Equipe_Annuels":471643,"Cout_Horaire_Charter":8352,"Cout_Horaire_Prive":6849,"Heures_Base":100,"Taux_Charter_EUR_h":18000,"Vitesse_Croisiere_km_h":850,"Autonomie_km":12474,"Passagers_Max":218},
-        {"Modele":"Boeing 787-8","Categorie":"VIP Wide-Body","Couts_Fixes_Annuels":358241,"Couts_Equipe_Annuels":521978,"Cout_Horaire_Charter":7925,"Cout_Horaire_Prive":6498,"Heures_Base":100,"Taux_Charter_EUR_h":20000,"Vitesse_Croisiere_km_h":930,"Autonomie_km":14538,"Passagers_Max":381},
-        {"Modele":"Boeing BBJ2","Categorie":"ACJ / VIP Airliner","Couts_Fixes_Annuels":241598,"Couts_Equipe_Annuels":469653,"Cout_Horaire_Charter":3882,"Cout_Horaire_Prive":3183,"Heures_Base":350,"Taux_Charter_EUR_h":10000,"Vitesse_Croisiere_km_h":840,"Autonomie_km":10191,"Passagers_Max":19},
-        {"Modele":"Boeing BBJ3","Categorie":"ACJ / VIP Airliner","Couts_Fixes_Annuels":248567,"Couts_Equipe_Annuels":470089,"Cout_Horaire_Charter":3889,"Cout_Horaire_Prive":3189,"Heures_Base":350,"Taux_Charter_EUR_h":11000,"Vitesse_Croisiere_km_h":840,"Autonomie_km":8649,"Passagers_Max":19},
-        {"Modele":"Bombardier Challenger 605","Categorie":"Large Jet","Couts_Fixes_Annuels":500361,"Couts_Equipe_Annuels":346500,"Cout_Horaire_Charter":2619,"Cout_Horaire_Prive":2360,"Heures_Base":350,"Taux_Charter_EUR_h":5500,"Vitesse_Croisiere_km_h":849,"Autonomie_km":6856,"Passagers_Max":10},
-        {"Modele":"Bombardier Challenger 650","Categorie":"Large Jet","Couts_Fixes_Annuels":488946,"Couts_Equipe_Annuels":333270,"Cout_Horaire_Charter":2455,"Cout_Horaire_Prive":2210,"Heures_Base":350,"Taux_Charter_EUR_h":5800,"Vitesse_Croisiere_km_h":850,"Autonomie_km":6795,"Passagers_Max":10},
-        {"Modele":"Bombardier Global Express","Categorie":"Ultra Long Range Jet","Couts_Fixes_Annuels":683427,"Couts_Equipe_Annuels":426052,"Cout_Horaire_Charter":4471,"Cout_Horaire_Prive":4024,"Heures_Base":350,"Taux_Charter_EUR_h":9500,"Vitesse_Croisiere_km_h":904,"Autonomie_km":10726,"Passagers_Max":13},
-        {"Modele":"Bombardier Global 6000","Categorie":"Ultra Long Range Jet","Couts_Fixes_Annuels":675622,"Couts_Equipe_Annuels":442000,"Cout_Horaire_Charter":4200,"Cout_Horaire_Prive":3444,"Heures_Base":350,"Taux_Charter_EUR_h":10500,"Vitesse_Croisiere_km_h":945,"Autonomie_km":11112,"Passagers_Max":17},
-        {"Modele":"Bombardier Global Express XRS","Categorie":"Ultra Long Range Jet","Couts_Fixes_Annuels":714023,"Couts_Equipe_Annuels":426052,"Cout_Horaire_Charter":4420,"Cout_Horaire_Prive":3978,"Heures_Base":350,"Taux_Charter_EUR_h":10000,"Vitesse_Croisiere_km_h":904,"Autonomie_km":10934,"Passagers_Max":13},
-        {"Modele":"Challenger 300","Categorie":"Super Midsize Jet","Couts_Fixes_Annuels":102295,"Couts_Equipe_Annuels":392114,"Cout_Horaire_Charter":2878,"Cout_Horaire_Prive":2360,"Heures_Base":350,"Taux_Charter_EUR_h":3500,"Vitesse_Croisiere_km_h":848,"Autonomie_km":5545,"Passagers_Max":8},
-        {"Modele":"Challenger 600","Categorie":"Large Jet","Couts_Fixes_Annuels":78406,"Couts_Equipe_Annuels":372774,"Cout_Horaire_Charter":4337,"Cout_Horaire_Prive":3556,"Heures_Base":350,"Taux_Charter_EUR_h":4500,"Vitesse_Croisiere_km_h":849,"Autonomie_km":5061,"Passagers_Max":9},
-        {"Modele":"Challenger 601-1A","Categorie":"Large Jet","Couts_Fixes_Annuels":84681,"Couts_Equipe_Annuels":367240,"Cout_Horaire_Charter":3720,"Cout_Horaire_Prive":3050,"Heures_Base":350,"Taux_Charter_EUR_h":4500,"Vitesse_Croisiere_km_h":821,"Autonomie_km":5748,"Passagers_Max":9},
-        {"Modele":"Dassault Falcon 10","Categorie":"Light Jet","Couts_Fixes_Annuels":279536,"Couts_Equipe_Annuels":224844,"Cout_Horaire_Charter":2372,"Cout_Horaire_Prive":2135,"Heures_Base":250,"Taux_Charter_EUR_h":2800,"Vitesse_Croisiere_km_h":837,"Autonomie_km":2745,"Passagers_Max":6},
-        {"Modele":"Dassault Falcon 20C","Categorie":"Midsize Jet","Couts_Fixes_Annuels":350751,"Couts_Equipe_Annuels":278094,"Cout_Horaire_Charter":3179,"Cout_Horaire_Prive":2861,"Heures_Base":250,"Taux_Charter_EUR_h":3200,"Vitesse_Croisiere_km_h":805,"Autonomie_km":2167,"Passagers_Max":9},
-        {"Modele":"Dassault Falcon 20C-5","Categorie":"Midsize Jet","Couts_Fixes_Annuels":356747,"Couts_Equipe_Annuels":278094,"Cout_Horaire_Charter":2675,"Cout_Horaire_Prive":2408,"Heures_Base":250,"Taux_Charter_EUR_h":3400,"Vitesse_Croisiere_km_h":842,"Autonomie_km":3684,"Passagers_Max":9},
-        {"Modele":"Dassault Falcon 20F","Categorie":"Midsize Jet","Couts_Fixes_Annuels":356077,"Couts_Equipe_Annuels":278094,"Cout_Horaire_Charter":2895,"Cout_Horaire_Prive":2606,"Heures_Base":250,"Taux_Charter_EUR_h":3200,"Vitesse_Croisiere_km_h":805,"Autonomie_km":2420,"Passagers_Max":9},
-        {"Modele":"Dassault Falcon 20F-5","Categorie":"Midsize Jet","Couts_Fixes_Annuels":353308,"Couts_Equipe_Annuels":278094,"Cout_Horaire_Charter":2485,"Cout_Horaire_Prive":2237,"Heures_Base":250,"Taux_Charter_EUR_h":3500,"Vitesse_Croisiere_km_h":842,"Autonomie_km":4063,"Passagers_Max":9},
-        {"Modele":"Dassault Falcon 50","Categorie":"Large Jet","Couts_Fixes_Annuels":450596,"Couts_Equipe_Annuels":334924,"Cout_Horaire_Charter":3352,"Cout_Horaire_Prive":3017,"Heures_Base":350,"Taux_Charter_EUR_h":5000,"Vitesse_Croisiere_km_h":799,"Autonomie_km":5526,"Passagers_Max":9},
-        {"Modele":"Dassault Falcon 50-40","Categorie":"Large Jet","Couts_Fixes_Annuels":469453,"Couts_Equipe_Annuels":334924,"Cout_Horaire_Charter":3328,"Cout_Horaire_Prive":2995,"Heures_Base":350,"Taux_Charter_EUR_h":5200,"Vitesse_Croisiere_km_h":850,"Autonomie_km":5905,"Passagers_Max":9},
-    ]
-    return pd.DataFrame(data)
+# ─── DATABASE & ENGINE (v15 — 165 models, single calculation engine) ─────────
+# All numbers on every screen and in the PDF come from menkor_engine.compute().
+# The old embedded 47-model table, the FUEL_BURN_GPH estimates, the 0.82 private
+# coefficient and the generic CM_OP/CM_DIR/CM_IND amounts have been removed.
+import menkor_engine as E
+import menkor_report as RPT
+
+
+@st.cache_data(show_spinner=False)
+def get_base():
+    return E.load_base()
+
+
+@st.cache_data(show_spinner=False)
+def get_support():
+    return E.load_checks(), E.load_conflicts(), E.load_conversions()
+
+
+@st.cache_data(show_spinner=False)
+def get_prov():
+    return E.load_provenance()
+
+
+@st.cache_data(show_spinner=False)
+def get_aliases():
+    return E.load_aliases()
+
 
 def get_active_db():
-    return st.session_state.get("database") or get_default_data()
+    return get_base()
 
-def fmt(v, d=0):
-    return f"€ {v:,.{d}f}"
 
-def calculate_costs(ac, hc, hp):
-    fc=ac["Couts_Fixes_Annuels"]; cc=ac["Couts_Equipe_Annuels"]
-    ch=ac["Cout_Horaire_Charter"]; ph=ac["Cout_Horaire_Prive"]
-    tariff=float(ac.get("Taux_Charter_EUR_h",0))
-    th=hc+hp; vc=hc*ch; vp=hp*ph; tv=vc+vp; tf=fc+cc; gt=tf+tv
-    return dict(fixed_costs=fc,crew_costs=cc,total_fixed=tf,var_charter=vc,var_private=vp,
-                total_variable=tv,grand_total=gt,avg_cost_h=gt/th if th>0 else 0,
-                h_charter=hc,h_private=hp,total_hours=th,charter_tariff=tariff)
-
-def calculate_profitability(costs, comm_pct, custom_rate=None):
-    t=custom_rate if (custom_rate and custom_rate>0) else costs["charter_tariff"]
-    gr=t*costs["h_charter"]; comm=gr*comm_pct/100; nr=gr-comm
-    net=nr-costs["grand_total"]; cov=(nr/costs["grand_total"]*100) if costs["grand_total"]>0 else 0
-    return dict(gross_revenue=gr,commission=comm,net_revenue=nr,net_result=net,coverage_rate=cov,effective_rate=t)
-
-# ─── CHARTS ──────────────────────────────────────────────────────────────────
-C={"fixed":"#1A3A6E","crew":"#C9A84C","charter":"#4A90D9","private":"#8496B0","profit":"#4ADE80","loss":"#F87171"}
+# ─── CHARTS (all read the engine result; amounts converted by the Display object) ──
+C={"fixed":"#1A3A6E","crew":"#C9A84C","charter":"#4A90D9","private":"#8496B0","profit":"#4ADE80","loss":"#F87171","fuel":"#F97316","nonfuel":"#4A90D9"}
 BG=dict(paper_bgcolor="rgba(0,0,0,0)",plot_bgcolor="rgba(0,0,0,0)",font=dict(color="#D6E4F7"))
+_PAL={"Fixed":["#1A3A6E","#2F5DA8","#4A7FD0","#7FA6E8","#B7CDF3","#DCE7FA"],
+      "Variable":["#F97316","#4A90D9","#C9A84C","#60A5FA","#A78BFA","#4ADE80","#F87171","#93C5FD"]}
 
-def chart_donut(costs):
-    fig=go.Figure(go.Pie(
-        labels=["Fixed","Crew","Charter Var","Private Var"],
-        values=[costs["fixed_costs"],costs["crew_costs"],costs["var_charter"],costs["var_private"]],
-        hole=0.56,marker=dict(colors=[C["fixed"],C["crew"],C["charter"],C["private"]],line=dict(color="#0B1629",width=2)),
-        textinfo="label+percent",textfont=dict(size=11,color="#D6E4F7")))
-    fig.add_annotation(text=f"<b>{costs['grand_total']/1e6:.2f}M€</b>",x=0.5,y=0.5,showarrow=False,font=dict(size=16,color="#E8C46A"))
-    fig.update_layout(**BG,height=320,margin=dict(t=10,b=10,l=10,r=10),
-                      legend=dict(orientation="h",yanchor="bottom",y=-0.2,bgcolor="rgba(0,0,0,0)"))
+def chart_donut(res,disp):
+    v=res["variable"]; fx=res["fixed"]["annual_total"]
+    fuel=res["fuel"].get("annual_cost_usd") if res.get("fuel") else None
+    labels=["Fixed (incl. crew)"]; values=[fx]; colors=[C["fixed"]]
+    if fuel is not None:
+        labels+=["Fuel","Other variable"]; values+=[fuel,v["annual"]-fuel]; colors+=[C["fuel"],C["nonfuel"]]
+    else:
+        labels+=["Variable (fuel not separable)"]; values+=[v["annual"]]; colors+=[C["nonfuel"]]
+    values=[disp.conv(x) for x in values]
+    fig=go.Figure(go.Pie(labels=labels,values=values,hole=0.56,marker=dict(colors=colors,line=dict(color="#0B1629",width=2)),
+                         textinfo="label+percent",textfont=dict(size=11,color="#D6E4F7")))
+    fig.add_annotation(text=f"<b>{disp.sym}{disp.conv(res['budget_usd'])/1e6:.2f}M</b>",x=0.5,y=0.5,showarrow=False,font=dict(size=16,color="#E8C46A"))
+    fig.update_layout(**BG,height=320,margin=dict(t=10,b=10,l=10,r=10),legend=dict(orientation="h",yanchor="bottom",y=-0.2,bgcolor="rgba(0,0,0,0)"))
     return fig
 
-def chart_bars(costs):
-    th=max(costs["total_hours"],1)
-    fig=go.Figure(data=[
-        go.Bar(name="Fixed",x=["Charter","Private","Total"],marker_color=C["fixed"],
-               y=[costs["total_fixed"]*(costs["h_charter"]/th),costs["total_fixed"]*(costs["h_private"]/th),costs["total_fixed"]]),
-        go.Bar(name="Charter Var",x=["Charter","Private","Total"],marker_color=C["charter"],y=[costs["var_charter"],0,costs["var_charter"]]),
-        go.Bar(name="Private Var",x=["Charter","Private","Total"],marker_color=C["private"],y=[0,costs["var_private"],costs["var_private"]]),
-    ])
+def chart_per_hour(res,disp):
+    H=res["hours"]["flown"] or 0
+    if not H: return None
+    fx_h=res["fixed"]["annual_total"]/H; v=res["variable"]
+    fig=go.Figure()
+    fig.add_bar(name="Fixed ÷ hours",x=["Cost per flown hour"],y=[disp.conv(fx_h)],marker_color=C["fixed"])
+    if v.get("fuel_per_h") is not None:
+        fig.add_bar(name="Fuel",x=["Cost per flown hour"],y=[disp.conv(v["fuel_per_h"])],marker_color=C["fuel"])
+        fig.add_bar(name="Other variable",x=["Cost per flown hour"],y=[disp.conv(v["nonfuel_per_h"])],marker_color=C["nonfuel"])
+    else:
+        fig.add_bar(name="Variable",x=["Cost per flown hour"],y=[disp.conv(v["per_h"])],marker_color=C["nonfuel"])
     fig.update_layout(barmode="stack",**BG,height=300,margin=dict(t=10,b=40,l=10,r=10),
-                      yaxis=dict(title="Cost (€)",gridcolor="#1A3A6E",tickformat=",.0f"),
-                      xaxis=dict(gridcolor="rgba(0,0,0,0)"),
+                      yaxis=dict(title=f"{disp.ccy} per flown hour",gridcolor="#1A3A6E",tickformat=",.0f"),
                       legend=dict(orientation="h",yanchor="bottom",y=-0.35,bgcolor="rgba(0,0,0,0)"))
     return fig
 
-def chart_waterfall(costs,prof):
+def chart_waterfall(res,disp):
+    pr=res["profit"]
     fig=go.Figure(go.Waterfall(
         measure=["relative","relative","relative","relative","total"],
-        x=["Revenue","Commission","Variable","Fixed","Net"],
-        y=[prof["gross_revenue"],-prof["commission"],-costs["total_variable"],-costs["total_fixed"],prof["net_result"]],
+        x=["Charter revenue","Commission + fees","Variable (all flown h)","Fixed","Operating result"],
+        y=[disp.conv(pr["revenue"]),-disp.conv(pr["commission"]+pr["other_fees"]),-disp.conv(pr["variable_cost_all_flown"]),-disp.conv(pr["fixed_cost"]),disp.conv(pr["operating_result"])],
         connector=dict(line=dict(color="#1A3A6E",width=1.5)),
         increasing=dict(marker_color=C["profit"]),decreasing=dict(marker_color=C["loss"]),
-        totals=dict(marker_color=C["profit"] if prof["net_result"]>=0 else C["loss"]),
-        texttemplate="%{y:+,.0f} €",textfont=dict(color="#D6E4F7",size=11)))
+        totals=dict(marker_color=C["profit"] if pr["operating_result"]>=0 else C["loss"]),
+        texttemplate="%{y:+,.0f}",textfont=dict(color="#D6E4F7",size=11)))
     fig.add_hline(y=0,line_dash="dash",line_color="#8496B0",line_width=1)
-    fig.update_layout(**BG,height=340,margin=dict(t=10,b=10,l=10,r=10),
-                      yaxis=dict(title="€",gridcolor="#1A3A6E",tickformat=",.0f"),xaxis=dict(gridcolor="rgba(0,0,0,0)"))
+    fig.update_layout(**BG,height=340,margin=dict(t=10,b=10,l=10,r=10),yaxis=dict(title=disp.ccy,gridcolor="#1A3A6E",tickformat=",.0f"),xaxis=dict(gridcolor="rgba(0,0,0,0)"))
     return fig
 
-def chart_sensitivity(ac,hp,comm_pct,rate=None):
-    hrs=list(range(0,801,25))
-    res=[calculate_profitability(calculate_costs(ac,h,hp),comm_pct,rate)["net_result"] for h in hrs]
+def chart_sensitivity(points,be,current,disp):
+    xs=[p[0] for p in points]; ys=[disp.conv(p[1]) if p[1] is not None else None for p in points]
     fig=go.Figure()
-    fig.add_trace(go.Scatter(x=hrs,y=res,mode="lines",line=dict(color=C["charter"],width=2.5),
-                             fill="tozeroy",fillcolor="rgba(74,144,217,0.12)"))
+    fig.add_trace(go.Scatter(x=xs,y=ys,mode="lines",line=dict(color=C["charter"],width=2.5),fill="tozeroy",fillcolor="rgba(74,144,217,0.12)"))
     fig.add_hline(y=0,line_dash="dash",line_color="#C9A84C",line_width=1.5)
-    for i in range(1,len(res)):
-        if res[i-1]<0<=res[i]:
-            fig.add_vline(x=hrs[i],line_dash="dot",line_color="#E8C46A",line_width=1.5,
-                         annotation_text=f"Break-even ~{hrs[i]}h",annotation_font_color="#E8C46A")
-            break
+    if be is not None:
+        fig.add_vline(x=be,line_dash="dot",line_color="#E8C46A",line_width=1.5,annotation_text=f"Break-even ≈ {be:,.0f} billed h",annotation_font_color="#E8C46A")
+    fig.add_vline(x=current,line_dash="dot",line_color="#8496B0",line_width=1,annotation_text="current",annotation_position="bottom right",annotation_font_color="#8496B0")
     fig.update_layout(**BG,height=300,margin=dict(t=10,b=10,l=10,r=10),showlegend=False,
-                      yaxis=dict(title="Net Result (€)",gridcolor="#1A3A6E",tickformat=",.0f"),
-                      xaxis=dict(title="Charter Hours",gridcolor="#1A3A6E"))
+                      yaxis=dict(title=f"Operating result ({disp.ccy})",gridcolor="#1A3A6E",tickformat=",.0f"),
+                      xaxis=dict(title="Billed charter hours",gridcolor="#1A3A6E"))
     return fig
 
-def cm_global_donut(op,direct,indirect):
-    total=op+direct+indirect
-    fig=go.Figure(go.Pie(labels=["Operational","Direct","Crew/Indirect"],values=[op,direct,indirect],hole=0.56,
-        marker=dict(colors=["#60A5FA","#F59E0B","#A78BFA"],line=dict(color="#0B1629",width=2)),
-        textinfo="label+percent",textfont=dict(size=11,color="#D6E4F7")))
-    fig.add_annotation(text=f"<b>{total/1e6:.2f}M€</b>",x=0.5,y=0.5,showarrow=False,font=dict(size=16,color="#E8C46A"))
-    fig.update_layout(**BG,height=360,margin=dict(t=10,b=10,l=10,r=10),
-                      legend=dict(orientation="h",yanchor="bottom",y=-0.15,bgcolor="rgba(0,0,0,0)"))
+def chart_fuel_sens(points,disp,base_price):
+    xs=[p[0] for p in points]; ys=[disp.conv(p[1]) if p[1] is not None else None for p in points]
+    fig=go.Figure(go.Scatter(x=xs,y=ys,mode="lines+markers",line=dict(color=C["fuel"],width=2.5)))
+    if base_price: fig.add_vline(x=base_price,line_dash="dot",line_color="#8496B0",line_width=1,annotation_text="current",annotation_font_color="#8496B0")
+    fig.update_layout(**BG,height=280,margin=dict(t=10,b=10,l=10,r=10),showlegend=False,
+                      yaxis=dict(title=f"Total cost per flown hour ({disp.ccy})",gridcolor="#1A3A6E",tickformat=",.0f"),
+                      xaxis=dict(title="Fuel price (USD per litre)",gridcolor="#1A3A6E"))
     return fig
 
-def cm_waterfall(op,direct,indirect,rev,comm_pct):
-    comm=rev*comm_pct/100; nr=rev-comm; gt=op+direct+indirect; net=nr-gt
-    fig=go.Figure(go.Waterfall(
-        measure=["relative","relative","relative","relative","relative","total"],
-        x=["Revenue","Commission","Operational","Direct","Crew","Net"],
-        y=[rev,-comm,-op,-direct,-indirect,net],
-        connector=dict(line=dict(color="#1A3A6E",width=1.5)),
-        increasing=dict(marker_color=C["profit"]),decreasing=dict(marker_color=C["loss"]),
-        totals=dict(marker_color=C["profit"] if net>=0 else C["loss"]),
-        texttemplate="%{y:+,.0f} €",textfont=dict(color="#D6E4F7",size=11)))
-    fig.add_hline(y=0,line_dash="dash",line_color="#8496B0",line_width=1)
-    fig.update_layout(**BG,height=360,margin=dict(t=10,b=10,l=10,r=10),
-                      yaxis=dict(title="€",gridcolor="#1A3A6E",tickformat=",.0f"),xaxis=dict(gridcolor="rgba(0,0,0,0)"))
+def cm_donut(res,disp,category):
+    rows=[c for c in res["components"] if c["category"]==category and c["annual_usd"]>0 and not c.get("rounding")]
+    if not rows: return None
+    pal=_PAL[category]
+    fig=go.Figure(go.Pie(labels=[c["label"] for c in rows],values=[disp.conv(c["annual_usd"]) for c in rows],hole=0.54,
+        marker=dict(colors=[pal[i%len(pal)] for i in range(len(rows))],line=dict(color="#0B1629",width=2)),
+        textinfo="percent",textfont=dict(size=10,color="#D6E4F7")))
+    tot=sum(disp.conv(c["annual_usd"]) for c in rows)
+    fig.add_annotation(text=f"<b>{disp.sym}{tot/1000:,.0f}K</b>",x=0.5,y=0.5,showarrow=False,font=dict(size=14,color="#E8C46A"))
+    fig.update_layout(**BG,height=320,margin=dict(t=10,b=10,l=5,r=5),legend=dict(orientation="h",yanchor="bottom",y=-0.45,bgcolor="rgba(0,0,0,0)",font=dict(size=9)))
     return fig
 
-def cm_donut(labels,values,colors,title):
-    total=sum(v for v in values if v>0)
-    fig=go.Figure(go.Pie(labels=labels,values=values,hole=0.54,
-        marker=dict(colors=colors,line=dict(color="#0B1629",width=2)),
-        textinfo="label+percent",textfont=dict(size=10,color="#D6E4F7")))
-    fig.add_annotation(text=f"<b>{total/1000:.0f}K€</b>",x=0.5,y=0.5,showarrow=False,font=dict(size=14,color="#E8C46A"))
-    fig.update_layout(**BG,height=300,margin=dict(t=10,b=10,l=5,r=5),
-                      legend=dict(orientation="h",yanchor="bottom",y=-0.3,bgcolor="rgba(0,0,0,0)",font=dict(size=9)))
+def cm_bar(res,disp,category,title):
+    rows=sorted([c for c in res["components"] if c["category"]==category and c["annual_usd"]>0 and not c.get("rounding")],key=lambda c:-c["annual_usd"])
+    if not rows: return None
+    vals=[disp.conv(c["annual_usd"]) for c in rows]
+    fig=go.Figure(go.Bar(x=[c["label"] for c in rows],y=vals,marker_color="#F59E0B" if category=="Fixed" else "#60A5FA",
+        text=[f"{disp.sym}{v:,.0f}" for v in vals],textposition="outside",textfont=dict(size=9,color="#D6E4F7")))
+    fig.update_layout(**BG,height=300,margin=dict(t=30,b=60,l=10,r=10),title=dict(text=title,font=dict(size=11,color="#8496B0"),x=0),
+                      yaxis=dict(gridcolor="#1A3A6E",tickformat=",.0f",title=disp.ccy),xaxis=dict(tickangle=-30,gridcolor="rgba(0,0,0,0)"))
     return fig
 
-def cm_bar(cats,vals,color,title):
-    paired=sorted(zip(vals,cats),reverse=True)
-    vs,cs=zip(*paired) if paired else ([],[])
-    fig=go.Figure(go.Bar(x=list(cs),y=list(vs),marker_color=color,
-        text=[f"€{v:,.0f}" for v in vs],textposition="outside",textfont=dict(size=9,color="#D6E4F7")))
-    fig.update_layout(**BG,height=300,margin=dict(t=30,b=60,l=10,r=10),
-                      title=dict(text=title,font=dict(size=11,color="#8496B0"),x=0),
-                      yaxis=dict(gridcolor="#1A3A6E",tickformat=",.0f",title="€"),
-                      xaxis=dict(tickangle=-30,gridcolor="rgba(0,0,0,0)"))
-    return fig
+# ─── PDF (built by menkor_report from the engine result) ─────────────────────
+def generate_pdf_report(res,disp,alerts):
+    logo=_get_logo()
+    return RPT.build_report_pdf(res,disp,alerts,base64.b64decode(logo) if logo else None)
 
-CM_OP = {"Handling":800,"Ground Service":600,"Catering":400,"Hotel":1200,
-          "ATC Charges":900,"Flight Planning":250,"Permission":350,"Miscellaneous":300}
-CM_DIR = {"Maintenance":85000,"Maintenance Programs":42000,"Insurance":38000,"Hangar":30000,
-           "Management Fee (VAT)":55000,"Government Costs":12000,"Cleaning":8000,
-           "Flight Planning Tools":6000,"Nav Programme":9500}
-CM_IND = {"Crew Salaries":180000,"Total Social Costs":54000,"Training Cockpit":18000,
-           "Training Cabin":8000,"Expense Training Crew":5000,"Communication Crew":4500,
-           "Crew Expenses":22000,"Freelancer":15000,"Miscellaneous Crew":6000}
-
-# ─── PDF (lazy imports) ──────────────────────────────────────────────────────
-def generate_pdf_report(cm, aircraft_row, annual_flights):
-    from reportlab.lib.pagesizes import A4
-    from reportlab.lib.units import mm
-    from reportlab.lib.colors import HexColor
-    from reportlab.platypus import (SimpleDocTemplate, Paragraph, Spacer, Table,
-                                     TableStyle, PageBreak, HRFlowable)
-    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-    from reportlab.lib.enums import TA_CENTER
-    from reportlab.lib.utils import ImageReader
-    from datetime import date
-    NAVY=HexColor("#112244"); GOLD=HexColor("#C9A84C"); SLATE=HexColor("#5A6B85")
-    LIGHT=HexColor("#F4F6FA"); GREEN=HexColor("#16A34A"); RED=HexColor("#DC2626")
-    buf=BytesIO()
-    page_w,page_h=A4
-    logo_b64=_get_logo()
-    logo_data=base64.b64decode(logo_b64) if logo_b64 else None
-    def hf(canvas,doc):
-        canvas.saveState()
-        if logo_data:
-            canvas.drawImage(ImageReader(BytesIO(logo_data)),18*mm,page_h-22*mm,width=38*mm,height=14*mm,preserveAspectRatio=True,mask="auto")
-        canvas.setStrokeColor(GOLD); canvas.setLineWidth(0.8)
-        canvas.line(18*mm,page_h-23*mm,page_w-18*mm,page_h-23*mm)
-        canvas.line(18*mm,14*mm,page_w-18*mm,14*mm)
-        canvas.setFont("Helvetica",7); canvas.setFillColor(SLATE)
-        canvas.drawCentredString(page_w/2,9*mm,"Menkor Aviation GBL — Confidential")
-        canvas.drawRightString(page_w-18*mm,9*mm,f"Page {canvas.getPageNumber()}")
-        canvas.restoreState()
-    doc=SimpleDocTemplate(buf,pagesize=A4,topMargin=28*mm,bottomMargin=22*mm,leftMargin=18*mm,rightMargin=18*mm)
-    styles=getSampleStyleSheet()
-    sT=ParagraphStyle("T",parent=styles["Title"],fontName="Helvetica-Bold",fontSize=24,textColor=NAVY,alignment=TA_CENTER,spaceAfter=4)
-    sS=ParagraphStyle("S",parent=styles["Normal"],fontName="Helvetica",fontSize=11,textColor=SLATE,alignment=TA_CENTER,spaceAfter=2)
-    sH=ParagraphStyle("H",parent=styles["Heading2"],fontName="Helvetica-Bold",fontSize=12,textColor=NAVY,spaceBefore=10,spaceAfter=6)
-    sSm=ParagraphStyle("Sm",parent=styles["Normal"],fontName="Helvetica",fontSize=8,textColor=SLATE)
-    story=[]
-    story.append(Spacer(1,25*mm))
-    story.append(Paragraph("AVIATION COST MASTER REPORT",sT))
-    story.append(Paragraph(aircraft_row["Modele"],ParagraphStyle("AC",parent=styles["Normal"],fontName="Helvetica-Bold",fontSize=16,textColor=GOLD,alignment=TA_CENTER,spaceBefore=6,spaceAfter=4)))
-    story.append(Paragraph(str(aircraft_row.get("Categorie","")),sS))
-    story.append(Spacer(1,10*mm))
-    story.append(HRFlowable(width="100%",thickness=1,color=GOLD,spaceAfter=6))
-    story.append(Paragraph(f"Report generated on {date.today().strftime('%d %B %Y')}",sS))
-    story.append(PageBreak())
-    op_a=cm["op_annual"]; dir_a=cm["dir_total"]; ind_a=cm["ind_total"]
-    grand=op_a+dir_a+ind_a
-    gross=cm["charter_rate"]*cm["h_charter"]; comm=gross*cm["commission_pct"]/100
-    nr=gross-comm; net=nr-grand; cov=(nr/grand*100) if grand>0 else 0
-    story.append(Paragraph("Executive Summary",sH))
-    tdata=[["Total Annual Cost",f"€ {grand:,.0f}"],["  · Operational",f"€ {op_a:,.0f}"],
-           ["  · Direct",f"€ {dir_a:,.0f}"],["  · Crew/Indirect",f"€ {ind_a:,.0f}"],
-           ["Gross Revenue",f"€ {gross:,.0f}"],["Net Revenue",f"€ {nr:,.0f}"],
-           ["Net Result",f"€ {net:,.0f}"],["Coverage",f"{cov:.1f}%"]]
-    t=Table(tdata,colWidths=[100*mm,60*mm])
-    t.setStyle(TableStyle([("FONTNAME",(0,0),(-1,-1),"Helvetica"),("FONTSIZE",(0,0),(-1,-1),9.5),
-        ("ALIGN",(1,0),(1,-1),"RIGHT"),("BACKGROUND",(0,0),(-1,0),LIGHT),
-        ("TOPPADDING",(0,0),(-1,-1),4),("BOTTOMPADDING",(0,0),(-1,-1),4),
-        ("GRID",(0,0),(-1,-1),0.3,HexColor("#DDDDDD"))]))
-    story.append(t)
-    doc.build(story,onFirstPage=hf,onLaterPages=hf)
-    buf.seek(0); return buf.getvalue()
 
 def generate_quotation_pdf(qr, aircraft_row):
     from reportlab.lib.pagesizes import A4
@@ -914,6 +797,75 @@ def premium_gate(required="pro"):
     else: _plan_buttons(email,current_plan=st.session_state.get("auth_plan"))
 
 # ─── MAIN ────────────────────────────────────────────────────────────────────
+
+def _use_hist_rate(aid,val):
+    """on_click callback: copy the historical (unverified) rate of the old base into the rate field."""
+    st.session_state[f"rate_{aid}"]=float(val); st.session_state[f"rateccy_{aid}"]="EUR"
+
+def _on_search():
+    """Quick find: resolves an id, a model name or an alias (e.g. 'Global 7000' -> Global 7500) to ONE aircraft."""
+    q=st.session_state.get("ac_search","")
+    aid=E.resolve_alias(q,get_base(),get_aliases())
+    if aid:
+        st.session_state["ac_cat"]="All"; st.session_state["ac_sel"]=aid
+        al=get_aliases(); hit=al[al["alias"].str.lower()==q.strip().lower()]
+        st.session_state["ac_search_note"]=(f"'{hit.iloc[0]['alias']}' is a {hit.iloc[0]['relationship'].replace('_',' ')} of {hit.iloc[0]['canonical_model']} — showing that aircraft (no separate aircraft)."
+                                            if len(hit) else f"Showing {aid}.")
+    else:
+        st.session_state["ac_search_note"]=f"No aircraft or alias matches '{q}'." if q.strip() else ""
+    st.session_state["ac_search"]=""
+
+def _bump_overrides():
+    st.session_state["_ov_ver"]=st.session_state.get("_ov_ver",0)+1
+
+def _render_alerts(res,alerts,title="Data status & alerts"):
+    """Alerts next to the results: errors/warnings are visible, informational notes are in an expander."""
+    shown=[x for x in res["flags"] if x["level"] in ("error","warn")]+[a for a in alerts if a["level"] in ("error","warn")]
+    for x in shown:
+        (st.error if x["level"]=="error" else st.warning)(x["text"])
+    infos=[x for x in res["flags"] if x["level"]=="info"]+[a for a in alerts if a["level"]=="info"]
+    if infos:
+        with st.expander(f"ℹ {title} — {len(infos)} note(s)"):
+            for x in infos: st.markdown(f"- {x['text']}")
+
+def _prov_table(row,prov):
+    """Key fields with their data class: extracted / calculated / converted / normalized / missing / historical."""
+    if not bool(row["has_detail"]):
+        rows=[]
+        for f,u in [("legacy_Couts_Fixes_Annuels","annual (currency undocumented)"),("legacy_Cout_Horaire_Charter","per hour (currency undocumented)"),
+                    ("legacy_Heures_Base","hours"),("legacy_Taux_Charter_EUR_h","per hour, labelled EUR (unverified)"),
+                    ("legacy_Vitesse_Croisiere_km_h","km/h"),("legacy_Autonomie_km","km (definition unverified)"),("legacy_Passagers_Max","pax")]:
+            v=E.num(row,f)
+            rows.append({"Field":f.replace("legacy_",""),"Value":"missing" if v is None else f"{v:,.0f}","Unit":u,"Data class":"Historical" if v is not None else "Missing","Source":row.get("source_file"),"Page":""})
+        return pd.DataFrame(rows)
+    p=E.provenance_for(prov,row)
+    keep=E.KEY_FIELDS+["fuel_burn_from_annual_l_per_h","nonfuel_variable_cost_per_h_usd","fuel_price_implied_usd_per_l","total_cost_per_h_from_annual_usd","currency"]
+    p=p[p["field"].isin(keep)].copy()
+    p["Data class"]=p["status"].map(E.data_class)
+    out=p.rename(columns={"field":"Field","value":"Value","unit":"Unit","source_file":"Source","source_page":"Page"})[["Field","Value","Unit","Data class","Source","Page"]]
+    out["Value"]=out["Value"].fillna("missing")
+    out["Source"]=out["Source"].map(E.public_source)
+    return out.reset_index(drop=True)
+
+def _results_csv(res,disp):
+    """CSV export of the current result with its assumptions and exchange rate (same engine result as screen/PDF)."""
+    rows=[("config_id",res["config_hash"]),("aircraft_id",res["aircraft_id"]),("model",res["model"]),("mode",res["mode"]),
+          ("source","Menkor reference database"),("source_kind",res.get("source_kind")),
+          ("base_update_applied",res["actualisation"]["applied"]),("base_update_inflation_pct",res["actualisation"]["inflation_pct"]),
+          ("web_source_url",(res.get("web_source") or {}).get("url","")),("web_source_consulted",(res.get("web_source") or {}).get("access_date","")),
+          ("source_currency","USD"),("display_currency",disp.ccy),("usd_to_eur_rate",disp.fx.usd_to_eur if disp.ccy=="EUR" else ""),
+          ("rate_date",disp.fx.rate_date if disp.ccy=="EUR" else ""),("hours_flown",res["hours"]["flown"]),
+          ("annual_fixed_usd",res["fixed"].get("annual_total")),("variable_per_hour_usd",res["variable"].get("per_h")),
+          ("annual_variable_usd",res["variable"].get("annual")),("annual_budget_usd",res["budget_usd"]),("cost_per_hour_usd",res["cost_per_h_usd"])]
+    if res.get("fuel"):
+        f=res["fuel"]; rows+=[("fuel_burn_l_per_h",f.get("burn_l_h")),("fuel_price_usd_per_l",f.get("price_usd_l")),("fuel_price_source",f.get("price_source"))]
+    pr=res.get("profit")
+    if pr and pr.get("available"):
+        rows+=[("revenue_usd",pr["revenue"]),("commission_usd",pr["commission"]),("variable_cost_all_flown_usd",pr["variable_cost_all_flown"]),
+               ("fixed_cost_usd",pr["fixed_cost"]),("estimated_operating_result_usd",pr["operating_result"]),("break_even_billed_hours",pr.get("break_even_billed_hours"))]
+    for c in res["components"]: rows.append((f"component_{c['category'].lower()}_{c['key']}_annual_usd",c["annual_usd"]))
+    return pd.DataFrame(rows,columns=["item","value"]).to_csv(index=False).encode("utf-8-sig")
+
 def main():
     for k,v in [("database",None),("cost_master",None),("pdf_report",None),
                 ("auth_email",None),("auth_plan",None),("auth_is_admin",False),("auth_pass_tier",None),
@@ -952,32 +904,114 @@ def main():
     </div>''', unsafe_allow_html=True)
     st.markdown("<hr>",unsafe_allow_html=True)
 
-    df=get_active_db()
+    try:
+        df=get_active_db(); _checks,_conflicts,_convs=get_support()
+    except Exception as _e:
+        st.error(f"Aircraft database could not be loaded ({_e}). Make sure menkor_engine.py and the data/ folder are deployed next to app.py.")
+        st.stop()
+    _prov=None
 
-    # Sidebar
+    # ── Sidebar ─────────────────────────────────────────────────────────────
     with st.sidebar:
         st.markdown('<div class="section-header">✈ Aircraft Selection</div>',unsafe_allow_html=True)
-        df=get_active_db()
-        cats=["All"]+sorted(df["Categorie"].dropna().unique().tolist())
-        cat_sel=st.selectbox("Category",cats)
+        st.text_input("Quick find (model or alias, e.g. Global 7000)",key="ac_search",on_change=_on_search)
+        if st.session_state.get("ac_search_note"): st.caption(st.session_state["ac_search_note"])
+        man_opts=["All"]+sorted(df["Categorie"].unique().tolist())
+        cat_sel=st.selectbox("Manufacturer",man_opts,key="ac_cat")
         df_f=df if cat_sel=="All" else df[df["Categorie"]==cat_sel]
-        ac_sel=st.selectbox("Aircraft Model",df_f["Modele"].tolist())
-        aircraft=df_f[df_f["Modele"]==ac_sel].iloc[0]
-        st.markdown('<div class="section-header">🕐 Flight Hours</div>',unsafe_allow_html=True)
-        h_charter=st.slider("Charter Hours/year",0,800,380,step=10)
-        h_private=st.slider("Private Hours/year",0,800,120,step=10)
-        if h_charter+h_private>800: st.warning(f"⚠ Total {h_charter+h_private}h > 800h limit")
-        st.markdown('<div class="section-header">💰 Charter Pricing</div>',unsafe_allow_html=True)
-        db_rate=float(aircraft.get("Taux_Charter_EUR_h",0))
-        st.caption(f"DB rate: € {db_rate:,.0f}/h")
-        use_custom=st.toggle("Custom charter price",value=False)
-        if use_custom:
-            custom_rate=st.number_input("Your rate (€/h)",min_value=0,max_value=200000,value=int(db_rate) if db_rate>0 else 5000,step=100)
-        else: custom_rate=db_rate
-        commission_pct=st.slider("Commission (%)",0,25,10,step=1)
+        _ids=df_f["aircraft_id"].tolist()
+        _sfx={"pdf_acc":"","web_estimate":"  · web estimate","historical":"  · historical"}
+        _lab={i:m+_sfx[k] for i,m,k in zip(df["aircraft_id"],df["model"],df["source_kind"])}
+        _idx=_ids.index("dassault_falcon_7x") if "dassault_falcon_7x" in _ids else 0
+        aid=st.selectbox("Aircraft model",_ids,index=_idx,format_func=lambda i:_lab[i],key="ac_sel")
+        row=df[df["aircraft_id"]==aid].iloc[0]
+        hist=not bool(row["has_detail"])
+        skind=row["source_kind"]
+        if hist: st.caption("Historical sheet: totals only, detailed report still to be reconstructed.")
+        elif skind=="web_estimate": st.caption("Menkor reference database — partial web estimate (Guardian Jet economics + public technical summary), not a full reference record.")
 
-    costs=calculate_costs(aircraft,h_charter,h_private)
-    prof=calculate_profitability(costs,commission_pct,custom_rate)
+        st.markdown('<div class="section-header">📈 Menkor base update</div>',unsafe_allow_html=True)
+        act_on=st.toggle("Update base costs (inflation)",value=E.ACTUALISE_DEFAULT,key="act_on",
+                         help="Maintenance & programs, crew training, hangar and handling/en-route fees are increased by the % below. Fuel, insurance, crew salaries, catering and misc are not changed.")
+        infl=st.number_input("Inflation uplift (%)",min_value=0.0,max_value=100.0,value=float(E.INFLATION_PCT_DEFAULT),step=1.0,key="infl_pct",disabled=not act_on)
+        st.markdown('<div class="section-header">🧭 Calculation mode</div>',unsafe_allow_html=True)
+        mode_lbl=st.radio("Calculation mode",["Report reference","Custom simulation"],key="calc_mode",label_visibility="collapsed",
+                          help="Report reference = published totals with the report's own hours and fuel price. Custom simulation = recalculated from your hours, fuel and cost edits.")
+        mode="reference" if mode_lbl=="Report reference" else "simulation"
+        _locked=(mode=="reference")
+
+        ref_h=E.num(row,"legacy_Heures_Base" if hist else "reference_annual_hours")
+        ref_i=int(ref_h) if ref_h else 0
+        st.markdown('<div class="section-header">🕐 Flight Hours</div>',unsafe_allow_html=True)
+        if _locked: st.caption(f"Report reference: {ref_i} h/year (fixed). Switch to Custom simulation to change hours.")
+        billed=st.slider("Billed charter hours / year",0,1500,min(ref_i,1500),step=10,key=f"bh_{aid}",disabled=_locked)
+        posit=st.slider("Positioning hours (flown, not billed)",0,600,0,step=10,key=f"ph_{aid}",disabled=_locked)
+        other=st.slider("Owner / private / other hours (not billed)",0,1500,0,step=10,key=f"oh_{aid}",disabled=_locked)
+        if not _locked:
+            st.caption(f"Total flown hours: **{billed+posit+other} h** — variable costs apply to every flown hour; only billed hours earn revenue.")
+            if billed+posit+other>E.HOURS_IN_YEAR: st.warning("More than 8,760 hours in a year is not possible.")
+
+        fuel=E.FuelConfig()
+        if hist:
+            st.markdown('<div class="section-header">⛽ Fuel</div>',unsafe_allow_html=True)
+            st.caption("Not available for historical sheets: fuel is included in the hourly rate and cannot be separated.")
+        else:
+            st.markdown('<div class="section-header">⛽ Fuel (litres)</div>',unsafe_allow_html=True)
+            rp=E.num(row,"reference_fuel_price_usd_per_l")
+            _cv=_convs[(_convs["aircraft_id"]==aid)&(_convs["field"]=="reference_fuel_price_usd_per_l")]
+            src_opts=[f"Report price ({rp:.3f} USD/L)" if rp else "Report price (missing)","Manual local price"]
+            ps=st.radio("Fuel price source",src_opts,key=f"fps_{aid}",disabled=_locked)
+            if len(_cv): st.caption(f"Report prints {_cv.iloc[0]['source_value']} {_cv.iloc[0]['source_unit']} → {float(_cv.iloc[0]['converted_value']):.3f} USD/L (1 US gal = 3.785411784 L; GAL assumed US gallon, to confirm).")
+            bm_opts={"Published hourly burn":"published","Derived from annual volume":"derived","Custom burn (L/h)":"custom"}
+            bm=st.selectbox("Burn method",list(bm_opts),key=f"bm_{aid}",disabled=_locked,
+                            help="Average economic assumption, not a flight-planning calculation.")
+            _pb,_db=E.num(row,"fuel_burn_l_per_h"),E.num(row,"fuel_burn_from_annual_l_per_h")
+            st.caption(f"Published: {_pb:,.0f} L/h · derived from annual volume: {_db:,.1f} L/h" if (_pb and _db) else "Burn data incomplete for this model.")
+            cburn=None
+            if bm_opts[bm]=="custom":
+                cburn=st.number_input("Average burn (L/h)",min_value=0.0,value=float(_pb or 0.0),step=10.0,key=f"cb_{aid}",disabled=_locked)
+            manual=(ps==src_opts[1])
+            fuel=E.FuelConfig(price_source="manual" if manual else "report",burn_method=bm_opts[bm],custom_burn_l_h=cburn)
+            if manual:
+                with st.expander("Local fuel price — manual entry (no live feed)",expanded=True):
+                    st.caption("No real-time price is connected: enter the quote you received.")
+                    fuel.airport_icao=st.text_input("Airport ICAO",key="fu_icao",max_chars=4).upper()
+                    fuel.airport_iata=st.text_input("Airport IATA",key="fu_iata",max_chars=3).upper()
+                    fuel.supplier=st.text_input("Supplier",key="fu_sup")
+                    fc1,fc2=st.columns(2)
+                    with fc1: _fp=st.number_input("Price",min_value=0.0,value=0.0,step=0.05,format="%.3f",key="fu_price")
+                    with fc2: fuel.unit=st.selectbox("Unit",["L","USG"],key="fu_unit",help="L = litre · USG = US gallon")
+                    fc3,fc4=st.columns(2)
+                    with fc3: fuel.currency=st.selectbox("Currency",["USD","EUR"],key="fu_ccy")
+                    with fc4: fuel.taxes_pct=st.number_input("Taxes (%)",min_value=0.0,value=0.0,step=1.0,key="fu_tax")
+                    fuel.fees_per_uplift=st.number_input("Fees per uplift (fixed)",min_value=0.0,value=0.0,step=50.0,key="fu_fee",help="Recorded for stopover purchases; not part of the hourly average.")
+                    fuel.validity_date=st.text_input("Quote valid until (YYYY-MM-DD)",key="fu_valid")
+                    fuel.price=_fp if _fp>0 else None
+                    if fuel.price is None: st.warning("Enter the fuel price: until then the simulation is unavailable (no default value is invented).")
+
+        st.markdown('<div class="section-header">💱 Currency</div>',unsafe_allow_html=True)
+        disp_ccy=st.radio("Display currency",["USD","EUR"],horizontal=True,key="disp_ccy",help="Source amounts are USD. EUR needs an explicit, dated exchange rate.")
+        with st.expander("Exchange rate USD → EUR (explicit, dated)",expanded=(disp_ccy=="EUR")):
+            _fxr=st.number_input("EUR for 1 USD",min_value=0.0,value=0.0,step=0.01,format="%.4f",key="fx_rate")
+            _fxd=st.text_input("Rate date (YYYY-MM-DD)",key="fx_date")
+            _fxs=st.text_input("Rate source (optional)",key="fx_src")
+        fx=E.Fx(disp_ccy,_fxr if _fxr>0 else None,_fxd.strip() or None,_fxs.strip())
+        disp=E.Display(fx)
+        if disp.eur_blocked: st.warning("EUR display needs a rate and a valid date (YYYY-MM-DD). Amounts stay in USD until then.")
+        st.caption(disp.note())
+
+        st.markdown('<div class="section-header">💰 Charter Pricing</div>',unsafe_allow_html=True)
+        hist_rate=E.num(row,"legacy_Taux_Charter_EUR_h")
+        if hist_rate:
+            st.caption(f"Old Menkor base (historical, unverified): {hist_rate:,.0f} per hour, labelled EUR. The PDF reports contain no charter price.")
+            st.button("Use historical rate",key=f"uh_{aid}",on_click=_use_hist_rate,args=(aid,hist_rate))
+        else:
+            st.caption("No charter price in the source: enter your own rate (nothing is assumed).")
+        rc1,rc2=st.columns([2,1])
+        with rc1: rate_in=st.number_input("Rate per billed hour",min_value=0.0,value=0.0,step=100.0,format="%.0f",key=f"rate_{aid}")
+        with rc2: rate_ccy=st.selectbox("Rate ccy",["USD","EUR"],key=f"rateccy_{aid}")
+        commission_pct=st.slider("Commission (%)",0,25,10,step=1)
+        fees_in=st.number_input(f"Other commercial fees / year ({disp.ccy}) — not already in the report",min_value=0.0,value=0.0,step=1000.0,format="%.0f")
 
     def _tab_label(base,required):
         if required is None: return base
@@ -994,56 +1028,156 @@ def main():
         _tab_label("🌐 Market Search",None),
     ])
 
+    # ── Cost Master EDITORS (rendered first so every tab uses the same scenario) ─────
+    ov_fixed={}; ov_var={}; extra_fixed_usd=0.0; extra_var_usd=0.0
+    with tab4:
+        if not is_pro:
+            premium_gate("pro")
+        else:
+            st.markdown('<div class="main-title" style="font-size:1.4rem">💼 Cost Master</div>',unsafe_allow_html=True)
+            if hist:
+                st.info("Historical sheet: component detail is not available (report not yet reconstructed). Totals only.")
+            elif mode=="reference":
+                st.info("Report reference mode: published components are shown below as read-only. Switch to Custom simulation to replace components.")
+            else:
+                _rv=st.session_state.get("_ov_ver",0); _k=f"{aid}_{disp.ccy}_{disp.factor:.6f}_{_rv}"
+                if skind=="web_estimate":
+                    st.info("Web estimate: only components with a known scope can be replaced — crew (aggregate, training not isolated), hangar, insurance, misc and the combined maintenance line. "
+                            "The airframe / engine-APU / crew-misc split and crew training are not available and are not filled with zero or generic costs.")
+                st.caption("Edit a value to REPLACE that report component. The total is rebuilt as report total + your change, so nothing is counted twice. "
+                           "Fuel is edited in the sidebar (burn × price).")
+                with st.expander("🔒 Fixed costs — annual (the report total already includes all five lines)",expanded=True):
+                    cols=st.columns(3)
+                    for i,(k,(f,_l)) in enumerate(E.FIXED_COMPONENTS.items()):
+                        label=E.fixed_label(row,k); src=E.num(row,f)
+                        with cols[i%3]:
+                            if src is None: st.markdown(f"**{label}**: not available in this source (not replaced by zero)")
+                            else:
+                                v=st.number_input(f"{label} ({disp.ccy}/yr)",min_value=0.0,value=float(disp.conv(src)),step=1000.0,format="%.0f",key=f"ovf_{k}_{_k}")
+                                if abs(disp.to_usd(v)-src)>0.5: ov_fixed[k]=disp.to_usd(v)
+                with st.expander("⚡ Variable costs — per flown hour (the report total already includes fuel)",expanded=True):
+                    cols=st.columns(3)
+                    for i,(k,(hf,af,label)) in enumerate(E.var_components_for(row).items()):
+                        src=E.num(row,hf)
+                        with cols[i%3]:
+                            if src is None: st.markdown(f"**{label}**: not available in this source (not replaced by zero)")
+                            else:
+                                v=st.number_input(f"{label} ({disp.ccy}/h)",min_value=0.0,value=float(disp.conv(src)),step=10.0,format="%.0f",key=f"ovv_{k}_{_k}")
+                                if abs(disp.to_usd(v)-src)>0.005: ov_var[k]=disp.to_usd(v)
+                with st.expander("➕ Costs not in the report (user-added)",expanded=False):
+                    x1,x2=st.columns(2)
+                    with x1: _xf=st.number_input(f"Extra fixed cost ({disp.ccy}/yr)",min_value=0.0,value=0.0,step=1000.0,format="%.0f",key=f"xf_{_k}")
+                    with x2: _xv=st.number_input(f"Extra variable cost ({disp.ccy}/flown h)",min_value=0.0,value=0.0,step=10.0,format="%.0f",key=f"xv_{_k}")
+                    extra_fixed_usd=disp.to_usd(_xf); extra_var_usd=disp.to_usd(_xv)
+                st.button("↺ Reset all edits",key="ov_reset",on_click=_bump_overrides)
+
+    # ── The single scenario & the single result used by every tab and the PDF ─────
+    scn=E.Scenario(aircraft_id=aid,mode=mode,billed_hours=float(billed),positioning_hours=float(posit),other_hours=float(other),
+                   charter_rate=(rate_in if rate_in>0 else None),charter_rate_ccy=rate_ccy,commission_pct=float(commission_pct),
+                   other_commercial_fees=float(disp.to_usd(fees_in)),fuel=fuel,fixed_overrides=ov_fixed,var_overrides_h=ov_var,
+                   extra_fixed=float(extra_fixed_usd),extra_var_h=float(extra_var_usd),fx=fx,
+                   actualise=bool(act_on),inflation_pct=float(infl))
+    res=E.compute(row,scn)
+    alerts=E.alerts_for(row,_checks,_conflicts,_convs)
+    perf=E.performance_summary(row)
+    D=disp.money
+
     # TAB 1: DASHBOARD
     with tab1:
+        _mode_txt="Report reference — published totals, original assumptions" if mode=="reference" else "Custom simulation — recalculated from your assumptions"
+        st.markdown(f'<div style="font-size:.78rem;color:#C9A84C;margin-bottom:.4rem">● {_mode_txt}</div>',unsafe_allow_html=True)
         k1,k2,k3,k4=st.columns(4)
         with k1:
             st.markdown(f'''<div class="metric-card"><div class="metric-label">Aircraft</div>
-                <div class="metric-value" style="font-size:1.2rem;color:#000000">{aircraft["Modele"]}</div>
-                <div class="metric-sub">{aircraft.get("Categorie","—")}</div></div>''',unsafe_allow_html=True)
+                <div class="metric-value" style="font-size:1.2rem">{row["model"]}</div>
+                <div class="metric-sub">{row.get("manufacturer") if pd.notna(row.get("manufacturer")) else "Historical sheet"} · {"Menkor reference" if skind=="pdf_acc" else ("web estimate · partial" if skind=="web_estimate" else "to reconstruct")}</div></div>''',unsafe_allow_html=True)
         with k2:
-            st.markdown(f'''<div class="metric-card"><div class="metric-label">Total Hours/Year</div>
-                <div class="metric-value">{costs["total_hours"]}h</div>
-                <div class="metric-sub">{h_charter}h charter · {h_private}h private</div></div>''',unsafe_allow_html=True)
+            _fh=res["hours"]["flown"]; _fh=ref_h if _fh is None else _fh
+            _sub=(f"report reference hours" if mode=="reference" else f"{billed:g} billed · {posit:g} positioning · {other:g} other")
+            st.markdown(f'''<div class="metric-card"><div class="metric-label">Flown Hours / Year</div>
+                <div class="metric-value">{_fh:,.0f} h</div><div class="metric-sub">{_sub}</div></div>''',unsafe_allow_html=True)
         with k3:
-            if pd.notna(aircraft.get("Autonomie_km",None)):
-                st.markdown(f'''<div class="metric-card"><div class="metric-label">Max Range</div>
-                    <div class="metric-value">{aircraft["Autonomie_km"]:,.0f} km</div>
-                    <div class="metric-sub">{aircraft.get("Passagers_Max","—")} pax max</div></div>''',unsafe_allow_html=True)
+            if hist:
+                _lr=E.num(row,"legacy_Autonomie_km")
+                _val=f"{_lr:,.0f} km" if _lr else "n/a"
+                _sub="historical value · definition unverified"
+            else:
+                _val=(f"{perf['seats_range_km']:,.0f} km" if perf["seats_range_km"] else (f"{perf['seats_range_nm']:,.0f} NM" if perf["seats_range_nm"] else "n/a"))
+                _sub=(f"{perf['seats_range_nm']:,.0f} NM · all seats occupied" if perf["seats_range_nm"] else "not provided")
+                if perf["ferry_range_nm"]: _sub+=f" · ferry {perf['ferry_range_nm']:,.0f} NM"
+            st.markdown(f'''<div class="metric-card" title="{_re.sub(r'[^A-Za-z0-9 ,.;:()/%-]','',(perf['range_definition'] or '')[:300]) if not hist else ''}"><div class="metric-label">Range — seats occupied</div>
+                <div class="metric-value">{_val}</div><div class="metric-sub">{_sub}</div></div>''',unsafe_allow_html=True)
         with k4:
-            if pd.notna(aircraft.get("Vitesse_Croisiere_km_h",None)):
-                st.markdown(f'''<div class="metric-card"><div class="metric-label">Cruise Speed</div>
-                    <div class="metric-value">{aircraft["Vitesse_Croisiere_km_h"]} km/h</div>
-                    <div class="metric-sub">Certified performance</div></div>''',unsafe_allow_html=True)
+            _sp=perf["cruise_kmh"] if not hist else E.num(row,"legacy_Vitesse_Croisiere_km_h")
+            _bk=perf["block_kmh"] if not hist else None
+            st.markdown(f'''<div class="metric-card"><div class="metric-label">Cruise Speed</div>
+                <div class="metric-value">{f"{_sp:,.0f} km/h" if _sp else "n/a"}</div>
+                <div class="metric-sub">{f"block speed {_bk:,.0f} km/h" if _bk else ("report value" if not hist else "historical value")}</div></div>''',unsafe_allow_html=True)
+        if not hist and perf["range_definition"]:
+            st.caption(f"ℹ Range = {perf['range_definition']} {perf['conditions'] or ''}".strip())
         st.markdown("<hr>",unsafe_allow_html=True)
-        if is_essentiel or is_pro:
-            m1,m2,m3,m4=st.columns(4)
-            m1.metric("💶 Total Annual Cost",fmt(costs["grand_total"]))
-            m2.metric("🔒 Fixed Costs",fmt(costs["total_fixed"]))
-            m3.metric("⚡ Variable Costs",fmt(costs["total_variable"]))
-            m4.metric("⌛ Cost/Hour",fmt(costs["avg_cost_h"]))
+
+        if not res["available"]:
+            _render_alerts(res,alerts)
+        elif is_essentiel or is_pro:
+            st.caption(disp.note())
+            m1,m2,m3,m4,m5=st.columns(5)
+            v=res["variable"]
+            m1.metric("🔒 Annual Fixed Costs",D(res["fixed"]["annual_total"]),help="Already includes crew, crew training, hangar, insurance and aircraft misc — crew is not added again.")
+            m2.metric("⛽ Fuel / flown hour",D(v["fuel_per_h"]) if v["fuel_per_h"] is not None else "n/a",
+                      help=(f"{res['fuel']['burn_l_h']:,.0f} L/h × {res['fuel']['price_usd_l']:.3f} USD/L" if res.get("fuel") and res["fuel"].get("burn_l_h") and res["fuel"].get("price_usd_l") else "Fuel not separable"))
+            m3.metric("⚡ Other variable / hour",D(v["nonfuel_per_h"]) if v["nonfuel_per_h"] is not None else "n/a",help="Airframe, engines/APU, crew travel, catering, airport fees, other")
+            m4.metric("💶 Total Annual Budget",D(res["budget_usd"]),help="Annual fixed + annual variable")
+            m5.metric("⌛ Cost / flown hour",D(res["cost_per_h_usd"]) if res["cost_per_h_usd"] is not None else "n/a",
+                      help="Annual budget ÷ flown hours. Not applicable when hours are zero.")
+            st.caption(f"Variable per hour total {D(v['per_h'])} → annual variable {D(v['annual'])}  ·  Annual budget = fixed {D(res['fixed']['annual_total'])} + variable {D(v['annual'])}")
+            if res.get("fuel"):
+                f=res["fuel"]
+                if f.get("burn_l_h") and f.get("price_usd_l"):
+                    st.caption(f"⛽ Method: {f['burn_label']} = {f['burn_l_h']:,.0f} L/h ({f['burn_l_h']/E.USG_TO_L:,.0f} US gal/h) × {f['price_usd_l']:.3f} USD/L — {f['price_label']}. "
+                               f"Annual fuel: {f['annual_litres']:,.0f} L ({f['annual_usg']:,.0f} US gal). {f['note']}")
+            if res.get("reconciliation") and mode=="simulation":
+                rc=res["reconciliation"]
+                st.caption(f"Reconciliation: at the report's own hours and fuel price the formula gives {D(rc['simulated_at_report_conditions'])} vs published {D(rc['published_budget'])} ({rc['difference_pct']:+.2f}%). Printed hourly values are rounded; the source data are not altered.")
+            _render_alerts(res,alerts)
             st.markdown("<hr>",unsafe_allow_html=True)
             g1,g2=st.columns(2)
             with g1:
-                st.markdown('<div class="section-header">Cost Breakdown</div>',unsafe_allow_html=True)
-                st.plotly_chart(chart_donut(costs),width="stretch",config={"displayModeBar":False})
+                st.markdown('<div class="section-header">Annual Cost Breakdown</div>',unsafe_allow_html=True)
+                st.plotly_chart(chart_donut(res,disp),width="stretch",config={"displayModeBar":False})
             with g2:
-                st.markdown('<div class="section-header">Cost by Flight Mode</div>',unsafe_allow_html=True)
-                st.plotly_chart(chart_bars(costs),width="stretch",config={"displayModeBar":False})
+                st.markdown('<div class="section-header">Cost per Flown Hour</div>',unsafe_allow_html=True)
+                _fg=chart_per_hour(res,disp)
+                if _fg is not None: st.plotly_chart(_fg,width="stretch",config={"displayModeBar":False})
+                else: st.info("Cost per hour is not applicable: annual flown hours are zero.")
+            _act=res.get("actualisation") or {}
+            with st.expander("📈 Menkor base update — what was adjusted",expanded=False):
+                if _act.get("applied"):
+                    st.caption(f"Source: Menkor reference database. Values 3-4 years old, increased by {_act['inflation_pct']:g}% where listed (Menkor assumption); your edits replace these values. Fuel, insurance, crew salaries/expenses, catering and misc are not adjusted.")
+                    st.dataframe(pd.DataFrame([{"Item":i["item"],f"Base ({disp.ccy})":(disp.conv(i["before"]) if i["before"] is not None else None),
+                                                f"Updated ({disp.ccy})":(disp.conv(i["after"]) if i["after"] is not None else None),
+                                                "Uplift":(f"+{i['pct']:g}%" if i.get("pct") else ""),"Note":i.get("note","")} for i in _act["items"]]),width="stretch",hide_index=True)
+                else:
+                    st.caption("Base update is off (or not applicable to this record): raw Menkor reference values are shown.")
+            with st.expander("🔎 Data provenance — extracted / calculated / converted / missing"):
+                if _prov is None: _prov=get_prov()
+                st.dataframe(_prov_table(row,_prov),width="stretch",hide_index=True)
+                st.caption("Extraction date is the processing date, not a price-validity date. Empty means missing — never zero.")
         else:
             def _locked_metric(label):
                 return f'''<div class="metric-card" style="text-align:center">
                     <div class="metric-label">{label}</div>
-                    <div style="font-size:1.6rem;font-weight:700;color:#4A5568;filter:blur(5px);user-select:none">€ 000,000</div>
+                    <div style="font-size:1.6rem;font-weight:700;color:#4A5568;filter:blur(5px);user-select:none">$ 000,000</div>
                     <div class="metric-sub" style="color:#F59E0B">🔒 Essentiel</div></div>'''
-            m1,m2,m3,m4=st.columns(4)
-            m1.markdown(_locked_metric("💶 Total Annual Cost"),unsafe_allow_html=True)
-            m2.markdown(_locked_metric("🔒 Fixed Costs"),unsafe_allow_html=True)
-            m3.markdown(_locked_metric("⚡ Variable Costs"),unsafe_allow_html=True)
-            m4.markdown(_locked_metric("⌛ Cost/Hour"),unsafe_allow_html=True)
+            m1,m2,m3,m4,m5=st.columns(5)
+            m1.markdown(_locked_metric("🔒 Annual Fixed Costs"),unsafe_allow_html=True)
+            m2.markdown(_locked_metric("⛽ Fuel / hour"),unsafe_allow_html=True)
+            m3.markdown(_locked_metric("⚡ Other variable / hour"),unsafe_allow_html=True)
+            m4.markdown(_locked_metric("💶 Total Annual Budget"),unsafe_allow_html=True)
+            m5.markdown(_locked_metric("⌛ Cost / hour"),unsafe_allow_html=True)
             st.markdown("<hr>",unsafe_allow_html=True)
             g1,g2=st.columns(2)
-            for _g,_title in [(g1,"Cost Breakdown"),(g2,"Cost by Flight Mode")]:
+            for _g,_title in [(g1,"Annual Cost Breakdown"),(g2,"Cost per Flown Hour")]:
                 with _g:
                     st.markdown(f'<div class="section-header">{_title}</div>',unsafe_allow_html=True)
                     st.markdown('''<div style="height:260px;display:flex;flex-direction:column;align-items:center;
@@ -1061,172 +1195,205 @@ def main():
         if not is_essentiel:
             premium_gate("essentiel")
         else:
-            st.markdown('<div class="section-header">Charter Profitability Simulation</div>',unsafe_allow_html=True)
-            if h_charter==0:
-                st.warning("⚠ No charter hours configured.")
+            st.markdown('<div class="section-header">Charter Profitability — Estimated Operating Result</div>',unsafe_allow_html=True)
+            st.caption(disp.note())
+            if mode=="reference":
+                st.info("The report has no charter revenue, billed hours or positioning data. Switch to **Custom simulation** (sidebar) to estimate profitability.")
+            elif not res["available"]:
+                _render_alerts(res,alerts)
             else:
-                net=prof["net_result"]; cr=prof["coverage_rate"]
-                badge='<span class="tag-ok">✓ PROFITABLE</span>' if net>=0 else ('<span class="tag-warn">⚠ NEAR BREAK-EVEN</span>' if cr>=70 else '<span class="tag-err">✗ LOSS-MAKING</span>')
-                st.markdown(f"**Status:** {badge} — Coverage: **{cr:.1f}%**",unsafe_allow_html=True)
-                er=prof["effective_rate"]
-                st.markdown(f'''<div class="metric-card" style="margin:.8rem 0"><div class="metric-label">Effective Rate</div>
-                    <div class="metric-value">€ {er:,.0f} <span style="font-size:1rem;color:#8496B0">/h</span></div>
-                    <div class="metric-sub">{h_charter}h × € {er:,.0f} = € {er*h_charter:,.0f}</div></div>''',unsafe_allow_html=True)
-                r1,r2,r3,r4=st.columns(4)
-                r1.metric("💵 Gross Revenue",fmt(prof["gross_revenue"]))
-                r2.metric("📉 Commission",fmt(prof["commission"]))
-                r3.metric("💰 Net Revenue",fmt(prof["net_revenue"]))
-                r4.metric("📊 Net Result",fmt(net),delta=f"{cr:.1f}%")
-                st.markdown("<hr>",unsafe_allow_html=True)
-                st.plotly_chart(chart_waterfall(costs,prof),width="stretch",config={"displayModeBar":False})
+                pr=res["profit"]
+                if not pr["available"]:
+                    st.warning("Profitability not calculated: "+" ".join(pr["messages"]))
+                else:
+                    r_=pr["operating_result"]; cov=pr["coverage_pct"]
+                    badge=('<span class="tag-ok">✓ POSITIVE OPERATING RESULT</span>' if r_>=0 else
+                           ('<span class="tag-warn">⚠ BELOW BREAK-EVEN</span>' if (cov or 0)>=70 else '<span class="tag-err">✗ NEGATIVE OPERATING RESULT</span>'))
+                    st.markdown(f"**Status:** {badge} — Coverage: **{cov:.1f}%** (net revenue after commission and fees ÷ total costs)",unsafe_allow_html=True)
+                    h1,h2,h3,h4=st.columns(4)
+                    h1.metric("Total flown hours",f"{pr['flown_hours']:g} h"); h2.metric("Billed hours",f"{pr['billed_hours']:g} h")
+                    h3.metric("Positioning hours",f"{pr['positioning_hours']:g} h"); h4.metric("Charter rate / billed h",D(pr["rate_usd"]))
+                    r1,r2,r3,r4=st.columns(4)
+                    r1.metric("💵 Charter revenue",D(pr["revenue"]))
+                    r2.metric("📉 Commission + fees",D(pr["commission"]+pr["other_fees"]))
+                    r3.metric("⚡ Variable (all flown h)",D(pr["variable_cost_all_flown"]))
+                    r4.metric("🔒 Fixed",D(pr["fixed_cost"]))
+                    st.metric("📊 Estimated operating result",D(r_),delta=f"{cov:.1f}% coverage")
+                    st.caption("Estimated operating result = charter revenue − variable costs of ALL flown hours − fixed costs − commercial fees not already included. "
+                               "It excludes financing, depreciation and tax: it is not a net profit.")
+                    st.markdown("<hr>",unsafe_allow_html=True)
+                    st.markdown(f"**Contribution per billed hour** (rate after commission − variable cost of the billed hour incl. its positioning): **{D(pr['contribution_per_billed_hour'])}**")
+                    (st.success if pr.get("break_even_billed_hours") else st.error)(pr["break_even_message"])
+                    st.caption("Assumptions — "+pr["break_even_assumptions"])
+                    st.plotly_chart(chart_waterfall(res,disp),width="stretch",config={"displayModeBar":False})
+                _render_alerts(res,alerts)
 
     # TAB 3: SENSITIVITY
     with tab3:
         if not is_essentiel:
             premium_gate("essentiel")
         else:
-            st.markdown('<div class="section-header">Sensitivity — Charter Hours vs Net Result</div>',unsafe_allow_html=True)
-            st.caption(f"Private: {h_private}h | Commission: {commission_pct}% | Rate: € {custom_rate:,.0f}/h")
-            st.plotly_chart(chart_sensitivity(aircraft,h_private,commission_pct,custom_rate),width="stretch",config={"displayModeBar":False})
-            st.markdown('<div class="section-header">Fleet Comparison</div>',unsafe_allow_html=True)
-            comp=[{"Model":row["Modele"],"Total Cost (€)":round(calculate_costs(row,h_charter,h_private)["grand_total"]),
-                   "Cost/Hour (€)":round(calculate_costs(row,h_charter,h_private)["avg_cost_h"])} for _,row in df.iterrows()]
-            df_c=pd.DataFrame(comp).sort_values("Total Cost (€)")
-            fig_c=px.bar(df_c,x="Model",y="Total Cost (€)",color="Cost/Hour (€)",
-                         color_continuous_scale=["#1A3A6E","#4A90D9","#C9A84C","#E8C46A"],template="plotly_dark")
-            fig_c.update_layout(paper_bgcolor="rgba(0,0,0,0)",plot_bgcolor="rgba(0,0,0,0)",
-                                font=dict(color="#D6E4F7"),height=350,margin=dict(t=10,b=80,l=10,r=10),
-                                xaxis=dict(tickangle=-30),yaxis=dict(gridcolor="#1A3A6E",tickformat=",.0f"))
-            st.plotly_chart(fig_c,width="stretch",config={"displayModeBar":False})
+            st.markdown('<div class="section-header">Sensitivity — Billed Hours vs Operating Result</div>',unsafe_allow_html=True)
+            st.caption(disp.note())
+            if mode=="reference":
+                st.info("Sensitivity uses the simulation engine. Switch to **Custom simulation** to explore hours and fuel price.")
+            elif not res["available"]:
+                _render_alerts(res,alerts)
+            else:
+                pr=res["profit"]
+                if pr["available"]:
+                    st.caption(f"Positioning ratio {pr['positioning_ratio']:.2f} · other hours {other:g} h · commission {commission_pct}% · rate {D(pr['rate_usd'])}/billed h — same engine as every other tab.")
+                    _pts=E.sensitivity_billed_hours(row,scn,list(range(0,1501,25)))
+                    st.plotly_chart(chart_sensitivity(_pts,pr.get("break_even_billed_hours"),billed,disp),width="stretch",config={"displayModeBar":False})
+                    st.caption(pr["break_even_message"])
+                else:
+                    st.info("Enter a charter rate (sidebar) to see operating result against billed hours. "+" ".join(pr["messages"]))
+                if not hist:
+                    st.markdown('<div class="section-header">Fuel price sensitivity</div>',unsafe_allow_html=True)
+                    _bp=res["fuel"]["price_usd_l"]
+                    _prices=[round(_bp*x,4) for x in (0.6,0.7,0.8,0.9,1.0,1.1,1.2,1.3,1.4,1.5,1.75,2.0)]
+                    st.plotly_chart(chart_fuel_sens(E.sensitivity_fuel_price(row,scn,_prices),disp,_bp),width="stretch",config={"displayModeBar":False})
+                st.markdown('<div class="section-header">Fleet Comparison</div>',unsafe_allow_html=True)
+                st.caption("Same hours and fuel assumptions applied to every PDF-documented aircraft, each with its own report data. Historical sheets are excluded (no fuel split).")
+                comp=E.fleet_comparison(df,scn)
+                if len(comp):
+                    _m=df.set_index("aircraft_id")["Categorie"]
+                    _sel=st.multiselect("Manufacturers",sorted(comp["manufacturer"].dropna().unique()),default=[row.get("manufacturer")] if row.get("manufacturer") in set(comp["manufacturer"]) else [],key="fleet_mf")
+                    cs=comp[comp["manufacturer"].isin(_sel)] if _sel else comp
+                    cs=cs.sort_values("budget_usd")
+                    _web=cs[cs["source_kind"]=="web_estimate"]; cs_chart=cs[cs["source_kind"]=="pdf_acc"]
+                    fig_c=px.bar(x=cs_chart["model"],y=[disp.conv(x) for x in cs_chart["budget_usd"]],color=[(disp.conv(x) if x is not None else None) for x in cs_chart["cost_per_h_usd"]],
+                                 color_continuous_scale=["#1A3A6E","#4A90D9","#C9A84C","#E8C46A"],template="plotly_dark",
+                                 labels={"x":"Model","y":f"Annual budget ({disp.ccy})","color":f"Cost/h ({disp.ccy})"})
+                    fig_c.update_layout(paper_bgcolor="rgba(0,0,0,0)",plot_bgcolor="rgba(0,0,0,0)",font=dict(color="#D6E4F7"),height=350,
+                                        margin=dict(t=10,b=80,l=10,r=10),xaxis=dict(tickangle=-30),yaxis=dict(gridcolor="#1A3A6E",tickformat=",.0f"))
+                    st.plotly_chart(fig_c,width="stretch",config={"displayModeBar":False})
+                    if len(_web): st.caption("Web estimates (Guardian Jet scenario, 300 h) are listed in the table but kept out of the chart: they are not equivalent to the full Menkor reference records.")
+                    _t=cs.assign(**{f"Annual budget ({disp.ccy})":[round(disp.conv(x)) for x in cs["budget_usd"]],
+                                    f"Cost/h ({disp.ccy})":[(round(disp.conv(x)) if (x is not None and x==x) else None) for x in cs["cost_per_h_usd"]]})[["model","manufacturer","source_kind",f"Annual budget ({disp.ccy})",f"Cost/h ({disp.ccy})"]]
+                    st.dataframe(_t,width="stretch",hide_index=True)
+                else:
+                    st.info("Fleet comparison unavailable with the current fuel inputs (e.g. a manual fuel price must be entered).")
 
-    # TAB 4: COST MASTER
+    # TAB 4: COST MASTER — results (editors were rendered above)
     with tab4:
-        if not is_pro:
-            premium_gate("pro")
-        else:
-            st.markdown('<div class="main-title" style="font-size:1.4rem">💼 Cost Master</div>',unsafe_allow_html=True)
-            cfg1,cfg2,cfg3=st.columns(3)
-            with cfg1: annual_flights=st.number_input("Annual flights",min_value=1,max_value=2000,value=200,step=10)
-            with cfg2: cm_rate=st.number_input("Charter rate (€/h)",min_value=0,max_value=200000,value=int(custom_rate) if custom_rate>0 else int(db_rate),step=500)
-            with cfg3: cm_comm=st.slider("Commission (%)",0,25,int(commission_pct),step=1,key="cm_comm")
+        if is_pro:
             st.markdown("<hr>",unsafe_allow_html=True)
-            mc1,mc2,mc3=st.columns(3)
-            with mc1: use_gop=st.radio("✈ Operational",["🌐 Generic","✏️ Custom"],horizontal=True,key="gop")=="🌐 Generic"
-            with mc2: use_gdir=st.radio("🔧 Direct",["🌐 Generic","✏️ Custom"],horizontal=True,key="gdir")=="🌐 Generic"
-            with mc3: use_gind=st.radio("👥 Indirect",["🌐 Generic","✏️ Custom"],horizontal=True,key="gind")=="🌐 Generic"
-
-            def render_block(title,color,defaults,prefix,use_generic,step=100.0):
-                vals={}
-                with st.expander(title,expanded=True):
-                    st.markdown(f'<div style="font-size:.72rem;color:{color};letter-spacing:.1em;margin-bottom:.6rem">{"🌐 GENERIC" if use_generic else "✏️ CUSTOM"}</div>',unsafe_allow_html=True)
-                    pairs=list(defaults.items())
-                    for i in range(0,len(pairs),2):
-                        c1,c2,c3,c4=st.columns([2.2,1,2.2,1])
-                        k1,d1=pairs[i]
-                        with c1: st.markdown(f'<span style="font-size:.82rem;color:#D6E4F7">{k1}</span>',unsafe_allow_html=True)
-                        with c2:
-                            if use_generic: st.markdown(f'<span style="color:#E8C46A;font-size:.88rem;font-weight:600">€ {d1:,.0f}</span>',unsafe_allow_html=True); vals[k1]=float(d1)
-                            else: vals[k1]=st.number_input(k1,value=float(d1),min_value=0.0,step=step,label_visibility="collapsed",key=f"{prefix}_{k1}")
-                        if i+1<len(pairs):
-                            k2,d2=pairs[i+1]
-                            with c3: st.markdown(f'<span style="font-size:.82rem;color:#D6E4F7">{k2}</span>',unsafe_allow_html=True)
-                            with c4:
-                                if use_generic: st.markdown(f'<span style="color:#E8C46A;font-size:.88rem;font-weight:600">€ {d2:,.0f}</span>',unsafe_allow_html=True); vals[k2]=float(d2)
-                                else: vals[k2]=st.number_input(k2,value=float(d2),min_value=0.0,step=step,label_visibility="collapsed",key=f"{prefix}_{k2}")
-                return vals
-
-            op_vals=render_block("✈ OPERATIONAL (per flight)","#60A5FA",CM_OP,"op",use_gop,50.0)
-            op_pf=sum(op_vals.values()); op_a=op_pf*annual_flights
-            st.markdown(f'<div style="padding:.4rem .8rem;background:#112244;border-radius:4px;font-size:.84rem;margin-bottom:.5rem">Per flight: <b style="color:#60A5FA">€ {op_pf:,.0f}</b> · Annual: <b style="color:#60A5FA">€ {op_a:,.0f}</b></div>',unsafe_allow_html=True)
-            dir_vals=render_block("🔧 DIRECT COSTS (annual)","#F59E0B",CM_DIR,"dir",use_gdir,500.0)
-            dir_t=sum(dir_vals.values())
-            st.markdown(f'<div style="padding:.4rem .8rem;background:#112244;border-radius:4px;font-size:.84rem;margin-bottom:.5rem">Direct total: <b style="color:#F59E0B">€ {dir_t:,.0f}</b></div>',unsafe_allow_html=True)
-            ind_vals=render_block("👥 INDIRECT / CREW (annual)","#A78BFA",CM_IND,"ind",use_gind,500.0)
-            ind_t=sum(ind_vals.values())
-            st.markdown(f'<div style="padding:.4rem .8rem;background:#112244;border-radius:4px;font-size:.84rem;margin-bottom:.5rem">Indirect total: <b style="color:#A78BFA">€ {ind_t:,.0f}</b></div>',unsafe_allow_html=True)
-
-            st.markdown("<br>",unsafe_allow_html=True)
-            if st.button("🚀 Generate Financial Analysis",width="stretch"):
-                ft=op_a; st.session_state["cost_master"]=dict(op_vals=op_vals,op_annual=op_a,op_per_flight=op_pf,
-                    dir_vals=dir_vals,dir_total=dir_t,ind_vals=ind_vals,ind_total=ind_t,annual_flights=annual_flights,
-                    charter_rate=cm_rate,commission_pct=cm_comm,h_charter=h_charter,aircraft_name=aircraft["Modele"])
-
-            if st.session_state.get("cost_master"):
-                cm=st.session_state["cost_master"]; op_a2=cm["op_annual"]; dir_a=cm["dir_total"]; ind_a=cm["ind_total"]
-                grand=op_a2+dir_a+ind_a; gross=cm["charter_rate"]*cm["h_charter"]
-                commission=gross*cm["commission_pct"]/100; nr=gross-commission; net=nr-grand; cov=(nr/grand*100) if grand>0 else 0
-                st.markdown("<hr>",unsafe_allow_html=True)
+            st.caption(disp.note())
+            if not res["available"]:
+                _render_alerts(res,alerts)
+            else:
+                v=res["variable"]
                 st.markdown(f'''<div class="total-banner">
-                    <div style="font-size:.72rem;color:#8496B0;margin-bottom:.4rem">{cm["aircraft_name"]}</div>
-                    <div style="font-size:2.4rem;font-weight:800;color:#E8C46A">€ {grand:,.0f}</div>
-                    <div style="font-size:.85rem;color:#8496B0">Op: <b style="color:#60A5FA">€ {op_a2:,.0f}</b> · Direct: <b style="color:#F59E0B">€ {dir_a:,.0f}</b> · Crew: <b style="color:#A78BFA">€ {ind_a:,.0f}</b></div>
+                    <div style="font-size:.72rem;color:#8496B0;margin-bottom:.4rem">{res["model"]} · {"Report reference" if mode=="reference" else "Custom simulation"} · config {res["config_hash"]}</div>
+                    <div style="font-size:2.4rem;font-weight:800;color:#E8C46A">{D(res["budget_usd"])}</div>
+                    <div style="font-size:.85rem;color:#8496B0">Fixed: <b style="color:#F59E0B">{D(res["fixed"]["annual_total"])}</b> (incl. crew) · Variable: <b style="color:#60A5FA">{D(v["annual"])}</b>
+                    ({D(v["per_h"])}/h × {res["hours"]["flown"]:,.0f} h)</div>
                 </div>''',unsafe_allow_html=True)
-                kk1,kk2,kk3,kk4,kk5=st.columns(5)
-                kk1.metric("✈ Gross Revenue",fmt(gross)); kk2.metric("📉 Commission",fmt(commission))
-                kk3.metric("💰 Net Revenue",fmt(nr)); kk4.metric("💸 Total Costs",fmt(grand))
-                kk5.metric("📊 Net Result",fmt(net),delta=f"{cov:.1f}%")
+                kk=st.columns(4)
+                kk[0].metric("🔒 Annual fixed",D(res["fixed"]["annual_total"]))
+                kk[1].metric("⚡ Variable / hour",D(v["per_h"]))
+                kk[2].metric("💶 Annual budget",D(res["budget_usd"]))
+                kk[3].metric("⌛ Cost / flown hour",D(res["cost_per_h_usd"]) if res["cost_per_h_usd"] is not None else "n/a")
+                _render_alerts(res,alerts)
+                pr=res.get("profit")
+                if pr and pr.get("available"):
+                    kr=st.columns(3)
+                    kr[0].metric("💵 Charter revenue",D(pr["revenue"])); kr[1].metric("📊 Estimated operating result",D(pr["operating_result"]))
+                    kr[2].metric("Break-even billed hours",f"{pr['break_even_billed_hours']:,.0f} h" if pr.get("break_even_billed_hours") else "not attainable")
                 st.markdown("<hr>",unsafe_allow_html=True)
                 d1,d2=st.columns(2)
-                with d1: st.plotly_chart(cm_global_donut(op_a2,dir_a,ind_a),width="stretch",config={"displayModeBar":False})
-                with d2: st.plotly_chart(cm_waterfall(op_a2,dir_a,ind_a,gross,cm["commission_pct"]),width="stretch",config={"displayModeBar":False})
-                b1,b2,b3=st.columns(3)
-                with b1: st.plotly_chart(cm_donut(list(cm["op_vals"].keys()),[v*cm["annual_flights"] for v in cm["op_vals"].values()],["#60A5FA","#3B82F6","#1D4ED8","#93C5FD","#BFDBFE","#2563EB","#1E40AF","#DBEAFE"],"Operational"),width="stretch",config={"displayModeBar":False})
-                with b2: st.plotly_chart(cm_donut(list(cm["dir_vals"].keys()),list(cm["dir_vals"].values()),["#F59E0B","#D97706","#B45309","#FCD34D","#FDE68A","#92400E","#FBBF24","#FEF3C7","#78350F"],"Direct"),width="stretch",config={"displayModeBar":False})
-                with b3: st.plotly_chart(cm_donut(list(cm["ind_vals"].keys()),list(cm["ind_vals"].values()),["#A78BFA","#8B5CF6","#7C3AED","#C4B5FD","#DDD6FE","#6D28D9","#5B21B6","#EDE9FE","#4C1D95"],"Crew"),width="stretch",config={"displayModeBar":False})
-                st.markdown("<hr>",unsafe_allow_html=True)
-                bb1,bb2,bb3=st.columns(3)
-                with bb1: st.plotly_chart(cm_bar(list(cm["op_vals"].keys()),[v*cm["annual_flights"] for v in cm["op_vals"].values()],"#60A5FA","Operational"),width="stretch",config={"displayModeBar":False})
-                with bb2: st.plotly_chart(cm_bar(list(cm["dir_vals"].keys()),list(cm["dir_vals"].values()),"#F59E0B","Direct"),width="stretch",config={"displayModeBar":False})
-                with bb3: st.plotly_chart(cm_bar(list(cm["ind_vals"].keys()),list(cm["ind_vals"].values()),"#A78BFA","Crew"),width="stretch",config={"displayModeBar":False})
-                st.markdown("<hr>",unsafe_allow_html=True)
-                rows2=[]
-                for k,v in cm["op_vals"].items(): rows2.append({"Category":"Operational","Line":k,"Annual (€)":f"€ {v*cm['annual_flights']:,.0f}","% Total":f"{v*cm['annual_flights']/grand*100:.1f}%"})
-                for k,v in cm["dir_vals"].items(): rows2.append({"Category":"Direct","Line":k,"Annual (€)":f"€ {v:,.0f}","% Total":f"{v/grand*100:.1f}%"})
-                for k,v in cm["ind_vals"].items(): rows2.append({"Category":"Crew","Line":k,"Annual (€)":f"€ {v:,.0f}","% Total":f"{v/grand*100:.1f}%"})
+                with d1:
+                    st.markdown('<div class="section-header">Fixed components (annual)</div>',unsafe_allow_html=True)
+                    _f=cm_donut(res,disp,"Fixed")
+                    if _f is not None: st.plotly_chart(_f,width="stretch",config={"displayModeBar":False})
+                with d2:
+                    st.markdown('<div class="section-header">Variable components (annual)</div>',unsafe_allow_html=True)
+                    _f=cm_donut(res,disp,"Variable")
+                    if _f is not None: st.plotly_chart(_f,width="stretch",config={"displayModeBar":False})
+                b1,b2=st.columns(2)
+                with b1:
+                    _f=cm_bar(res,disp,"Fixed","Fixed — annual")
+                    if _f is not None: st.plotly_chart(_f,width="stretch",config={"displayModeBar":False})
+                with b2:
+                    _f=cm_bar(res,disp,"Variable","Variable — annual")
+                    if _f is not None: st.plotly_chart(_f,width="stretch",config={"displayModeBar":False})
+                rows2=[{"Category":c["category"],"Line":c["label"]+(" ✎" if c.get("edited") and not c.get("rounding") else ""),
+                        f"Annual ({disp.ccy})":round(disp.conv(c["annual_usd"])),
+                        f"Per hour ({disp.ccy})":(round(disp.conv(c["hourly_usd"]),2) if c.get("hourly_usd") is not None else None),
+                        "% of budget":(round(c["share_pct"],1) if c.get("share_pct") is not None else None)} for c in res["components"]]
+                rows2.append({"Category":"TOTAL","Line":"Annual budget (fixed + variable)",f"Annual ({disp.ccy})":round(disp.conv(res["budget_usd"])),f"Per hour ({disp.ccy})":None,"% of budget":100.0})
                 st.dataframe(pd.DataFrame(rows2),width="stretch",hide_index=True)
-                if st.button("📄 Generate PDF Report",width="stretch",type="primary"):
-                    with st.spinner("Building report..."):
-                        try:
-                            st.session_state["pdf_report"]=generate_pdf_report(cm,aircraft,annual_flights)
-                            st.success("✓ Report ready!")
-                        except Exception as e: st.error(f"PDF error: {e}")
-                if st.session_state.get("pdf_report"):
-                    st.download_button("⬇ Download PDF Report",data=st.session_state["pdf_report"],
-                        file_name=f"Menkor_Cost_{aircraft['Modele'].replace(' ','_')}.pdf",mime="application/pdf",width="stretch")
+                st.caption("Components break down the totals — they are not added to them. ✎ = replaced by your edit. Rounding lines reconcile printed rounded values with the source totals.")
 
-    # ── TAB 5 : QUOTATION ───────────────────────────────────────────────
+                # Fuel consumed vs purchased at a stopover
+                with st.expander("⛽ Stopover fuel: consumed vs purchased"):
+                    st.caption("Fuel consumed on a leg is not the fuel bought at the stopover (reserves, tankering, partial uplift). Manual entry only — no live price.")
+                    s1,s2,s3=st.columns(3)
+                    with s1: _cons=st.number_input("Consumed on the leg (L)",min_value=0.0,value=0.0,step=100.0,key="sp_cons")
+                    with s2: _pq=st.number_input("Purchased quantity",min_value=0.0,value=0.0,step=100.0,key="sp_qty")
+                    with s3: _pu=st.selectbox("Unit",["L","USG"],key="sp_unit")
+                    s4,s5,s6=st.columns(3)
+                    with s4: _pp=st.number_input("Unit price",min_value=0.0,value=0.0,step=0.05,format="%.3f",key="sp_price")
+                    with s5: _pc=st.selectbox("Currency",["USD","EUR"],key="sp_ccy")
+                    with s6: _pt=st.number_input("Taxes (%)",min_value=0.0,value=0.0,step=1.0,key="sp_tax")
+                    _pf=st.number_input("Fixed fees for the uplift",min_value=0.0,value=0.0,step=50.0,key="sp_fee")
+                    if _pq>0 and _pp>0:
+                        sp=E.stopover_purchase(_pq,_pu,_pp,_pc,_pt,_pf,_cons,fx)
+                        st.markdown(f"Purchased **{sp['purchased_l']:,.0f} L** vs consumed **{sp['consumed_l']:,.0f} L** (balance {sp['balance_l']:+,.0f} L) · purchase cost **{sp['purchase_cost']:,.2f} {sp['currency']}**"
+                                    + (f" = {D(sp['usd'])}" if sp['usd'] is not None else " (enter a dated EUR/USD rate to convert)"))
+                st.markdown("<hr>",unsafe_allow_html=True)
+                x1,x2=st.columns(2)
+                with x1:
+                    if st.button("📄 Generate PDF Report",width="stretch",type="primary"):
+                        with st.spinner("Building report..."):
+                            try:
+                                st.session_state["pdf_report"]=dict(data=generate_pdf_report(res,disp,alerts),hash=res["config_hash"],aid=aid)
+                                st.success("✓ Report ready!")
+                            except Exception as e: st.error(f"PDF error: {e}")
+                    _p=st.session_state.get("pdf_report")
+                    if isinstance(_p,dict):
+                        if _p["hash"]==res["config_hash"]:
+                            st.download_button("⬇ Download PDF Report",data=_p["data"],file_name=f"Menkor_Cost_{res['model'].replace(' ','_')}_{res['config_hash']}.pdf",mime="application/pdf",width="stretch")
+                        else:
+                            st.warning(f"⚠ The last PDF (config {_p['hash']}) is obsolete: assumptions changed (current config {res['config_hash']}). Generate it again.")
+                with x2:
+                    st.download_button("⬇ Download results (CSV)",data=_results_csv(res,disp),file_name=f"Menkor_Results_{res['aircraft_id']}_{res['config_hash']}.csv",mime="text/csv",width="stretch")
+
+    # TAB 5: QUOTATION
     with tab5:
         if not is_pro:
             premium_gate("pro")
         else:
+            st.markdown('<div class="section-header">Quotation basis — from the same engine</div>',unsafe_allow_html=True)
+            st.caption(disp.note())
+            pr=res.get("profit") if res["available"] else None
+            if mode=="reference":
+                st.info("Switch to **Custom simulation** to build a quotation basis (billed hours, rate and commission are needed).")
+            elif not pr or not pr.get("available"):
+                st.info("Enter a charter rate and billed hours in the sidebar to see the quotation basis."+(" "+" ".join(pr["messages"]) if pr else ""))
+            else:
+                _mg=st.slider("Target operating margin on revenue (%)",0,40,10,step=1,key="q_margin")
+                _rq=E.required_rate(pr,_mg)
+                q1,q2,q3=st.columns(3)
+                q1.metric("Cost per flown hour",D(res["cost_per_h_usd"]))
+                q2.metric("Break-even rate / billed hour",D(E.required_rate(pr,0)) if E.required_rate(pr,0) else "n/a")
+                q3.metric(f"Rate for {_mg}% margin / billed hour",D(_rq) if _rq else "not attainable")
+                st.caption(f"Based on {pr['billed_hours']:g} billed h, {pr['positioning_hours']:g} h positioning, {pr['other_hours']:g} h other, commission {pr['commission_pct']:g}%. "
+                           "Rate = (variable costs of all flown hours + fixed costs + fees) ÷ (billed hours × (1 − commission − margin)). Operating result, before financing, depreciation and tax.")
+            _render_alerts(res,alerts,title="Quotation data notes")
             st.markdown("""
             <div style="background:linear-gradient(135deg,#112244 0%,#1A3A6E 100%);
-                 border:1px solid #C9A84C;border-radius:12px;padding:3rem 2rem;
-                 text-align:center;margin:2rem 0">
-                <div style="font-size:3rem;margin-bottom:1rem">✈️</div>
-                <div style="font-size:1.6rem;font-weight:700;color:#E8C46A;margin-bottom:.8rem">
-                    Charter Flight Quotation
+                 border:1px solid #C9A84C;border-radius:12px;padding:2.2rem 2rem;text-align:center;margin:1.5rem 0">
+                <div style="font-size:1.4rem;font-weight:700;color:#E8C46A;margin-bottom:.6rem">✈️ Charter Flight Quotation (routes, legs, extras)</div>
+                <div style="font-size:.9rem;color:#8496B0;margin-bottom:1.2rem;line-height:1.6">
+                    Route map, multi-leg itinerary and branded PDF are produced by the separate quotation tool.<br>
+                    <b style="color:#D6E4F7">It is not yet connected to this calculation engine:</b> copy the hourly basis above into it.
                 </div>
-                <div style="font-size:.95rem;color:#8496B0;margin-bottom:2rem;line-height:1.6">
-                    Generate a professional charter quotation with interactive route map,<br>
-                    extras & services, and a branded Menkor Aviation PDF.
-                </div>
-                <div style="font-size:.82rem;color:#D6E4F7;margin-bottom:2rem">
-                    ✓ ICAO / IATA airport lookup &nbsp;·&nbsp;
-                    ✓ Multi-leg routes &nbsp;·&nbsp;
-                    ✓ Catering & crew extras &nbsp;·&nbsp;
-                    ✓ PDF with route map
-                </div>
-                <a href="https://menkor-quotation-9nff8mo2pbyf8vddbsucvm.streamlit.app/"
-                   target="_blank"
-                   style="background:#C9A84C;color:#0B1629;padding:.8rem 2.5rem;
-                          border-radius:6px;font-weight:700;text-decoration:none;
-                          font-size:1.05rem;letter-spacing:.04em">
+                <a href="https://menkor-quotation-9nff8mo2pbyf8vddbsucvm.streamlit.app/" target="_blank"
+                   style="background:#C9A84C;color:#0B1629;padding:.7rem 2.2rem;border-radius:6px;font-weight:700;text-decoration:none;font-size:1rem">
                     ✈️ Open Quotation Tool
                 </a>
-                <div style="font-size:.75rem;color:#8496B0;margin-top:1.2rem">
-                    Opens in a new tab
-                </div>
             </div>""", unsafe_allow_html=True)
 
     # ── TAB 6 : MARKET SEARCH ───────────────────────────────────────────
@@ -1236,7 +1403,7 @@ def main():
 
         ms_cats=["All"]+sorted(df["Categorie"].dropna().unique().tolist())
         msc1,msc2=st.columns(2)
-        with msc1: ms_cat=st.selectbox("Category",ms_cats,key="ms_cat")
+        with msc1: ms_cat=st.selectbox("Manufacturer",ms_cats,key="ms_cat")
         df_ms=df if ms_cat=="All" else df[df["Categorie"]==ms_cat]
         _ms_list=df_ms["Modele"].tolist()
         _F7X="Dassault Falcon 7X"
@@ -1458,3 +1625,4 @@ def main():
 
 if __name__=="__main__":
     main()
+

@@ -1,0 +1,148 @@
+﻿aircraft_id,model,file,source_role,sha256,pages,performance_page,gallery_pages,numeric_fields_missing,review_count
+beechcraft_beechjet_400,Beechcraft Beechjet 400,Beechcraft Beechjet 400.Pdf,primary,d7251685e0becf15a38d024a000708628e9aa9a5d6e769628fad81349ec09f19,6,5,4,0,3
+beechcraft_beechjet_400a,Beechcraft Beechjet 400A,Beechcraft Beechjet 400A.Pdf,primary,80f7af39adac2ab2b0d311cb09c5ec3985d28370664db493798bd1d64b3bb315,6,5,4,0,3
+beechcraft_premier_i,Beechcraft Premier I,Beechcraft Premier I.Pdf,primary,1223f581e516cfa5f2cb78759eda9fcf3cd9b4f42fba7975badb0d261c58ff20,6,5,4,0,2
+beechcraft_premier_ia,Beechcraft Premier IA,Beechcraft Premier IA.Pdf,primary,b1f8878897ede2aaa46771a4374d2ec9f0b683a670a2e83f30027b7b56c88a26,6,5,4,0,2
+boeing_bbj,Boeing BBJ,Boeing BBJ .Pdf,primary,9995bf62cc018bd3a727a360b684cb9b24182dc1337d9015f431ea82410fec07,6,5,4,0,3
+boeing_bbj2,Boeing BBJ2,Boeing BBJ2.Pdf,primary,4daac6d3b44733778c06c51cd2c9598fc34898b13862435b999f3dd6d0e8ab18,6,5,4,0,2
+boeing_bbj3,Boeing BBJ3,Boeing BBJ3.Pdf,primary,ef2f017cc858a61137aecab54d4619d9317cce1bc5c1c90e286ecb60618b7ca1,5,4,,0,2
+cessna_citation_cj1,Cessna Citation CJ1,Cessna Citation CJ1.pdf,primary,c6f834a64f5af607d135c2a1a06eeb89abbb5c4ad77525bb7279bc47fe07a3e7,6,5,4,0,2
+cessna_citation_cj2_plus,Cessna Citation CJ2+,Cessna Citation CJ2+.pdf,primary,41cd9c239f99f37249fdf04a196d3229c25d7687ef2309c6542af94912dda097,6,5,4,0,3
+cessna_citation_cj2,Cessna Citation CJ2,Cessna Citation CJ2.pdf,primary,c0f090381a65a49f5e2d740e23053b28d779ded5a422f7c037e85204610dde13,6,5,4,0,2
+cessna_citation_cj3_plus,Cessna Citation CJ3+,Cessna Citation CJ3+.pdf,primary,9cb53cb4e7158f3c38f45fd7a059675166cd4db0ce442b0e2f7f7983fbec6f72,6,5,4,0,3
+cessna_citation_cj3,Cessna Citation CJ3,Cessna Citation CJ3.pdf,primary,a2f186c197d0e51be532c901f6246cff1bef6b9d45868bcea977d6a2469a9ed8,6,5,4,0,2
+cessna_citation_cj4,Cessna Citation CJ4,Cessna Citation CJ4.pdf,primary,949295626cfbcf47f2fdd90597ff4cc688651c061713a59a8f31104b9ec57411,6,5,4,0,3
+cessna_citation_encore,Cessna Citation Encore,Cessna Citation Encore.pdf,primary,7b0d0f4675c48f8b40069c4dfc079ca5609b3f531e9c86067b951c99783085e6,6,5,4,0,3
+cessna_citation_excel,Cessna Citation Excel,Cessna Citation Excel.pdf,primary,cc638a43f0153cdaa063f13ae2fa845c278d07dfc0c2fbdd5cc48dbdfc337cc3,6,5,4,0,2
+cessna_citation_iii,Cessna Citation III,Cessna Citation III.pdf,primary,0cad7e802c76fd80eb81fa9f587b39d584d81b1542cd13d1c8fc9d74fbe7fbc7,6,5,4,0,3
+cessna_citation_latitude,Cessna Citation Latitude,Cessna Citation Latitude.pdf,primary,03d217fdd273a05fa155d443988ed41f9f036cbab383b0c75285f17eca36896f,6,5,4,0,3
+cessna_citation_mustang,Cessna Citation Mustang,Cessna Citation Mustang.pdf,primary,32ea6f287091998cc16e6565561aaf2bf029189ab41764b1c450a841dcc07108,6,5,4,0,2
+cessna_citation_sovereign,Cessna Citation Sovereign,Cessna Citation Sovereign.pdf,primary,5ce3c21c238efa8c6321307f2029c80e82e5970800ce4f03266fd6976bc72c7f,6,5,4,0,2
+cessna_citation_x,Cessna Citation X,Cessna Citation X.pdf,primary,76476efad12dc924b3cc2760aa7d6612c0fcaa66742e3603d66cd47d42761e69,6,5,4,0,3
+cessna_citation_xls_plus,Cessna Citation XLS+,Cessna Citation XLS+.pdf,primary,b4f9b468906aa05e2038626aabf6e3a813d965bfcc9906c18843f087de18ec77,6,5,4,0,3
+cessna_citation_xls,Cessna Citation XLS,Cessna Citation XLS.pdf,primary,a0e90879d21abee089f8c99cc75020c57a741c1c2f84821b0a2a70ac27670034,6,5,4,0,3
+cessna_citation_bravo,Cessna Citation Bravo,Cessna citation Bravo.pdf,primary,d664c84a9f3c94d9f904ed166981d8865c9170374429757496534521a8999fbf,6,5,4,0,2
+cessna_citation_jet,Cessna Citation Jet,Cessna citation JET.pdf,primary,f5d2245905a1f4a56e2624ea1fa8f03b54f21ecdc920d6a6a321d63e418d2b07,6,5,4,0,3
+cessna_citation_v_ultra,Cessna Citation V Ultra,Cessna citation V ultra.pdf,primary,77c76bd15e2226bf9eca5a0a85f0afb083907e8a986e90d796cd205890c399f8,6,5,4,0,3
+challenger_300,Challenger 300,Challenger 300.pdf,primary,12246325773484c455df9756ea331349119d3e869c78b98b82fbe5a13fd0cbbd,6,5,4,0,0
+challenger_350,Challenger 350,Challenger 350.pdf,primary,5ffc15a42140e0b38e8885627a1ce19ba16a85888e51c7afac11209e395185d1,6,5,4,0,3
+challenger_600,Challenger 600,Challenger 600.pdf,primary,fa3b8b8448149593af82b37cf979ceb568e7066c04d9210728a8fe93e8ed5838,6,5,4,0,3
+challenger_601_3a,Challenger 601-3A,Challenger 601-3A.pdf,primary,1a7de2c9281928d617777099bb78249c5604625a38e844787ac7551ef482438d,6,5,4,0,3
+challenger_604,Challenger 604,Challenger 604.pdf,primary,8f1947a9ec0727c1286518207276a5c643e4ab8fb7c2fd0e7d6e161121bbdcdb,6,5,4,0,2
+challenger_605,Challenger 605,Challenger 605.pdf,primary,865e2c0c43345d88a976eda98460adf438700e1e1f0b20bff4aa2abf8abb4ea1,6,5,4,0,2
+challenger_650,Challenger 650,Challenger 650.pdf,primary,7e6d209599ed03af14de49fd5376828745fdb2bcf00d328b98e9ea112cdef2c8,6,5,4,0,3
+challenger_850_cs,Challenger 850 CS,Challenger 850 CS.pdf,primary,2da3390fe602b1501db98b4c7bd3907bba695027bddca12bb14be2bd14f34d7f,6,5,4,0,3
+challenger_850,Challenger 850,Challenger 850.pdf,primary,69ceb5ec744721b2e1544bfe8a383e140d8f48931eafd9e0ab66694d9468b7ef,6,5,4,0,3
+challenger_870c,Challenger 870C,Challenger 870C.pdf,primary,d154fb8492929bda7bded6a8cf5186a54ce33ae60f1ddc567e6275975bec48b7,5,4,,4,6
+cirrus_vision_sf50,Cirrus Vision SF50,Cirrus Vision SF50.Pdf,primary,9ca1285effda7ee30f297f6a44ed1974a79da6fc0c655204c19ae222414c4424,6,5,4,0,3
+dassault_falcon_10,Dassault Falcon 10,Dassault Falcon 10.pdf,primary,a25dfd4cb62375bbadcdd5b4e689984bea02ab4b9f7ab4ad80cf9e59825cb9bb,5,4,,0,2
+dassault_falcon_200,Dassault Falcon 200,Dassault Falcon 200.pdf,primary,ab51e317fa71d38b1a574a26130c1a8012b74295b34a830fccfc2e5b817ea9b0,5,4,,0,2
+dassault_falcon_2000,Dassault Falcon 2000,Dassault Falcon 2000.pdf,primary,4ba027f1381d87ef721f54588e8980f288bf767279577c54b4a85292cc598ab0,6,5,4,0,3
+dassault_falcon_2000dx,Dassault Falcon 2000DX,Dassault Falcon 2000DX.pdf,primary,d1da0cbc5bc5f7edf5d8257cda72c2110ea7c45b672aa1e2d0c3beed80e019f8,6,5,4,0,3
+dassault_falcon_2000ex_easy,Dassault Falcon 2000EX EASy,Dassault Falcon 2000EX EASy.pdf,primary,274ad92a0eb65cd8b252ad04e9ebfdc07f53db2164299798212f38680ce125bc,6,5,4,0,3
+dassault_falcon_2000lx,Dassault Falcon 2000LX,Dassault Falcon 2000LX.pdf,primary,9e236078a097e3149ffb5be01407aa3fa6799039b3f1611480e073b5980bbc16,6,5,4,0,3
+dassault_falcon_2000lxs,Dassault Falcon 2000LXS,Dassault Falcon 2000LXS.pdf,primary,1e35b313dda8a774415bd2c7a951aeb109aed983de68500664afa20ad9f363b5,6,5,4,0,3
+dassault_falcon_2000s,Dassault Falcon 2000S,Dassault Falcon 2000S.pdf,primary,5c0f8189be44b56d09160ebc30a169b8d2ef04a38b64abc2ad018a3f24e249b3,6,5,4,0,3
+dassault_falcon_20c_5,Dassault Falcon 20C-5,Dassault Falcon 20C-5 .pdf,primary,02cd27d1b43f9462ebc0683199a3a28fa9f570be6aa03836bff4f86b336ab20c,5,4,,0,2
+dassault_falcon_20c,Dassault Falcon 20C,Dassault Falcon 20C.pdf,primary,82b684a649bb6faad72229646593f85323b6500e841f80f47a3886bd9aabbee2,5,4,,0,2
+dassault_falcon_20f_5,Dassault Falcon 20F-5,Dassault Falcon 20F-5.pdf,primary,4a2f94abd8849adcb1dcb79295afb0a17aab4664562b5662c242f6daaaa0612c,5,4,,0,2
+dassault_falcon_20f,Dassault Falcon 20F,Dassault Falcon 20F.pdf,primary,968344299a34a8dc256d7d0cdf8afa7ca49963ad324636f14cd66d35e1383545,5,4,,0,2
+dassault_falcon_50_40,Dassault Falcon 50-40,Dassault Falcon 50-40.pdf,primary,4b5c73ddb964e3bb4f6038be13ca5c1b214859d886e42129431911896bb2767b,6,5,4,0,3
+dassault_falcon_50,Dassault Falcon 50,Dassault Falcon 50.pdf,primary,37831d207412007f88b8e45567b46f1d780e013c1c34486fb6fd378f9df341ba,6,5,4,0,3
+dassault_falcon_50ex,Dassault Falcon 50EX,Dassault Falcon 50EX.pdf,primary,faac5be02d013545c60fa4b8b07636ec42fa569a0c8c61a2d22d2f501aafb735,6,5,4,0,3
+dassault_falcon_7x,Dassault Falcon 7X,Dassault Falcon 7X.pdf,primary,e200091677db9ad500a8c34f745f56d95aeefeee4968799ff232e809f0fc4747,6,5,4,0,3
+dassault_falcon_8x,Dassault Falcon 8X,Dassault Falcon 8X.pdf,primary,ba4c1d84126ef15d3ec5e8c13f9b902b361b2b0d4e4dbfce91c741b6bb8b0412,6,5,4,0,3
+dassault_falcon_900,Dassault Falcon 900,Dassault Falcon 900.pdf,primary,149a33dd24f935e051b622ac57a3566c926b0734ba9faa4e125d775bec946af7,6,5,4,0,3
+dassault_falcon_900b,Dassault Falcon 900B,Dassault Falcon 900B.pdf,primary,edd52ea0c2a1834aaf54498069fe31927c43067ef131e014e5d5a36349a3bab9,6,5,4,0,3
+dassault_falcon_900c,Dassault Falcon 900C,Dassault Falcon 900C.pdf,primary,4868ea46694d26cc0e3df3ba0b9f3b54ca1c91b4de8c23dd19c29736acd287bf,6,5,4,0,3
+dassault_falcon_900dx,Dassault Falcon 900DX,Dassault Falcon 900DX.pdf,primary,3a094706e6bc75fbf17e443af47bd3b1795f4d355e9b45678f3043ad5955bda1,6,5,4,0,3
+dassault_falcon_900ex_easy,Dassault Falcon 900EX EASy,Dassault Falcon 900EX EASy.pdf,primary,d79c78b43d337627b9577b20cbd537f15a93e239c1c3227ca2e0a00090659f75,6,5,4,0,3
+dassault_falcon_900ex,Dassault Falcon 900EX,Dassault Falcon 900EX.pdf,primary,dff262007667c845c0c8fb2d603ecb612fb2ba238bd0682774567ec4575f11f6,6,5,4,0,3
+dassault_falcon_900lx,Dassault Falcon 900LX,Dassault Falcon 900LX.pdf,primary,c76ee7aa50c25e2cb3bbe624b02694790aacaa32aa1311037400d0a471f0493e,6,5,4,0,3
+dornier_328_business,Dornier 328 Business,Dornier 328 Business.Pdf,primary,73ff5e746017cc14f44f7d980b7773c27cf9aded5389ef12cb3c26dc14420445,5,4,,0,2
+dornier_328,Dornier 328,Dornier 328.Pdf,primary,697b581027e5da1931c6c026671ca4188b8ff6037903d44ef43b33dd208849f7,5,4,,0,2
+eclipse_500,Eclipse 500,Eclipse 500.Pdf,primary,1aefd205aba48a1b73fd0abe6f740d72d9890a7852e969d6af4fd52e60272c58,6,5,4,0,2
+eclipse_550,Eclipse 550,Eclipse 550.Pdf,primary,01b72b2fa83a1804b8d8ea00cddced1628597c10d7897b608e80461d3734ae48,6,5,4,0,2
+embraer_erj_145er,Embraer ERJ-145ER,Embraer ERJ-145ER.pdf,primary,6fb82fb113a7a9505e8ccf7595fa4d3256d453488aef50277978d967d503ce49,5,4,,0,2
+embraer_erj_170lr,Embraer ERJ-170LR,Embraer ERJ-170LR.pdf,primary,a1b8bcd13e5c47c19cf7a01169a242ef302eaef40acb8fadc1cb86638e13a70f,5,4,,1,3
+embraer_legacy_600,Embraer Legacy 600,Embraer LEGACY 600.pdf,primary,6a8f57850e8de47d0f5939345ef2c3432d78f9792d6b8b7286d6cd28b82da832,6,5,4,0,3
+embraer_legacy_450,Embraer Legacy 450,Embraer Legacy 450 .pdf,primary,2fbd440d569c8ee0aeca5ca729dc755d8b5605df1ed969a80a28e1b1994f00d5,6,5,4,0,3
+embraer_legacy_500,Embraer Legacy 500,Embraer Legacy 500.pdf,primary,e38c5f5bf96c1c03cd94371152ad0825b1b04656aa96be77fa5d9d7bf73fecd8,6,5,4,0,3
+embraer_legacy_650,Embraer Legacy 650,Embraer Legacy 650.pdf,primary,bc7f6c1724a524dac0d1d013a32c5926e2113d38be9e47bf85e8a7f49d8d873a,6,5,4,0,3
+embraer_lineage_1000,Embraer Lineage 1000,Embraer Lineage 1000.pdf,primary,6e9a1342bb4bfbe0edd3742209fc8df77dd4d90153e0ff33826547067af73326,6,5,4,0,3
+embraer_lineage_1000e,Embraer Lineage 1000E,Embraer Lineage 1000E.pdf,primary,2e12ca5680ae8db809b81dc1eff4215d10d7576faf3ae22ae5190d42b3892ab5,6,5,4,0,3
+embraer_phenom_100,Embraer Phenom 100,Embraer Phenom 100 .pdf,primary,527e44fcd60deb2ccd6ac7443331fccac3b2a89fcabfb52f55c132caf54bc684,6,5,4,0,2
+embraer_phenom_100ev,Embraer Phenom 100EV,Embraer Phenom 100EV.pdf,primary,09c7fb8e956fbe3e45ff82f3eed09e85b9cca032c75b3a39444952f9c6b8ca83,6,5,4,0,3
+embraer_phenom_300,Embraer Phenom 300,Embraer Phenom 300.pdf,primary,666ed73762bd11b104f19438b312e8e1f1abb83496f711ee1f5e4eeec540d025,6,5,4,0,2
+embraer_praetor_500,Embraer Praetor 500,Embraer Praetor 500.pdf,primary,492e4fc47d44dfb4ddb5745a305de59e73fae5d5041ea61d1a0954b165e6b8a5,5,4,,0,2
+embraer_praetor_600,Embraer Praetor 600,Embraer Praetor 600.pdf,primary,e09f7033cb29f7900f45e7b05d7cd5754a6653d8ec19c83afd95a9a26702b7f8,5,4,,0,2
+flaris_lar01,Flaris LAR01,Flaris LAR01.Pdf,primary,e231f60cd9cdc3d5c89bb4eb762c06c201994267abda3138987f6588bf79858e,5,4,,0,2
+fokker_100er,Fokker 100ER,Fokker 100ER.Pdf,primary,e12f770c37e5b3516b6202d0c534927605243d25fa73db18742b46ff534a1329,5,4,,0,2
+gulfstream_g450,Gulfstream G450,G450.pdf,alternate,c16bc508b6ab293807585503df3e0bf8f76b4c3edd49da1116212059ae5b94a2,6,5,4,0,3
+bombardier_global_5000,Bombardier Global 5000,Global 5000.pdf,primary,0f521937fab955dfc7d6d3031d68a1ec0f840294ad8e4dfc4bdf7b64dbdce718,6,5,4,0,1
+bombardier_global_express_xrs,Bombardier Global Express XRS,Global Express XRS.pdf,primary,6d550074e07f98b7a6b07406ba8c67b50b10ef996f4d210d5e0427de14f3c31e,6,5,4,0,1
+bombardier_global_express,Bombardier Global Express,Global Express.pdf,primary,3a3d2fb2bfddccfacdd8d2ff840b4f775dd4e1fa35a408968151dcc12632970b,6,5,4,0,1
+gulfstream_g100,Gulfstream G100,Gulfstream G100.Pdf,primary,3f9f4ea01c7c16af643edb8c01ca2562cff89284efd35b39b795e306ca923ff4,6,5,4,0,3
+gulfstream_g150,Gulfstream G150,Gulfstream G150.Pdf,primary,15b500beb945a9dc2bcec182cf1d6e0455151ce7e24db4a4c925028963f80634,6,5,4,0,3
+gulfstream_g200,Gulfstream G200,Gulfstream G200.Pdf,primary,2109954ee299a1809a7b18c310a8d7e8a2f796eac7d211ab88cb2b32462eb52a,6,5,4,0,3
+gulfstream_g280,Gulfstream G280,Gulfstream G280.Pdf,primary,c76a23200b89895fff6e06533b7d894da029a9a7e162080462b757a7e89ce41c,6,5,4,0,3
+gulfstream_g300,Gulfstream G300,Gulfstream G300.Pdf,primary,172510bf04e010f88e00b4fed1d9a4ef7ea00ae1d0db9215a0c3c2b441a7a997,5,4,,0,2
+gulfstream_g350,Gulfstream G350,Gulfstream G350.Pdf,primary,334966d4bbb89b5a7ab27f9d791f0c43cfe1eca233b59e6659a8ca89a05c68bb,5,4,,0,2
+gulfstream_g400,Gulfstream G400,Gulfstream G400.Pdf,primary,1519a304907a066acf688ad02440b68a89a1a17682cfa8c97f8cbb2269c7ebaa,6,5,4,0,3
+gulfstream_g450,Gulfstream G450,Gulfstream G450.Pdf,primary,1a5579d6c67079020d1202c2030e988150da19cd8d9f95b587456d299632ef90,6,5,4,0,3
+gulfstream_g500_2003_2012_model,Gulfstream G500 (2003-2012 Model),Gulfstream G500 (2003-2012 Model).Pdf,primary,438b5e463cbd98b95f251afdfa75cf2b6c0ee65c614ed8a05c2a477e6f2bd50e,5,4,,0,2
+gulfstream_g500,Gulfstream G500,Gulfstream G500.Pdf,primary,1e1a28f884a415718443857f6260b40b73af8a6cb008a841a0fcf55e6069a34f,5,4,,0,2
+gulfstream_g550,Gulfstream G550,Gulfstream G550.pdf,primary,0cc021de9e38a10c27768e367fb354af6b4a01d08a28016b83c5597e6232b2e2,6,5,4,0,3
+gulfstream_g650,Gulfstream G650,Gulfstream G650.Pdf,primary,f63c8038aa2d8a4d091f35b467b298007771986e3a4f90e0430eed7dc1c7a4f5,6,5,4,0,3
+gulfstream_g650er,Gulfstream G650ER,Gulfstream G650ER.Pdf,primary,a2d184de34c7540f91e5e66113f65a4fdeed4d066050399ca6565b3844f67ece,6,5,4,0,3
+gulfstream_ii_b_hushkit,Gulfstream II B Hushkit,Gulfstream II B Hushkit.Pdf,primary,0eeac14ea04a166d1755b5b56508daab53e76de90b720ec034cd689090ae095a,5,4,,0,2
+gulfstream_ii_b,Gulfstream II B,Gulfstream II B.Pdf,primary,85edba0c4e6f78e5b721dafab01270404d24b95a07ea5085afc709415b59339c,5,4,,0,2
+gulfstream_ii_hushkit,Gulfstream II Hushkit,Gulfstream II Hushkit.Pdf,primary,c1e5a45326196536441df72ce2ba151351f8e9d34a0894ab62c1b88ff45eb5fd,5,4,,0,2
+gulfstream_ii_sp,Gulfstream II SP,Gulfstream II SP .Pdf,primary,01061ec90dfcb1a458bafa36949dfeb0456a8f645636fa40f6da1516dfe843ed,5,4,,0,2
+gulfstream_ii_sp_hushkit,Gulfstream II SP Hushkit,Gulfstream II SP Hushkit.Pdf,primary,e1d78be350a9a2cc5cb9374b05d837c8fc1a9a85184a75065a7b446e212dc03f,5,4,,0,2
+gulfstream_ii,Gulfstream II,Gulfstream II.Pdf,primary,edb47860b7384a05ab15ebe23a66067bc0951d7d1acf16ff99541d8b4a60ee6a,5,4,,0,2
+gulfstream_iii,Gulfstream III,Gulfstream III.Pdf,primary,53e9633e0cb018502fdc92b698ebf5588654b4540df7c39f143f42856c992188,5,4,,0,2
+gulfstream_iv,Gulfstream IV,Gulfstream IV.Pdf,primary,9839f3abec30ecfbe10b3a4ef8fbfabe231ad632004feab9b1966545b559f76f,6,5,4,0,3
+gulfstream_ivsp,Gulfstream IVSP,Gulfstream IVSP.Pdf,primary,a6e7af71735d5f806209edcb9cb5914f45f266c0ee1a4736d2f6a9e6e4a743d9,6,5,4,0,2
+gulfstream_v,Gulfstream V,Gulfstream V.Pdf,primary,83f955d2436d7e07795964cb6db9343b2ff20c585b9ba00345bd4fad1d90fb88,6,5,4,0,3
+hawker_1000,Hawker 1000,Hawker 1000.Pdf,primary,eff0d2cfd4d1e84ea1f893c28ce9ae56ad49bd0b91553467c9a56d8e5d415de6,5,4,,0,2
+hawker_4000,Hawker 4000,Hawker 4000.Pdf,primary,5147d06ac1a1d14a424b53308834521c8a973a28aceff3f6cbbeb72ce1340cfc,6,5,4,0,3
+hawker_400xp,Hawker 400XP,Hawker 400XP.Pdf,primary,137338d4b4c9b73aa240469cae1227f844a034e4850a4152178eb369ce063288,6,5,4,0,3
+hawker_400xpr,Hawker 400XPR,Hawker 400XPR.Pdf,primary,6738cba1bb4e3ec7aa77503ac9e4ea61ea18e0985e7ce0e781da95bcae46d96d,5,4,,0,2
+hawker_700,Hawker 700,Hawker 700.Pdf,primary,3f3b8590ed0df899091a77a3dba271f5628787cc203cd4b6452670b5277ff750,6,5,4,0,3
+hawker_750,Hawker 750,Hawker 750.Pdf,primary,ab139fd2bc6111064ba5c3c74917acb7e3dd9d7526b38fe49ee4f678cd59fac7,6,5,4,0,3
+hawker_800a,Hawker 800A,Hawker 800A.Pdf,primary,fb0743a99cf2149c2c3175b351cc21d85e34902c31a77e38a938464cf978fe42,6,5,4,0,3
+hawker_800sp,Hawker 800SP,Hawker 800SP.Pdf,primary,04eb191d77e98e86b86a32e76b05fb03728b26737e6f60a3a3dcfb2dc7187eae,5,4,,0,2
+hawker_800xp,Hawker 800XP,Hawker 800XP.Pdf,primary,355d09b9a1c0ca2be8c782e20224077570311c9b1c01ea8873bfc40538e636ca,6,5,4,0,2
+hawker_800xpi,Hawker 800XPi,Hawker 800XPI.Pdf,primary,7096027d7e6230af5b29e25f169f020046874146617e35a06ed895236d0762b7,6,5,4,0,3
+hawker_850xp,Hawker 850XP,Hawker 850XP.Pdf,primary,c24d1666b9b0db49f38f900bde944c409e15f1744c66f2737af2d8a4ce33f48f,6,5,4,0,3
+hawker_900xp,Hawker 900XP,Hawker 900XP.Pdf,primary,1725f45b4d01356f5efd59b6d5db275bdb3d35a1b63e0e7f0677a9f5fddb1bce,6,5,4,0,3
+honda_hondajet,Honda HondaJet,Honda HondaJet.Pdf,primary,d931980df489b60186dd6835fb519be97fdaddb1e7ea56f48fd5b02743316f00,6,5,4,0,3
+iai_1123_commodore_jet,IAI 1123 Commodore Jet,IAI 1123 Commodore Jet.Pdf,primary,21a52622676260ee7b4c65f1725bcfd617e349822ff591f3166a1f59c0770fca,5,4,,0,2
+iai_astra_sp,IAI Astra SP,IAI Astra SP .Pdf,primary,59c99167ff1c73dcd511d9bc331de85c95348182c699d2c187ec6b6617323d9d,5,4,,0,2
+iai_westwind_1,IAI Westwind 1,IAI Westwind 1.Pdf,primary,2337f747b8480161441402d235370b74b234240fc28f17e6e0cc7a7bd71b5a50,5,4,,0,2
+iai_westwind_2,IAI Westwind 2,IAI Westwing 2.Pdf,primary,cfae5a02a76eaeb52b7bd57caab2cd7a6dafa9be419e8bfbbd173651dab4ba25,5,4,,0,2
+learjet_31,Learjet 31,Learjet 31.Pdf,primary,c77ac81d403dd60668376310bed083d816f3849bc4e3e38135f2e2c05b359873,6,5,4,0,3
+learjet_31a,Learjet 31A,Learjet 31A.Pdf,primary,1e462e67e3762f9bdc3e24871a290aff1cfa34421f3dcded17f5b9a862f4f01a,6,5,4,0,3
+learjet_31aer,Learjet 31AER,Learjet 31AER.Pdf,primary,cbd84512db6c77774aae0a0928d20ed5945c5a213852380e3a10a072366da640,6,5,4,0,3
+learjet_35a,Learjet 35A,Learjet 35A.Pdf,primary,c4a97fcbb823e1b4d8ba706770e55458245a3c24041fa67d8861326cdbf4a353,5,4,,0,2
+learjet_36a,Learjet 36A,Learjet 36A.Pdf,primary,83d0904e063f380c2c685e7f239d6287ebd6bbbd9017bfd881cb8a1b2783ae21,5,4,,0,2
+learjet_40,Learjet 40,Learjet 40.Pdf,primary,32ec4599304d49acea821c43f06f05096ee1eb4338b47a219bdc6f4285b61c73,6,5,4,0,3
+learjet_40xr,Learjet 40XR,Learjet 40XR.Pdf,primary,eb9fd41c06e67ac26e6842a208f87b305cf607abfd954205fe5a8ea543bcdc22,6,5,4,0,3
+learjet_45,Learjet 45,Learjet 45.Pdf,primary,4a614763b4522aaafe59c97fe7cf522a7166b36f4fc924e80364fcc39fbf1378,6,5,4,0,3
+learjet_45xr,Learjet 45XR,Learjet 45XR.Pdf,primary,c2a9f4a4b000f17e9ec57d04cabaa033e90ff5d4db111b4e30dc4b73644c844c,6,5,4,0,2
+learjet_55,Learjet 55,Learjet 55.Pdf,primary,39176805d4e4e65770964723f40788b25d7fd64d161465510a2cd346794bda26,5,4,,0,2
+learjet_55c,Learjet 55C,Learjet 55C.Pdf,primary,1bb0e96d23d29450c75f93744e20c4383191aee437ecfdae5cecef008e9dae69,5,4,,0,2
+learjet_60,Learjet 60,Learjet 60.Pdf,primary,23f8d3b05828ad43129bd2916082e009f9a1e469f529362741a0bd759259dce2,6,5,4,0,3
+learjet_60xr,Learjet 60XR,Learjet 60XR.Pdf,primary,0c1aad757556e8e52230b3515d631e7e34f28a711a7353457cc4d19be98c5e17,6,5,4,0,3
+learjet_70,Learjet 70,Learjet 70.Pdf,primary,5b5fd53238e5ad34987cd2251c7674ca5ea528e638c24561d5f7232db9287fc7,6,5,4,0,3
+learjet_75,Learjet 75,Learjet 75.Pdf,primary,abfeb9014aa51636bcd9a753388767258b523a0799553369ed5f98577318e17d,6,5,4,0,3
+lockheed_jetstar_ii_731,Lockheed Jetstar II/731,Lockheed Jetstar II_731.Pdf,primary,cf8efc7c11c359b873b1dc6807f163da1211915969c2704622ba97d403a34f33,5,4,,1,3
+mitsubishi_diamond_1a,Mitsubishi Diamond 1A,Mitsubishi Diamond 1A.Pdf,primary,851647c55aadae9c5c322d29bc8f756116f5c452b01f5405ad6f610ef9008448,5,4,,0,3
+nextant_400xt,Nextant 400XT,Nextant 400XT.Pdf,primary,fd9d989f04e8bfb8d5ad0a00c2918e9e546d3296c095d5989dfc88567bf66502,5,4,,0,2
+nextant_400xti,Nextant 400XTi,Nextant 400XTi.Pdf,primary,24d60785bc5dc7b55a7e14be240bdfbc0fe96c915a280956bb42d0d1f2b1109a,5,4,,0,2
+pilatus_pc_24,Pilatus PC-24,Pilatus PC-24.Pdf,primary,cce22a6dff5a3749b44f4e09f2c682a8b4d4792dbea0ac5719f7351c789a9610,6,5,4,0,3
+sabreliner_sabre_65,Sabreliner Sabre 65,Sabreliner Sabre 65.Pdf,primary,0be14ac219f3ee28df8878aec7d442bcb91985a78ab71320fb0a8cf0d68b4703,5,4,,0,2
+cessna_citation_i_isp,Cessna Citation I/ISP,cessna Citation SP.pdf,primary,eaf1525d1ea0144820f9fc1c6b77806755f02849c8e34c79369182aafbd51484,5,4,,0,2
+bombardier_global_6000,Bombardier Global 6000,Guardian_Jet_Global_6000_web,primary_web_estimate,,,,,4,3
+bombardier_global_7500,Bombardier Global 7500,Guardian_Jet_Global_7500_web,primary_web_estimate,,,,,4,3
