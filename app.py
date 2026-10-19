@@ -30,7 +30,7 @@ try:
         _secrets_path = Path(".streamlit/secrets.toml")
         _secrets_path.parent.mkdir(exist_ok=True)
         _keys = ["STRIPE_SECRET_KEY", "STRIPE_PRICE_ESSENTIEL", "STRIPE_PRICE_PRO", "ADMIN_EMAIL", "ADMIN_PASSWORD",
-                 "SUPABASE_URL", "SUPABASE_SERVICE_KEY", "RESEND_API_KEY"]
+                 "SUPABASE_URL", "SUPABASE_SERVICE_KEY", "RESEND_API_KEY", "BUDGET_REQUEST_TO"]
         with open(_secrets_path, "w") as f:
             for k in _keys:
                 v = os.environ.get(k, "")
@@ -324,7 +324,7 @@ def chart_sensitivity(points,be,current,disp):
     fig.add_trace(go.Scatter(x=xs,y=ys,mode="lines",line=dict(color=C["charter"],width=2.5),fill="tozeroy",fillcolor="rgba(74,144,217,0.12)"))
     fig.add_hline(y=0,line_dash="dash",line_color="#C9A84C",line_width=1.5)
     if be is not None:
-        fig.add_vline(x=be,line_dash="dot",line_color="#E8C46A",line_width=1.5,annotation_text=f"Break-even ≈ {be:,.0f} billed h",annotation_font_color="#E8C46A")
+        fig.add_vline(x=be,line_dash="dot",line_color="#E8C46A",line_width=1.5,annotation_text=f"Coverage threshold ≈ {be:,.0f} billed h",annotation_font_color="#E8C46A")
     fig.add_vline(x=current,line_dash="dot",line_color="#8496B0",line_width=1,annotation_text="current",annotation_position="bottom right",annotation_font_color="#8496B0")
     fig.update_layout(**BG,height=300,margin=dict(t=10,b=10,l=10,r=10),showlegend=False,
                       yaxis=dict(title=f"Operating result ({disp.ccy})",gridcolor="#1A3A6E",tickformat=",.0f"),
@@ -893,15 +893,133 @@ def premium_gate(required="pro"):
     if not email: st.info("👈 Create a free account in the sidebar.")
     else: _plan_buttons(email,current_plan=st.session_state.get("auth_plan"))
 
+# ─── THRESHOLD, COSTS SCOPE, MANUAL BUDGET OFFER ─────────────────────────────
+
+def _render_one_threshold(th,title,title_fr,show_assumptions=True):
+    st.markdown(f"**{title}**  ·  *{title_fr}*")
+    stt=th.get("status")
+    if stt=="awaiting_confirmation": st.info(th["message"]); return
+    if stt in ("ratio_undefined",): st.warning(th["message"]); return
+    if stt=="incomplete": st.warning(th["message"]); return
+    if stt=="unattainable": st.error(th["message"])
+    elif stt=="exceeds_year": st.warning(th["message"])
+    else: st.success(th["message"])
+    if stt in ("ok","exceeds_year"):
+        t1,t2,t3,t4=st.columns(4)
+        t1.metric("Billed hours (rounded up)",f"{th['billed_hours']:,d} h"); t2.metric("Total flown hours",f"{th['flown_hours']:,.0f} h")
+        t3.metric("Positioning",f"{th['positioning_flown']:,.0f} h"); t4.metric("Private / other",f"{th['private_hours']:g} h")
+    if show_assumptions and th.get("assumptions"): st.caption("Assumptions — "+th["assumptions"])
+
+def _render_threshold(pr,D):
+    """Thresholds A (operating costs entered) and B (with the economic ownership costs entered) — same engine values as PDF/CSV; nothing before confirmation."""
+    th=pr.get("threshold") or {}; te=pr.get("threshold_economic") or {}
+    _render_one_threshold(th,E.THRESHOLD_LABEL,E.THRESHOLD_LABEL_FR)
+    st.caption(E.THRESHOLD_NOTE)
+    if th.get("status") in ("awaiting_confirmation","ratio_undefined"): return
+    st.markdown("<hr>",unsafe_allow_html=True)
+    _render_one_threshold(te,E.THRESHOLD_ECON_LABEL,E.THRESHOLD_ECON_LABEL_FR,show_assumptions=False)
+    if te.get("status") in ("ok","exceeds_year") and pr.get("economic_result") is not None:
+        e1,e2=st.columns(2); e1.metric("Economic ownership costs entered",D(pr["ownership_costs_total"])); e2.metric("Economic result (operating result − ownership costs)",D(pr["economic_result"]))
+    st.caption(E.OWNERSHIP_NOTE+" Revenue paid by the owner to the operator for the owner's own flights is not external charter revenue and does not reduce the owner's consolidated cost.")
+
+def _render_costs_scope(row,res,scn,D,where="scope"):
+    """Block 'Costs included & limitations'."""
+    sc=E.costs_scope(row,res,scn)
+    with st.expander("📋 Costs included & limitations",expanded=False):
+        st.markdown("**Included in the simulation**")
+        for c in sc["included"]:
+            st.markdown("• "+c["label"]+(f" — {D(c['annual_usd'])} / year" if c.get("annual_usd") is not None else "")+(f" ({D(c['hourly_usd'])} per flown hour)" if c.get("hourly_usd") is not None else ""))
+        st.markdown("**Not confirmed** (unknown is never shown as zero)")
+        for t in sc["not_confirmed"]: st.markdown("• "+t)
+        st.markdown("**Known exclusions**")
+        for t in sc["exclusions"]: st.markdown("• "+t)
+        st.markdown("**Limitations**")
+        for t in sc["limits"]: st.markdown("• "+t)
+        _render_budget_cta(res["model"],where)
+    return sc
+
+BUDGET_OFFER_TITLE="Aircraft-specific operating budget"
+BUDGET_OFFER_TEXT=("Get a tailored operating budget based on the aircraft's serial number, maintenance status, programme coverage and your intended operation. "
+                   "Prepared manually by Menkor Aviation.")
+BUDGET_DELIVERABLES=["Detailed operating budget.","Recurring costs and identified exceptional expenses over three years.",
+                     "First-year cash flow shown separately from the smoothed economic budget.","Private and charter scenarios.",
+                     "Net cost remaining to the owner after the charter contribution.",
+                     "Assumptions, missing documents and points to confirm with the CAMO / MRO."]
+BUDGET_DISCLAIMER=("This is a manually prepared budget study. It is not a pre-purchase inspection (PPI), a technical or airworthiness validation, or a guarantee of costs. "
+                   "Technical documents may be requested after the first exchange; do not send sensitive files through this form.")
+BUDGET_CONFIG_HELP=("Reception is not configured: set RESEND_API_KEY and ADMIN_EMAIL (existing secrets; optionally BUDGET_REQUEST_TO to receive these requests "
+                    "at another address) in the app secrets. Until then no request can be transmitted.")
+
+def _send_budget_request(data,secrets=None,post=None):
+    """Transmit a budget request by email through the existing Resend channel. Returns (ok, detail).
+    ok is True ONLY after a successful transmission; a missing configuration or any failure returns False (never 'sent')."""
+    import html as _html
+    try:
+        sec=secrets if secrets is not None else st.secrets
+        key=sec.get("RESEND_API_KEY"); to=sec.get("BUDGET_REQUEST_TO") or sec.get("ADMIN_EMAIL")
+    except Exception:
+        key=to=None
+    if not key or not to: return False,"not_configured"
+    rows="".join(f"<tr><td style='padding:2px 10px 2px 0'><b>{_html.escape(k)}</b></td><td>{_html.escape(str(v) or '-')}</td></tr>" for k,v in data.items())
+    try:
+        if post is None:
+            import requests; post=requests.post
+        r=post("https://api.resend.com/emails",headers={"Authorization":f"Bearer {key}","Content-Type":"application/json"},
+               json={"from":"Aviation Cost Estimator <onboarding@resend.dev>","to":[to],"reply_to":data.get("Email",""),
+                     "subject":f"Aircraft-specific operating budget request — {data.get('Aircraft model','')}",
+                     "html":f"<p>Budget request received from the Aviation Cost Estimator:</p><table>{rows}</table>"},timeout=8)
+        if r.status_code in (200,201): return True,""
+        return False,f"HTTP {r.status_code}"
+    except Exception as e:
+        return False,f"{type(e).__name__}"
+
+def _budget_form(model_name,where):
+    """Single request path: one button, one inline form (no extra window). `where` makes the widget keys unique per place."""
+    if st.button("Request a budget for your aircraft",key=f"bq_open_{where}"): st.session_state[f"_bq_open_{where}"]=True
+    if not st.session_state.get(f"_bq_open_{where}"): return
+    with st.form(f"budget_request_form_{where}"):
+        f1,f2=st.columns(2)
+        with f1: nm=st.text_input("Name",key=f"bq_name_{where}")
+        with f2: em=st.text_input("Email",key=f"bq_email_{where}")
+        g1,g2,g3=st.columns(3)
+        with g1: md=st.text_input("Aircraft model",value=model_name,key=f"bq_model_{where}")
+        with g2: yr=st.text_input("Year (optional)",key=f"bq_year_{where}")
+        with g3: msn=st.text_input("MSN (optional at first contact)",key=f"bq_msn_{where}")
+        base=st.text_input("Intended region / base",key=f"bq_base_{where}")
+        h1,h2=st.columns(2)
+        with h1: hp=st.text_input("Planned private hours per year (if known)",key=f"bq_hp_{where}")
+        with h2: hc=st.text_input("Planned charter hours per year (if known)",key=f"bq_hc_{where}")
+        own=st.radio("Aircraft status",["Already owned","Acquisition project"],key=f"bq_own_{where}",horizontal=True)
+        prog=st.text_input("Known programmes (if available)",key=f"bq_prog_{where}")
+        msg=st.text_area("Message",key=f"bq_msg_{where}",max_chars=1500)
+        st.caption("Technical documents may be requested after the first exchange. Please do not send sensitive files through this form.")
+        sub=st.form_submit_button("Send request")
+    if sub:
+        if not (nm.strip() and em.strip() and md.strip()): st.warning("Please fill in name, email and aircraft model."); return
+        if not _re.match(r"[^@\s]+@[^@\s]+\.[^@\s]+",em.strip()): st.warning("Please enter a valid email address."); return
+        data={"Name":nm.strip(),"Email":em.strip(),"Aircraft model":md.strip(),"Year":yr.strip(),"MSN":msn.strip(),"Region / base":base.strip(),
+              "Private hours / year":hp.strip(),"Charter hours / year":hc.strip(),"Status":own,"Known programmes":prog.strip(),"Message":msg.strip()[:1500]}
+        ok,detail=_send_budget_request(data)
+        if ok: st.success("Your request has been transmitted to Menkor Aviation. We will contact you to confirm the next steps.")
+        elif detail=="not_configured": st.error("Your request could not be sent: reception is not configured on this installation. No request has been recorded. "
+                                                "Please try again later or contact Menkor Aviation directly."); st.caption(BUDGET_CONFIG_HELP)
+        else: st.error(f"Your request could not be sent ({detail}). No request has been recorded: please try again later.")
+
+def _render_budget_cta(model_name,where):
+    """Compact call-to-action next to the limits / the coverage result."""
+    st.caption("These figures use average costs, not the budget of your aircraft. "+BUDGET_OFFER_TEXT)
+    _budget_form(model_name,where)
+
+def _render_budget_offer(model_name,where="offer"):
+    st.markdown(f'<div class="section-header">✈ {BUDGET_OFFER_TITLE}</div>',unsafe_allow_html=True)
+    st.markdown(f'''<div class="metric-card"><div class="metric-sub" style="font-size:.9rem;color:#D6E4F7">{BUDGET_OFFER_TEXT}</div></div>''',unsafe_allow_html=True)
+    st.markdown("**What you receive**")
+    for t in BUDGET_DELIVERABLES: st.markdown("• "+t)
+    st.caption(BUDGET_DISCLAIMER)
+    _budget_form(model_name,where)
+
 # ─── MAIN ────────────────────────────────────────────────────────────────────
 
-_RS_CUSTOM="Custom rate"
-_RS_REF="Menkor estimate — reference"; _RS_LOW="Menkor estimate — low"; _RS_HIGH="Menkor estimate — high"
-_RS_MAP={_RS_REF:("estimate_ref","reference"),_RS_LOW:("estimate_low","low"),_RS_HIGH:("estimate_high","high")}
-
-def _use_hist_rate(aid,val):
-    """on_click callback: copy the historical (unverified) rate of the old base into the rate field."""
-    st.session_state[f"rate_{aid}"]=float(val); st.session_state[f"rateccy_{aid}"]="EUR"; st.session_state[f"rsrc_{aid}"]=_RS_CUSTOM
 
 def _on_search():
     """Quick find: resolves an id, a model name or an alias (e.g. 'Global 7000' -> Global 7500) to ONE aircraft."""
@@ -936,7 +1054,7 @@ def _prov_table(row,prov):
     if not bool(row["has_detail"]):
         rows=[]
         for f,u in [("legacy_Couts_Fixes_Annuels","annual (currency undocumented)"),("legacy_Cout_Horaire_Charter","per hour (currency undocumented)"),
-                    ("legacy_Heures_Base","hours"),("legacy_Taux_Charter_EUR_h","per hour, labelled EUR (unverified)"),
+                    ("legacy_Heures_Base","hours"),
                     ("legacy_Vitesse_Croisiere_km_h","km/h"),("legacy_Autonomie_km","km (definition unverified)"),("legacy_Passagers_Max","pax")]:
             v=E.num(row,f)
             rows.append({"Field":f.replace("legacy_",""),"Value":"missing" if v is None else f"{v:,.0f}","Unit":u,"Data class":"Historical" if v is not None else "Missing","Source":row.get("source_file"),"Page":""})
@@ -960,7 +1078,6 @@ def _results_csv(res,disp):
     """CSV export of the current result with its assumptions and exchange rate (same engine result as screen/PDF)."""
     rows=[("config_id",res["config_hash"]),("aircraft_id",res["aircraft_id"]),("model",res["model"]),("mode",res["mode"]),
           ("source","Menkor reference database"),("record_type",E.source_label(res.get("source_kind"))),
-          ("charter_rate_source",res["charter_rate_info"]["source"]),("charter_rate_basis",res["charter_rate_info"]["basis"]),
           ("menkor_base_version",res["menkor_base"].get("version")),("menkor_base_adjustment_applied_in_this_result",res["menkor_base"]["applied"]),
           ("menkor_base_adjustment_pct",res["menkor_base"].get("pct")),("menkor_base_adjustment_status",res["menkor_base"].get("status")),
           ("menkor_base_text",res["menkor_base"].get("text","")),("original_published_budget_usd",res["menkor_base"].get("published_budget_original")),
@@ -996,8 +1113,39 @@ def _results_csv(res,disp):
         if fl_["level"] in ("warn","error"): rows.append((f"flag_{fl_['level']}_{fl_['code']}",fl_["text"]))
     pr=res.get("profit")
     if pr and pr.get("available"):
-        rows+=[("revenue_usd",pr["revenue"]),("commission_usd",pr["commission"]),("variable_cost_all_flown_usd",pr["variable_cost_all_flown"]),
-               ("fixed_cost_usd",pr["fixed_cost"]),("estimated_operating_result_usd",pr["operating_result"]),("break_even_billed_hours",pr.get("break_even_billed_hours"))]
+        rows+=[("charter_rate_basis","already net of commission" if pr["rate_basis"]=="net" else "before commission (gross)"),("charter_rate_usd_per_billed_hour",pr["rate_usd"]),
+               ("commission_pct_applied",pr["commission_pct"]),("billed_hours",pr["billed_hours"]),("positioning_hours",pr["positioning_hours"]),("private_other_hours",pr["other_hours"]),
+               ("revenue_usd",pr["revenue"]),("commission_usd",pr["commission"]),("other_commercial_fees_usd",pr["other_fees"]),
+               ("billed_supplements_retained_usd",pr["supplements_retained"] if pr.get("supplements_retained") is not None else "not entered"),
+               ("billed_supplements_cost_usd",pr["supplements_cost"] if pr.get("supplements_cost") is not None else "not entered"),
+               ("variable_cost_all_flown_usd",pr["variable_cost_all_flown"]),("fixed_cost_usd",pr["fixed_cost"]),("estimated_operating_result_usd",pr["operating_result"]),
+               ("external_charter_contribution_usd",pr["charter_external_contribution"]),("owner_private_variable_cost_usd",pr["owner_private_variable_cost"]),
+               ("owner_remaining_cost_usd",pr["owner_remaining_cost"]),("contribution_per_billed_hour_usd",pr["contribution_per_billed_hour"])]
+        th=pr.get("threshold") or {}
+        rows+=[("operating_cost_coverage_threshold_status",th.get("status"))]
+        if th.get("status") in ("ok","exceeds_year"):
+            rows+=[("operating_cost_coverage_threshold_billed_hours",th["billed_hours"]),("operating_cost_coverage_threshold_flown_hours",round(th["flown_hours"],2)),
+                   ("operating_cost_coverage_threshold_exact_billed_hours",round(th["billed_hours_exact"],4)),("operating_cost_coverage_threshold_assumptions",th["assumptions"])]
+        elif th.get("status")=="unattainable": rows+=[("operating_cost_coverage_threshold_message",th["message"])]
+        if th.get("status") in ("ok","exceeds_year","unattainable"): rows+=[("operating_cost_coverage_threshold_note",E.THRESHOLD_NOTE)]
+        te=pr.get("threshold_economic") or {}
+        rows+=[("economic_coverage_threshold_status",te.get("status")),("ownership_depreciation_usd",(pr.get("ownership") or {}).get("depreciation_usd") if (pr.get("ownership") or {}).get("depreciation_usd") is not None else "not entered"),
+               ("ownership_loan_interest_usd",(pr.get("ownership") or {}).get("interest_usd") if (pr.get("ownership") or {}).get("interest_usd") is not None else "not entered")]
+        if te.get("status") in ("ok","exceeds_year"):
+            rows+=[("economic_coverage_threshold_billed_hours",te["billed_hours"]),("economic_coverage_threshold_flown_hours",round(te["flown_hours"],2)),
+                   ("economic_result_usd",pr.get("economic_result")),("economic_coverage_threshold_assumptions",te["assumptions"])]
+        elif te.get("status")=="unattainable": rows+=[("economic_coverage_threshold_message",te["message"])]
+        elif te.get("status")=="incomplete": rows+=[("economic_coverage_threshold_missing",", ".join(te.get("missing",[]))),("economic_coverage_threshold_message",te["message"])]
+        rows+=[("positioning_ratio_used",pr.get("positioning_ratio") if pr.get("positioning_ratio") is not None else "undefined"),
+               ("confirmations","positioning, private hours, other fees and costs-included review confirmed" if (pr.get("threshold") or {}).get("status") not in ("awaiting_confirmation",) else "not all confirmed")]
+    elif pr is not None:
+        rows+=[("charter_result_status"," ".join(pr.get("messages",[])))]
+    _sc=res.get("scope")
+    if _sc:
+        rows+=[("costs_included",_re.sub(r"\s+"," ","; ".join(f"{c['label']}" for c in _sc["included"]))),
+               ("costs_not_confirmed"," | ".join(_sc["not_confirmed"])),("cost_known_exclusions"," | ".join(_sc["exclusions"])),("cost_limitations"," | ".join(_sc["limits"]))]
+    for _k,_v in (res.get("management") or {}).items():
+        rows.append((f"management_{_k}",f"{E.MANAGEMENT_STATUS.get(_v['status'],_v['status'])}"+(f" · {_v['amount_usd']:,.0f} USD per year" if _v.get("amount_usd") is not None else "")))
     for c in res["components"]: rows.append((f"component_{c['category'].lower()}_{c['key']}_annual_usd",c["annual_usd"]))
     return pd.DataFrame(rows,columns=["item","value"]).to_csv(index=False).encode("utf-8-sig")
 
@@ -1180,50 +1328,49 @@ def main():
         if disp.eur_blocked: st.warning("EUR display needs a rate and a valid date (YYYY-MM-DD). Amounts stay in USD until then.")
         st.caption(disp.note())
 
-        st.markdown('<div class="section-header">💰 Charter Pricing</div>',unsafe_allow_html=True)
-        hist_rate=E.num(row,"legacy_Taux_Charter_EUR_h")
-        if hist_rate:
-            st.caption(f"Old Menkor base (historical, unverified): {hist_rate:,.0f} per hour, labelled EUR. The PDF reports contain no charter price.")
-            st.button("Use historical rate",key=f"uh_{aid}",on_click=_use_hist_rate,args=(aid,hist_rate))
-        else:
-            st.caption("No charter price in the source: enter your own rate (nothing is assumed).")
-        _est=E.charter_estimate(aid,get_charter_prices())
-        rate_source="custom"; rate_basis=""
-        _sym={"USD":"$","EUR":"€"}
-        _opts=[_RS_CUSTOM]
-        if _est and _est["available"]:
-            _c=_sym[_est["currency"]]
-            _rng=(f" (published range {_c} {_est['low']:,.0f} – {_est['high']:,.0f})" if _est["low"] and _est["high"] else "")
-            st.markdown(f'<div class="metric-sub">💡 <b>Charter price estimate:</b> {_c} {_est["reference"]:,.0f} per billable flight hour{_rng}. '
-                        f'<i>Indicative estimate from public listings — not a quotation.</i></div>',unsafe_allow_html=True)
-            _opts=[_RS_REF]+([_RS_LOW,_RS_HIGH] if (_est["low"] and _est["high"]) else [])+[_RS_CUSTOM]
-            if not _est["auto_prefill"]:
-                st.warning("Not pre-selected: "+("proxy price of a related model" if _est["scope"]=="family_proxy" else "configuration or match to confirm")+
-                           f" (confidence: {_est['confidence']}). Pick “{_RS_REF}” only after checking it, or enter your own rate.")
-            _rs=st.radio("Charter rate to use",_opts,index=(0 if _est["auto_prefill"] else len(_opts)-1),key=f"rsrc_{aid}",
-                         help="Use the estimate (reference / low / high of the published range) or enter your own rate. You stay in control of the final price.")
-            with st.expander("ℹ About this estimate — read before quoting",expanded=False):
-                for _t in E.charter_disclaimers(_est): st.markdown("• "+_t)
-                st.caption(f"Source: {_est['source_name']} — listing “{_est['source_model']}”. {_est['source_url'] or ''}".strip())
-                if _est["alt_reference"]: st.caption(f"Second public reference: {_sym.get(_est['alt_currency'],'')} {_est['alt_reference']:,.0f}/h ({_est['alt_url']}).")
-                if _est["notes"]: st.caption("File note: "+_est["notes"])
-        elif _est:
-            st.caption("No public charter price found for this exact model (nothing is replaced by zero or by another model): a manual quote is needed — enter your own rate.")
-            _rs=_RS_CUSTOM
-        else:
-            _rs=_RS_CUSTOM
-        if _rs!=_RS_CUSTOM:
-            rate_source,_k=_RS_MAP[_rs]; rate_in=float(_est[_k]); rate_ccy=_est["currency"]
-            rate_basis=f"{_est['scope']}; confidence {_est['confidence']}; consulted {_est['access_date']}"
-            st.markdown(f'<div class="metric-sub">Rate used: <b>{_sym[rate_ccy]} {rate_in:,.0f} / billed hour</b> — estimate'
-                        +(" (EUR: needs the dated USD → EUR rate above to be converted)." if rate_ccy=="EUR" else ".")+'</div>',unsafe_allow_html=True)
-        else:
-            rc1,rc2=st.columns([2,1])
-            _dv=float(_est["reference"]) if (_est and _est["available"] and _est["auto_prefill"]) else 0.0
-            with rc1: rate_in=st.number_input("Rate per billed hour",min_value=0.0,value=_dv,step=100.0,format="%.0f",key=f"rate_{aid}")
-            with rc2: rate_ccy=st.selectbox("Rate ccy",["USD","EUR"],index=(["USD","EUR"].index(_est["currency"]) if (_est and _est["available"]) else 0),key=f"rateccy_{aid}")
-        commission_pct=st.slider("Commission (%)",0,25,10,step=1)
+        st.markdown('<div class="section-header">💰 Charter revenue — your assumption</div>',unsafe_allow_html=True)
+        st.caption("No charter price is pre-filled or assumed. Enter the revenue you expect per billed hour; until then costs are shown but no revenue, result or threshold.")
+        rc1,rc2=st.columns([2,1])
+        with rc1: rate_in=st.number_input("Expected charter revenue per billed hour",min_value=0.0,value=0.0,step=100.0,format="%.0f",key=f"rate_{aid}")
+        with rc2: rate_ccy=st.selectbox("Rate currency",["USD","EUR"],key=f"rateccy_{aid}",help="EUR is converted with the dated exchange rate entered in the Currency section.")
+        _rb=st.radio("This rate represents",["Operator revenue before commission (gross)","Revenue already net of commission"],index=None,key=f"rbasis_{aid}",
+                     help="Choose explicitly. Gross: the commission below is deducted once. Net: no commission is deducted. A public client price is not assumed to be revenue kept by the operator.")
+        rate_basis=None if _rb is None else ("net" if _rb.startswith("Revenue already") else "gross")
+        commission_pct=None
+        if rate_basis=="gross":
+            commission_pct=st.number_input("Commission (%) on gross revenue",min_value=0.0,max_value=100.0,value=None,step=1.0,format="%.1f",key=f"comm_{aid}",
+                                           placeholder="enter 0 if none",help="Required: an empty field is not treated as zero. Enter 0 explicitly if there is no commission.")
+        elif rate_basis=="net": st.caption("Rate already net: no commission is applied.")
         fees_in=st.number_input(f"Other commercial fees / year ({disp.ccy}) — not already in the report",min_value=0.0,value=0.0,step=1000.0,format="%.0f")
+        with st.expander("Billed supplements (optional — kept separate from the hourly rate)",expanded=False):
+            st.caption("Taxes, airport fees, crew overnights, positioning or other items billed on top are NOT assumed to be revenue kept by the operator. "
+                       "Enter only what the operator actually retains, and the cost linked to it, separately. Empty = not entered (not zero).")
+            _sr=st.number_input(f"Annual supplements retained by the operator ({disp.ccy})",min_value=0.0,value=0.0,step=1000.0,format="%.0f",key="supp_rev")
+            _sc=st.number_input(f"Annual cost linked to those supplements ({disp.ccy})",min_value=0.0,value=0.0,step=1000.0,format="%.0f",key="supp_cost")
+            supp_rev=disp.to_usd(_sr) if _sr>0 else None; supp_cost=disp.to_usd(_sc) if _sc>0 else None
+        with st.expander("Economic ownership costs (optional)",expanded=False):
+            st.caption(E.OWNERSHIP_NOTE+" Empty = not entered (never zero); type 0 to state an explicit zero, e.g. no interest on an aircraft bought without a loan.")
+            od1,od2=st.columns([2,1])
+            with od1: _dep=st.number_input("Annual economic depreciation",min_value=0.0,value=None,step=10000.0,format="%.0f",key="own_dep",placeholder="not entered")
+            with od2: _depc=st.selectbox("Currency",["USD","EUR"],key="own_dep_ccy")
+            oi1,oi2=st.columns([2,1])
+            with oi1: _int=st.number_input("Annual loan interest and financing costs",min_value=0.0,value=None,step=10000.0,format="%.0f",key="own_int",placeholder="not entered")
+            with oi2: _intc=st.selectbox("Currency ",["USD","EUR"],key="own_int_ccy")
+
+        st.markdown('<div class="section-header">🎯 Coverage threshold — assumptions</div>',unsafe_allow_html=True)
+        _pm=st.radio("Positioning assumption",["Hours entered above (needs billed hours > 0)","Ratio per billed hour"],key="pos_mode",
+                     help="Positioning = non-billed hours flown per billed hour (empty legs). For the threshold this ratio stays constant when billed hours vary.")
+        pos_ratio=None
+        if _pm=="Ratio per billed hour":
+            pos_ratio=st.number_input("Positioning hours per billed hour",min_value=0.0,value=None,step=0.05,format="%.2f",key="pos_ratio",placeholder="enter 0 if none")
+            if pos_ratio is not None: posit=float(billed)*float(pos_ratio); st.caption(f"= {posit:g} positioning hours for {billed} billed hours.")
+        _sig=hashlib.md5(repr((aid,rate_in,rate_ccy,rate_basis,commission_pct,billed,posit,pos_ratio,other,fees_in,supp_rev,supp_cost)).encode()).hexdigest()[:10]
+        st.caption("Private/owner/other hours and other commercial fees stay constant in the threshold. Zero values are allowed but must be confirmed:")
+        _ratio_txt=(f"{pos_ratio:g} h per billed hour" if pos_ratio is not None else f"{float(posit):g} h")
+        pos_ok=st.checkbox(f"I confirm the positioning assumption: {_ratio_txt} (zero included).",key="conf_p_"+_sig,disabled=(_pm=="Ratio per billed hour" and pos_ratio is None))
+        priv_ok=st.checkbox(f"I confirm the private/owner/other hours: {float(other):g} h per year (zero included).",key="conf_o_"+_sig)
+        fees_ok=st.checkbox(f"I confirm the other commercial fees: {disp.money(disp.to_usd(fees_in))} per year (zero included).",key="conf_f_"+_sig)
+        limits_ok=st.checkbox("I have reviewed the costs included and the limitations. This is not a validation that the data is complete.",key="conf_l_"+_sig)
 
     def _tab_label(base,required):
         if required is None: return base
@@ -1242,6 +1389,7 @@ def main():
 
     # ── Cost Master EDITORS (rendered first so every tab uses the same scenario) ─────
     ov_fixed={}; ov_var={}; extra_fixed_usd=0.0; extra_var_usd=0.0
+    mgmt={}; cyc_status="none"; cyc_cost=None; cyc_ccy="USD"; cyc_avg=None
     with tab4:
         if not is_pro:
             premium_gate("pro")
@@ -1282,14 +1430,40 @@ def main():
                     with x1: _xf=st.number_input(f"Extra fixed cost ({disp.ccy}/yr)",min_value=0.0,value=0.0,step=1000.0,format="%.0f",key=f"xf_{_k}",disabled=_dis)
                     with x2: _xv=st.number_input(f"Extra variable cost ({disp.ccy}/flown h)",min_value=0.0,value=0.0,step=10.0,format="%.0f",key=f"xv_{_k}",disabled=_dis)
                     extra_fixed_usd=disp.to_usd(_xf); extra_var_usd=disp.to_usd(_xv)
+                with st.expander("🧾 Management, CAMO, dispatch — operating costs (no double counting)",expanded=False):
+                    st.caption("These are operating costs, not ownership costs. For each item say whether it is already included in the base or a package, added separately "
+                               "(enter ONLY the part not already included) or not confirmed. To replace an existing line, edit that line above instead: nothing is added twice.")
+                    _inv={v:k for k,v in E.MANAGEMENT_STATUS.items()}
+                    for _mk,_ml in E.MANAGEMENT_ITEMS.items():
+                        _stt=_inv[st.selectbox(_ml,list(E.MANAGEMENT_STATUS.values()),index=0,key=f"mg_{_mk}_{_k}",disabled=_dis)]
+                        _it=dict(status=_stt)
+                        if _stt=="added":
+                            ma1,ma2=st.columns([2,1])
+                            with ma1: _it["amount"]=st.number_input(f"{_ml} — annual amount added separately",min_value=0.0,value=None,step=1000.0,format="%.0f",key=f"mga_{_mk}_{_k}",placeholder="not entered",disabled=_dis)
+                            with ma2: _it["ccy"]=st.selectbox(f"{_ml} currency",["USD","EUR"],key=f"mgc_{_mk}_{_k}",disabled=_dis)
+                            if _it["amount"] is None: st.warning(f"{_ml}: enter the amount, or choose another status. Until then the simulation is unavailable (no value is invented).")
+                        mgmt[_mk]=_it
+                with st.expander("🔁 Per-landing / per-cycle costs (not in the base)",expanded=False):
+                    st.caption("Applied to flown hours through the average flight duration; if the hourly costs already include them, choose the second option so they are not counted again.")
+                    _cs=st.radio("Per-cycle costs",["None specified","Already included in the hourly costs","Add separately"],key=f"cyc_{_k}",disabled=_dis)
+                    cyc_status={"None specified":"none","Already included in the hourly costs":"included","Add separately":"added"}[_cs]
+                    if cyc_status=="added":
+                        cy1,cy2=st.columns([2,1])
+                        with cy1: cyc_cost=st.number_input("Cost per landing / cycle",min_value=0.0,value=None,step=50.0,format="%.0f",key=f"cycc_{_k}",placeholder="not entered",disabled=_dis)
+                        with cy2: cyc_ccy=st.selectbox("Cycle cost currency",["USD","EUR"],key=f"cycccy_{_k}",disabled=_dis)
+                        cyc_avg=st.number_input("Average flight duration (hours per cycle)",min_value=0.0,value=None,step=0.1,format="%.2f",key=f"cyca_{_k}",placeholder="not entered",disabled=_dis)
+                        if cyc_cost is None or not cyc_avg: st.warning("Enter the cost per cycle and the average flight duration: until then the simulation is unavailable.")
                 st.button("↺ Reset all edits",key="ov_reset",on_click=_bump_overrides,disabled=_dis)
 
     # ── The single scenario & the single result used by every tab and the PDF ─────
     scn=E.Scenario(aircraft_id=aid,mode=mode,billed_hours=float(billed),positioning_hours=float(posit),other_hours=float(other),
-                   charter_rate=(rate_in if rate_in>0 else None),charter_rate_ccy=rate_ccy,commission_pct=float(commission_pct),
+                   charter_rate=(rate_in if rate_in>0 else None),charter_rate_ccy=rate_ccy,commission_pct=(None if commission_pct is None else float(commission_pct)),rate_basis=rate_basis,
+                   supplements_retained_usd=supp_rev,supplements_cost_usd=supp_cost,positioning_ratio=pos_ratio,positioning_confirmed=bool(pos_ok),
+                   private_hours_confirmed=bool(priv_ok),other_fees_confirmed=bool(fees_ok),limits_reviewed=bool(limits_ok),
+                   depreciation_annual=_dep,depreciation_ccy=_depc,interest_annual=_int,interest_ccy=_intc,
+                   management=mgmt,cycle_status=cyc_status,cycle_cost=cyc_cost,cycle_cost_ccy=cyc_ccy,avg_flight_hours=cyc_avg,
                    other_commercial_fees=float(disp.to_usd(fees_in)),fuel=fuel,fixed_overrides=ov_fixed,var_overrides_h=ov_var,
-                   extra_fixed=float(extra_fixed_usd),extra_var_h=float(extra_var_usd),fx=fx,
-                   charter_rate_source=rate_source,charter_rate_basis=rate_basis)
+                   extra_fixed=float(extra_fixed_usd),extra_var_h=float(extra_var_usd),fx=fx)
     res=E.compute(row,scn)
     alerts=E.alerts_for(row,_checks,_conflicts,_convs)
     perf=E.performance_summary(row)
@@ -1414,6 +1588,9 @@ def main():
             st.caption("See the exact cost breakdown for every aircraft with an Essentiel or Pro plan.")
             if st.session_state.get("auth_email"): _plan_buttons(st.session_state["auth_email"],current_plan=st.session_state.get("auth_plan"))
             st.markdown('</div>',unsafe_allow_html=True)
+        if res["available"] and (is_essentiel or is_pro): _render_costs_scope(row,res,scn,D,"scope_dash")
+        st.markdown("<hr>",unsafe_allow_html=True)
+        _render_budget_offer(res["model"],"offer")
 
     # TAB 2: PROFITABILITY
     with tab2:
@@ -1429,29 +1606,42 @@ def main():
             else:
                 pr=res["profit"]
                 if not pr["available"]:
-                    st.warning("Profitability not calculated: "+" ".join(pr["messages"]))
+                    st.info(" ".join(pr["messages"]))
+                    st.caption("Costs are shown without any revenue, result, threshold or revenue chart until a valid charter revenue per billed hour is entered.")
+                    p1,p2,p3=st.columns(3)
+                    p1.metric("🔒 Annual fixed",D(res["fixed"]["annual_total"])); p2.metric("⚡ Annual variable",D(res["variable"]["annual"])); p3.metric("💶 Annual budget",D(res["budget_usd"]))
+                    _render_costs_scope(row,res,scn,D,"scope_pr0")
                 else:
                     r_=pr["operating_result"]; cov=pr["coverage_pct"]
                     badge=('<span class="tag-ok">✓ POSITIVE OPERATING RESULT</span>' if r_>=0 else
-                           ('<span class="tag-warn">⚠ BELOW BREAK-EVEN</span>' if (cov or 0)>=70 else '<span class="tag-err">✗ NEGATIVE OPERATING RESULT</span>'))
-                    if res["charter_rate_info"]["source"]!="custom":
-                        st.warning("The charter price used here is an ESTIMATE (indicative public listing price, "+res["charter_rate_info"]["basis"]+"): not a quotation and not operator net revenue; taxes, airport fees and positioning may be billed on top. Replace it with your own rate for a client quote.")
+                           ('<span class="tag-warn">⚠ COSTS NOT FULLY COVERED</span>' if (cov or 0)>=70 else '<span class="tag-err">✗ NEGATIVE OPERATING RESULT</span>'))
+                    st.caption("The charter revenue is the figure you entered ("+("already net of commission" if pr["rate_basis"]=="net" else f"before commission, {pr['commission_pct']:g}% deducted once")+"). "
+                               "A public or client price is not assumed to be revenue kept by the operator: billed supplements are entered separately.")
                     st.markdown(f"**Status:** {badge} — Coverage: **{cov:.1f}%** (net revenue after commission and fees ÷ total costs)",unsafe_allow_html=True)
                     h1,h2,h3,h4=st.columns(4)
                     h1.metric("Total flown hours",f"{pr['flown_hours']:g} h"); h2.metric("Billed hours",f"{pr['billed_hours']:g} h")
                     h3.metric("Positioning hours",f"{pr['positioning_hours']:g} h"); h4.metric("Charter rate / billed h",D(pr["rate_usd"]))
                     r1,r2,r3,r4=st.columns(4)
                     r1.metric("💵 Charter revenue",D(pr["revenue"]))
-                    r2.metric("📉 Commission + fees",D(pr["commission"]+pr["other_fees"]))
+                    r2.metric("📉 Commission + fees",D(pr["commission"]+pr["other_fees"]),help=("Rate already net: no commission deducted." if pr["rate_basis"]=="net" else None))
                     r3.metric("⚡ Variable (all flown h)",D(pr["variable_cost_all_flown"]))
                     r4.metric("🔒 Fixed",D(pr["fixed_cost"]))
                     st.metric("📊 Estimated operating result",D(r_),delta=f"{cov:.1f}% coverage")
                     st.caption("Estimated operating result = charter revenue − variable costs of ALL flown hours − fixed costs − commercial fees not already included. "
                                "It excludes financing, depreciation and tax: it is not a net profit.")
                     st.markdown("<hr>",unsafe_allow_html=True)
+                    st.markdown("**Charter contribution vs owner's own flying** (kept separate; no internal owner-to-operator payment is modelled)")
+                    o1,o2,o3=st.columns(3)
+                    o1.metric("External charter contribution",D(pr["charter_external_contribution"]),help="Net charter revenue (+ retained supplements − their cost) − variable cost of billed and positioning hours.")
+                    o2.metric("Owner private flying — variable",D(pr["owner_private_variable_cost"]),help="Variable cost of the private/other hours.")
+                    o3.metric("Remaining cost to the owner (negative = surplus)",D(pr["owner_remaining_cost"]),help="Fixed + private variable − external charter contribution (= −operating result).")
+                    if pr.get("supplements_retained") is not None or pr.get("supplements_cost") is not None:
+                        st.caption(f"Billed supplements (separate): retained {D(pr['supplements_retained']) if pr.get('supplements_retained') is not None else 'not entered'} · "
+                                   f"linked cost {D(pr['supplements_cost']) if pr.get('supplements_cost') is not None else 'not entered'}.")
                     st.markdown(f"**Contribution per billed hour** (rate after commission − variable cost of the billed hour incl. its positioning): **{D(pr['contribution_per_billed_hour'])}**")
-                    (st.success if pr.get("break_even_billed_hours") else st.error)(pr["break_even_message"])
-                    st.caption("Assumptions — "+pr["break_even_assumptions"])
+                    _render_threshold(pr,D)
+                    _render_budget_cta(res["model"],"thr")
+                    _render_costs_scope(row,res,scn,D,"scope_pr")
                     st.plotly_chart(chart_waterfall(res,disp),width="stretch",config={"displayModeBar":False})
                 _render_alerts(res,alerts)
 
@@ -1471,10 +1661,11 @@ def main():
                 if pr["available"]:
                     st.caption(f"Positioning ratio {pr['positioning_ratio']:.2f} · other hours {other:g} h · commission {commission_pct}% · rate {D(pr['rate_usd'])}/billed h — same engine as every other tab.")
                     _pts=E.sensitivity_billed_hours(row,scn,list(range(0,1501,25)))
-                    st.plotly_chart(chart_sensitivity(_pts,pr.get("break_even_billed_hours"),billed,disp),width="stretch",config={"displayModeBar":False})
-                    st.caption(pr["break_even_message"])
+                    _th=pr.get("threshold") or {}
+                    st.plotly_chart(chart_sensitivity(_pts,_th.get("billed_hours_exact") if _th.get("status")=="ok" else None,billed,disp),width="stretch",config={"displayModeBar":False})
+                    _render_threshold(pr,D)
                 else:
-                    st.info("Enter a charter rate (sidebar) to see operating result against billed hours. "+" ".join(pr["messages"]))
+                    st.info(" ".join(pr["messages"]))
                 if not hist:
                     st.markdown('<div class="section-header">Fuel price sensitivity</div>',unsafe_allow_html=True)
                     _bp=res["fuel"]["price_usd_l"]
@@ -1529,7 +1720,8 @@ def main():
                 if pr and pr.get("available"):
                     kr=st.columns(3)
                     kr[0].metric("💵 Charter revenue",D(pr["revenue"])); kr[1].metric("📊 Estimated operating result",D(pr["operating_result"]))
-                    kr[2].metric("Break-even billed hours",f"{pr['break_even_billed_hours']:,.0f} h" if pr.get("break_even_billed_hours") else "not attainable")
+                    _th=pr.get("threshold") or {}
+                    kr[2].metric(E.THRESHOLD_LABEL,(f"{_th['billed_hours']:,d} billed h" if _th.get("status")=="ok" else (E.NO_THRESHOLD if _th.get("status")=="unattainable" else "confirm assumptions")))
                 st.markdown("<hr>",unsafe_allow_html=True)
                 d1,d2=st.columns(2)
                 with d1:
@@ -1601,13 +1793,13 @@ def main():
                 st.info("Switch to **Custom simulation** to build a quotation basis (billed hours, rate and commission are needed).")
                 st.slider("Target operating margin on revenue (%)",0,40,10,step=1,key="q_margin",disabled=True)
             elif not pr or not pr.get("available"):
-                st.info("Enter a charter rate and billed hours in the sidebar to see the quotation basis."+(" "+" ".join(pr["messages"]) if pr else ""))
+                st.info("Enter billed hours and your expected charter revenue per billed hour in the sidebar to see the quotation basis. "+(" ".join(pr["messages"]) if pr else ""))
             else:
                 _mg=st.slider("Target operating margin on revenue (%)",0,40,10,step=1,key="q_margin")
                 _rq=E.required_rate(pr,_mg)
                 q1,q2,q3=st.columns(3)
                 q1.metric("Cost per flown hour",D(res["cost_per_h_usd"]))
-                q2.metric("Break-even rate / billed hour",D(E.required_rate(pr,0)) if E.required_rate(pr,0) else "n/a")
+                q2.metric("Rate covering the entered costs (0% margin) / billed hour",D(E.required_rate(pr,0)) if E.required_rate(pr,0) else "n/a")
                 q3.metric(f"Rate for {_mg}% margin / billed hour",D(_rq) if _rq else "not attainable")
                 st.caption(f"Based on {pr['billed_hours']:g} billed h, {pr['positioning_hours']:g} h positioning, {pr['other_hours']:g} h other, commission {pr['commission_pct']:g}%. "
                            "Rate = (variable costs of all flown hours + fixed costs + fees) ÷ (billed hours × (1 − commission − margin)). Operating result, before financing, depreciation and tax.")

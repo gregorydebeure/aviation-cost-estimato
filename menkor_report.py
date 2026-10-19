@@ -13,7 +13,7 @@ from io import BytesIO
 from pathlib import Path
 from xml.sax.saxutils import escape
 
-from menkor_engine import USG_TO_L, current_date, BUSINESS_TZ_NAME, AVERAGE_PRICE_LABEL
+from menkor_engine import (USG_TO_L, current_date, BUSINESS_TZ_NAME, AVERAGE_PRICE_LABEL, THRESHOLD_LABEL, THRESHOLD_LABEL_FR, THRESHOLD_NOTE, THRESHOLD_ECON_LABEL, THRESHOLD_ECON_LABEL_FR, OWNERSHIP_NOTE, MANAGEMENT_STATUS)
 
 _HERE = Path(__file__).resolve().parent
 _FONT_FILES = {"MenkorSans": "LiberationSans-Regular.ttf", "MenkorSans-Bold": "LiberationSans-Bold.ttf", "MenkorSans-Italic": "LiberationSans-Italic.ttf"}
@@ -106,6 +106,7 @@ def build_report_pdf(res: dict, disp, alerts: list, logo_bytes: bytes | None = N
     sBr = ParagraphStyle("Br", parent=sB, alignment=TA_RIGHT)
     sSm = ParagraphStyle("Sm", fontName=FR, fontSize=7.8, leading=10.2, textColor=SLATE)
     sW = ParagraphStyle("W", parent=sB, fontSize=8.5, leading=11)
+    sBd = ParagraphStyle("Bd", parent=sB, fontName=FB)
     sKL = ParagraphStyle("KL", fontName=FR, fontSize=8, leading=10, textColor=SLATE)
     sKV = ParagraphStyle("KV", fontName=FB, fontSize=13.5, leading=16, textColor=NAVY)
     sWh = ParagraphStyle("Wh", parent=sB, textColor=HexColor("#FFFFFF"), fontName=FB)
@@ -201,9 +202,12 @@ def build_report_pdf(res: dict, disp, alerts: list, logo_bytes: bytes | None = N
             W.append(f"Manual fuel price valid until {fv['date']} (checked {fv['today']}).")
         elif fv["status"] == "invalid":
             W.append(fv["message"])
-    cri = res.get("charter_rate_info") or {}
-    if not is_ref and cri.get("source", "custom") != "custom":
-        W.append("Charter rate is an ESTIMATE (indicative public listing price): not a quotation and not operator net revenue; taxes, fees and positioning may be billed on top.")
+    if not is_ref and pr is not None and pr.get("available"):
+        W.append("Charter revenue is the figure entered by the user ("
+                 + ("already net of commission, no commission deducted" if pr["rate_basis"] == "net" else f"before commission, {pr['commission_pct']:g}% deducted once")
+                 + "); no public or historical price is used. Billed supplements are kept separate from the hourly revenue.")
+    elif not is_ref and pr is not None:
+        W.append("No charter revenue was entered: the report shows costs only — no revenue, operating result or coverage threshold.")
     if pr is not None and pr.get("available"):
         W.append("Estimated operating result excludes financing, depreciation and taxes: it is not a net profit.")
     for x in res["flags"]:
@@ -274,17 +278,52 @@ def build_report_pdf(res: dict, disp, alerts: list, logo_bytes: bytes | None = N
             if not pr.get("available"):
                 story.append(section("3. Charter profitability", P("Not calculated: " + " ".join(pr.get("messages", [])), sB)))
             else:
+                supp_r = pr.get("supplements_retained"); supp_c = pr.get("supplements_cost")
                 R = [["Item", "Amount"],
-                     [f"Charter revenue ({pr['billed_hours']:g} billed h × {M(pr['rate_usd'])})", M(pr["revenue"])],
-                     [f"Commission ({pr['commission_pct']:g}%)", M(-pr["commission"])],
+                     [f"Charter revenue ({pr['billed_hours']:g} billed h × {M(pr['rate_usd'])}, "
+                      + ("rate already net" if pr["rate_basis"] == "net" else "rate before commission") + ")", M(pr["revenue"])],
+                     [("Commission (not applied: rate already net)" if pr["rate_basis"] == "net" else f"Commission ({pr['commission_pct']:g}%)"), M(-pr["commission"])],
                      ["Other commercial fees (not included in the report)", M(-pr["other_fees"])],
-                     [f"Variable costs of ALL flown hours ({pr['flown_hours']:g} h incl. {pr['positioning_hours']:g} h positioning)", M(-pr["variable_cost_all_flown"])],
+                     ["Billed supplements retained by the operator (separate)", M(supp_r) if supp_r is not None else "not entered"],
+                     ["Cost linked to billed supplements (separate)", M(-supp_c) if supp_c is not None else "not entered"],
+                     [f"Variable costs of ALL flown hours ({pr['flown_hours']:g} h incl. {pr['positioning_hours']:g} h positioning, {pr['other_hours']:g} h private/other)", M(-pr["variable_cost_all_flown"])],
                      ["Fixed costs", M(-pr["fixed_cost"])],
                      ["ESTIMATED OPERATING RESULT (before financing, depreciation and tax)", M(pr["operating_result"])]]
                 cov = pr.get("coverage_pct")
-                story.append(section("3. Charter profitability (estimated operating result)", grid(R, [128 * mm, 46 * mm], bold_rows=(6,)),
-                                     Spacer(1, 2 * mm), P(f"Coverage: {fmt_pct(cov)} · {pr['break_even_message']}", sB),
-                                     P("Assumptions: " + pr["break_even_assumptions"], sSm)))
+                th = pr.get("threshold") or {}
+                if th.get("status") in ("ok", "exceeds_year"):
+                    th_txt = [P(f"{th['message']} ({THRESHOLD_LABEL_FR})", sBd), P("Assumptions: " + th["assumptions"], sSm), P(THRESHOLD_NOTE, sSm)]
+                elif th.get("status") == "unattainable":
+                    th_txt = [P(f"{THRESHOLD_LABEL}: {th['message']}", sBd), P("Assumptions: " + th.get("assumptions", ""), sSm), P(THRESHOLD_NOTE, sSm)]
+                else:
+                    th_txt = [P(f"{THRESHOLD_LABEL}: not displayed — " + (th.get("message") or "the user did not confirm the assumptions at generation time."), sBd)]
+                te = pr.get("threshold_economic") or {}
+                if th.get("status") not in ("awaiting_confirmation", "ratio_undefined") and te:
+                    if te.get("status") in ("ok", "exceeds_year"):
+                        th_txt += [Spacer(1, 1.5 * mm), P(f"{te['message']} ({THRESHOLD_ECON_LABEL_FR})", sBd), P("Assumptions: " + te["assumptions"], sSm),
+                                   P(f"Economic result (operating result − ownership costs entered): {M(pr['economic_result'])}. Economic result, not cash flow.", sSm)]
+                    elif te.get("status") == "unattainable":
+                        th_txt += [Spacer(1, 1.5 * mm), P(f"{THRESHOLD_ECON_LABEL}: {te['message']}", sBd), P(OWNERSHIP_NOTE, sSm)]
+                    else:
+                        th_txt += [Spacer(1, 1.5 * mm), P(f"{THRESHOLD_ECON_LABEL}: {te.get('message', '')}", sBd), P(OWNERSHIP_NOTE, sSm)]
+                C2 = [["External charter vs owner's own flying (kept separate)", "Amount"],
+                      ["External charter contribution (net revenue + retained supplements − their cost − variable cost of billed and positioning hours)", M(pr["charter_external_contribution"])],
+                      ["Owner private flying — variable cost of private/other hours", M(-pr["owner_private_variable_cost"])],
+                      ["Fixed costs", M(-pr["fixed_cost"])],
+                      ["Remaining cost to the owner after the charter contribution (negative = surplus)", M(pr["owner_remaining_cost"])]]
+                story.append(section("3. Charter profitability (estimated operating result)", grid(R, [128 * mm, 46 * mm], bold_rows=(8,)),
+                                     Spacer(1, 2 * mm), P(f"Coverage: {fmt_pct(cov)}", sB), Spacer(1, 2 * mm), *th_txt,
+                                     Spacer(1, 2 * mm), grid(C2, [128 * mm, 46 * mm], bold_rows=(4,)),
+                                     P("No internal payment from the owner to the operator is modelled: revenue paid by the owner to the operator for the owner's own flights is not external "
+                                       "charter revenue and does not reduce the owner's consolidated cost.", sSm)))
+        sc = res.get("scope")
+        if sc:
+            scp = [P("Included in the simulation", sBd)]
+            scp += [P("• " + c["label"] + (f" — {M(c['annual_usd'])} per year" if c.get("annual_usd") is not None else ""), sSm) for c in sc["included"]]
+            scp += [P("Not confirmed (unknown is never shown as zero)", sBd)] + [P("• " + t, sSm) for t in sc["not_confirmed"]]
+            scp += [P("Known exclusions", sBd)] + [P("• " + t, sSm) for t in sc["exclusions"]]
+            scp += [P("Limitations", sBd)] + [P("• " + t, sSm) for t in sc["limits"]]
+            story.append(section("4. Costs included & limitations", *scp))
 
     # ── Annex: technical details ─────────────────────────────────────────────────
     story.append(PageBreak())
@@ -344,11 +383,19 @@ def build_report_pdf(res: dict, disp, alerts: list, logo_bytes: bytes | None = N
                   + (f" · expired price confirmed as historical: {'yes' if fv.get('confirmed') else 'no'}" if fv["status"] == "expired" else "")])
     if not is_ref:
         if res.get("rate_usd"):
-            src_txt = ("custom rate entered by the user" if cri.get("source", "custom") == "custom" else
-                       f"ESTIMATE from the Menkor indicative charter price file ({cri['source'].replace('estimate_', '')}) — {cri.get('basis', '')}; "
-                       "a public broker listing, not a quotation, not operator net revenue; taxes, fees and positioning may be extra")
-            A.append(["Charter rate", f"{M(res['rate_usd'])} per billed hour (entered {sc['charter_rate']:g} {sc['charter_rate_ccy']}) — {src_txt}"])
-        A.append(["Commission / other commercial fees", f"{sc['commission_pct']:g}% of revenue / {M(sc['other_commercial_fees'])} per year"])
+            A.append(["Charter revenue per billed hour", f"{M(res['rate_usd'])} (entered {sc['charter_rate']:g} {sc['charter_rate_ccy']}) — entered by the user; no public or historical price is used; "
+                      + ("already net of commission" if sc.get("rate_basis") == "net" else "before commission")])
+        else:
+            A.append(["Charter revenue per billed hour", "not entered — no revenue, result or threshold calculated"])
+        A.append(["Commission / other commercial fees", ("not applied (rate already net)" if sc.get("rate_basis") == "net" else ("not entered" if sc.get("commission_pct") is None else f"{sc['commission_pct']:g}% of revenue"))
+                  + f" / {M(sc['other_commercial_fees'])} per year"])
+        A.append(["Hours assumptions", f"billed {sc['billed_hours']:g} h · positioning {sc['positioning_hours']:g} h · private/other {sc['other_hours']:g} h · "
+                  f"positioning ratio {('%g' % sc['positioning_ratio']) if sc.get('positioning_ratio') is not None else 'from hours entered'} · confirmed by the user: positioning {'yes' if sc.get('positioning_confirmed') else 'no'}, "
+                  f"private hours {'yes' if sc.get('private_hours_confirmed') else 'no'}, other fees {'yes' if sc.get('other_fees_confirmed') else 'no'} · costs-included review: {'yes' if sc.get('limits_reviewed') else 'no'} (not a validation of data completeness)"])
+        mgs = res.get("management") or {}
+        if mgs:
+            A.append(["Management / CAMO / dispatch", " · ".join(f"{v['label']}: {MANAGEMENT_STATUS[v['status']]}" + (f" ({M(v['amount_usd'])} per year)" if v.get('amount_usd') is not None else "") for v in mgs.values())])
+        A.append(["Per-cycle costs", {"none": "none specified", "included": "declared already included in the hourly costs (not added again)", "added": "added separately (cost per cycle ÷ average flight duration, applied per flown hour)"}[sc.get("cycle_status", "none")]])
     A += [["Identification", f"aircraft_id {res['aircraft_id']} · mode {res['mode']} · Config ID {cfg} · DB {res['db_version']} · Engine {res['engine_version']}"],
           ["Generated", f"{gen_txt} ({BUSINESS_TZ_NAME})"]]
     story.append(section("A. Scenario and assumptions", grid(A, [50 * mm, 124 * mm], header=False, right_cols=())))
