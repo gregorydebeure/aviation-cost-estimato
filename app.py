@@ -1146,6 +1146,9 @@ def _results_csv(res,disp):
                ("costs_not_confirmed"," | ".join(_sc["not_confirmed"])),("cost_known_exclusions"," | ".join(_sc["exclusions"])),("cost_limitations"," | ".join(_sc["limits"]))]
     for _k,_v in (res.get("management") or {}).items():
         rows.append((f"management_{_k}",f"{E.MANAGEMENT_STATUS.get(_v['status'],_v['status'])}"+(f" · {_v['amount_usd']:,.0f} USD per year" if _v.get("amount_usd") is not None else "")))
+    if res.get("management"): rows.append(("management_note",E.MANAGEMENT_NOTE))
+    _cy=[c for c in res["components"] if c["key"]=="cycle_cost"]
+    if res["mode"]!="reference": rows.append(("additional_cost_per_landing",(f"added: {_cy[0]['hourly_usd']:,.2f} USD per flown hour (cost per landing ÷ average flight duration)" if _cy else "not enabled: nothing added")))
     for c in res["components"]: rows.append((f"component_{c['category'].lower()}_{c['key']}_annual_usd",c["annual_usd"]))
     return pd.DataFrame(rows,columns=["item","value"]).to_csv(index=False).encode("utf-8-sig")
 
@@ -1389,7 +1392,7 @@ def main():
 
     # ── Cost Master EDITORS (rendered first so every tab uses the same scenario) ─────
     ov_fixed={}; ov_var={}; extra_fixed_usd=0.0; extra_var_usd=0.0
-    mgmt={}; cyc_status="none"; cyc_cost=None; cyc_ccy="USD"; cyc_avg=None
+    mgmt={}; mg_cov=False; cyc_status="none"; cyc_cost=None; cyc_ccy="USD"; cyc_avg=None
     with tab4:
         if not is_pro:
             premium_gate("pro")
@@ -1430,29 +1433,33 @@ def main():
                     with x1: _xf=st.number_input(f"Extra fixed cost ({disp.ccy}/yr)",min_value=0.0,value=0.0,step=1000.0,format="%.0f",key=f"xf_{_k}",disabled=_dis)
                     with x2: _xv=st.number_input(f"Extra variable cost ({disp.ccy}/flown h)",min_value=0.0,value=0.0,step=10.0,format="%.0f",key=f"xv_{_k}",disabled=_dis)
                     extra_fixed_usd=disp.to_usd(_xf); extra_var_usd=disp.to_usd(_xv)
-                with st.expander("🧾 Management, CAMO, dispatch — operating costs (no double counting)",expanded=False):
-                    st.caption("These are operating costs, not ownership costs. For each item say whether it is already included in the base or a package, added separately "
-                               "(enter ONLY the part not already included) or not confirmed. To replace an existing line, edit that line above instead: nothing is added twice.")
-                    _inv={v:k for k,v in E.MANAGEMENT_STATUS.items()}
-                    for _mk,_ml in E.MANAGEMENT_ITEMS.items():
-                        _stt=_inv[st.selectbox(_ml,list(E.MANAGEMENT_STATUS.values()),index=0,key=f"mg_{_mk}_{_k}",disabled=_dis)]
-                        _it=dict(status=_stt)
-                        if _stt=="added":
-                            ma1,ma2=st.columns([2,1])
-                            with ma1: _it["amount"]=st.number_input(f"{_ml} — annual amount added separately",min_value=0.0,value=None,step=1000.0,format="%.0f",key=f"mga_{_mk}_{_k}",placeholder="not entered",disabled=_dis)
-                            with ma2: _it["ccy"]=st.selectbox(f"{_ml} currency",["USD","EUR"],key=f"mgc_{_mk}_{_k}",disabled=_dis)
-                            if _it["amount"] is None: st.warning(f"{_ml}: enter the amount, or choose another status. Until then the simulation is unavailable (no value is invented).")
-                        mgmt[_mk]=_it
-                with st.expander("🔁 Per-landing / per-cycle costs (not in the base)",expanded=False):
-                    st.caption("Applied to flown hours through the average flight duration; if the hourly costs already include them, choose the second option so they are not counted again.")
-                    _cs=st.radio("Per-cycle costs",["None specified","Already included in the hourly costs","Add separately"],key=f"cyc_{_k}",disabled=_dis)
-                    cyc_status={"None specified":"none","Already included in the hourly costs":"included","Add separately":"added"}[_cs]
-                    if cyc_status=="added":
+                st.markdown("**Management fees**")
+                st.caption(E.MANAGEMENT_NOTE)
+                mf1,mf2=st.columns([2,1])
+                with mf1: _mfee=st.number_input("Annual management fee",min_value=0.0,value=None,step=1000.0,format="%.0f",key=f"mgfee_{_k}",placeholder="optional",disabled=_dis)
+                with mf2: _mfc=st.selectbox("Management fee currency",["USD","EUR"],key=f"mgfeec_{_k}",disabled=_dis)
+                mgmt["management"]=dict(amount=_mfee,ccy=_mfc)
+                if _mfee is None: st.caption(E.MANAGEMENT_EXCLUDED)
+                with st.expander("⚙ Advanced adjustments",expanded=False):
+                    st.caption("Optional. Leave empty if not needed: nothing is added.")
+                    if _mfee is not None:
+                        mg_cov=st.checkbox("My management fee already covers CAMO and dispatch",key=f"mgcov_{_k}",disabled=_dis)
+                    for _mk,_ml in (("camo","CAMO"),("dispatch","Dispatch / flight support")):
+                        ma1,ma2=st.columns([2,1])
+                        _cov=bool(mg_cov and _mfee is not None)
+                        with ma1: _a=st.number_input(f"{_ml} — annual cost",min_value=0.0,value=None,step=1000.0,format="%.0f",key=f"mga_{_mk}_{_k}",placeholder="optional",disabled=(_dis or _cov))
+                        with ma2: _c=st.selectbox(f"{_ml} currency",["USD","EUR"],key=f"mgc_{_mk}_{_k}",disabled=(_dis or _cov))
+                        mgmt[_mk]=dict(amount=_a,ccy=_c)
+                    st.markdown("---")
+                    _cyc_on=st.checkbox("Add additional costs per landing",key=f"cyc_{_k}",disabled=_dis)
+                    st.caption("Enter only costs not already covered by the reference costs or your programmes.")
+                    if _cyc_on:
+                        cyc_status="added"
                         cy1,cy2=st.columns([2,1])
-                        with cy1: cyc_cost=st.number_input("Cost per landing / cycle",min_value=0.0,value=None,step=50.0,format="%.0f",key=f"cycc_{_k}",placeholder="not entered",disabled=_dis)
-                        with cy2: cyc_ccy=st.selectbox("Cycle cost currency",["USD","EUR"],key=f"cycccy_{_k}",disabled=_dis)
-                        cyc_avg=st.number_input("Average flight duration (hours per cycle)",min_value=0.0,value=None,step=0.1,format="%.2f",key=f"cyca_{_k}",placeholder="not entered",disabled=_dis)
-                        if cyc_cost is None or not cyc_avg: st.warning("Enter the cost per cycle and the average flight duration: until then the simulation is unavailable.")
+                        with cy1: cyc_cost=st.number_input("Additional cost per landing",min_value=0.0,value=None,step=50.0,format="%.0f",key=f"cycc_{_k}",placeholder="not entered",disabled=_dis)
+                        with cy2: cyc_ccy=st.selectbox("Currency per landing",["USD","EUR"],key=f"cycccy_{_k}",disabled=_dis)
+                        cyc_avg=st.number_input("Average flight duration (hours)",min_value=0.0,value=None,step=0.1,format="%.2f",key=f"cyca_{_k}",placeholder="not entered",disabled=_dis)
+                        if cyc_cost is None or not cyc_avg: st.warning("Enter the additional cost per landing and the average flight duration, or untick the option.")
                 st.button("↺ Reset all edits",key="ov_reset",on_click=_bump_overrides,disabled=_dis)
 
     # ── The single scenario & the single result used by every tab and the PDF ─────
@@ -1461,7 +1468,7 @@ def main():
                    supplements_retained_usd=supp_rev,supplements_cost_usd=supp_cost,positioning_ratio=pos_ratio,positioning_confirmed=bool(pos_ok),
                    private_hours_confirmed=bool(priv_ok),other_fees_confirmed=bool(fees_ok),limits_reviewed=bool(limits_ok),
                    depreciation_annual=_dep,depreciation_ccy=_depc,interest_annual=_int,interest_ccy=_intc,
-                   management=mgmt,cycle_status=cyc_status,cycle_cost=cyc_cost,cycle_cost_ccy=cyc_ccy,avg_flight_hours=cyc_avg,
+                   management=mgmt,management_covers_camo_dispatch=bool(mg_cov),cycle_status=cyc_status,cycle_cost=cyc_cost,cycle_cost_ccy=cyc_ccy,avg_flight_hours=cyc_avg,
                    other_commercial_fees=float(disp.to_usd(fees_in)),fuel=fuel,fixed_overrides=ov_fixed,var_overrides_h=ov_var,
                    extra_fixed=float(extra_fixed_usd),extra_var_h=float(extra_var_usd),fx=fx)
     res=E.compute(row,scn)

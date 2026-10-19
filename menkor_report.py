@@ -210,6 +210,20 @@ def build_report_pdf(res: dict, disp, alerts: list, logo_bytes: bytes | None = N
         W.append("No charter revenue was entered: the report shows costs only — no revenue, operating result or coverage threshold.")
     if pr is not None and pr.get("available"):
         W.append("Estimated operating result excludes financing, depreciation and taxes: it is not a net profit.")
+    if not is_ref:
+        _mg = res.get("management") or {}
+        _fee = (_mg.get("management") or {})
+        if _fee.get("status") == "added":
+            W.append(f"Management fee entered: {M(_fee['amount_usd'])} per year, added once to the fixed costs. Management fees are not included in the reference costs.")
+        else:
+            W.append("Management fees excluded. Management fees are not included in the reference costs.")
+        _act = [f"{v['label']} {M(v['amount_usd'])} per year" for k, v in _mg.items() if k != "management" and v.get("status") == "added"]
+        _cc = [c for c in res["components"] if c["key"] == "cycle_cost"]
+        if _cc:
+            _c = _cc[0]
+            _act.append(f"additional cost per landing ({M(_c['hourly_usd'])} per flown hour)")
+        if _act:
+            W.append("Advanced adjustments active: " + "; ".join(_act) + ".")
     for x in res["flags"]:
         if x["level"] in ("warn", "error") and x["code"] not in ("web_source",) and not x["code"].startswith("fuel_"):
             W.append(x["text"])
@@ -394,8 +408,9 @@ def build_report_pdf(res: dict, disp, alerts: list, logo_bytes: bytes | None = N
                   f"private hours {'yes' if sc.get('private_hours_confirmed') else 'no'}, other fees {'yes' if sc.get('other_fees_confirmed') else 'no'} · costs-included review: {'yes' if sc.get('limits_reviewed') else 'no'} (not a validation of data completeness)"])
         mgs = res.get("management") or {}
         if mgs:
-            A.append(["Management / CAMO / dispatch", " · ".join(f"{v['label']}: {MANAGEMENT_STATUS[v['status']]}" + (f" ({M(v['amount_usd'])} per year)" if v.get('amount_usd') is not None else "") for v in mgs.values())])
-        A.append(["Per-cycle costs", {"none": "none specified", "included": "declared already included in the hourly costs (not added again)", "added": "added separately (cost per cycle ÷ average flight duration, applied per flown hour)"}[sc.get("cycle_status", "none")]])
+            A.append(["Management fee / CAMO / dispatch", " · ".join(f"{v['label']}: {MANAGEMENT_STATUS[v['status']]}" + (f" ({M(v['amount_usd'])} per year)" if v.get('amount_usd') is not None else "") for v in mgs.values())
+                      + " · management fees are not included in the reference costs · not entered = nothing added (not a confirmed zero)"])
+        A.append(["Additional cost per landing", ("added: cost per landing ÷ average flight duration, applied per flown hour, once" if sc.get("cycle_status") == "added" else "not enabled: nothing added")])
     A += [["Identification", f"aircraft_id {res['aircraft_id']} · mode {res['mode']} · Config ID {cfg} · DB {res['db_version']} · Engine {res['engine_version']}"],
           ["Generated", f"{gen_txt} ({BUSINESS_TZ_NAME})"]]
     story.append(section("A. Scenario and assumptions", grid(A, [50 * mm, 124 * mm], header=False, right_cols=())))

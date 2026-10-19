@@ -541,9 +541,10 @@ class Scenario:
     depreciation_ccy: str = "USD"
     interest_annual: float | None = None
     interest_ccy: str = "USD"
-    # management / CAMO / dispatch (operating costs): key -> dict(status='included'|'added'|'unconfirmed', amount, ccy). Only 'added' adds the NOT-included part.
+    # management fee (not in the reference costs) + optional CAMO / dispatch (advanced): key -> dict(amount, ccy). An empty amount adds nothing (and is never a confirmed zero).
     management: dict = field(default_factory=dict)
-    # per-landing / per-cycle costs not in the base: 'none' | 'included' (already in the hourly costs: nothing added) | 'added' (cost per cycle ÷ average flight hours, applied per flown hour)
+    management_covers_camo_dispatch: bool = False    # the management fee entered already covers CAMO and dispatch: their own amounts are then ignored (no double count)
+    # optional additional cost per landing: 'none' (default, nothing added) | 'added' (cost per landing ÷ average flight hours, applied per flown hour)
     cycle_status: str = "none"
     cycle_cost: float | None = None
     cycle_cost_ccy: str = "USD"
@@ -882,17 +883,23 @@ def _compute_core(row, scn: Scenario, today: date | None = None) -> dict:
         if new is not None:
             fixed_delta += new - src
         fx_rows.append((k, label, src, src if new is None else new, new is not None))
-    mg_rows, mg_added = [], 0.0
+    mg_rows, mg_added, mg_state = [], 0.0, {}
+    _mg = scn.management or {}
+    _fee = (_mg.get("management") or {}).get("amount")
     for _k, _lab in MANAGEMENT_ITEMS.items():
-        _it = (scn.management or {}).get(_k) or {}
-        if _it.get("status") == "added":
-            _u, _err = amount_to_usd(_it.get("amount"), _it.get("ccy", "USD"), scn.fx)
-            if _err:
-                _flag(fl, "error", "management_amount", f"{_lab}: {_err}")
-                return res
-            mg_rows.append((_k, _lab, _u)); mg_added += _u
-    res["management"] = {k: dict(status=((scn.management or {}).get(k) or {}).get("status", "unconfirmed"), label=l,
-                                 amount_usd=next((u for kk, ll, u in mg_rows if kk == k), None)) for k, l in MANAGEMENT_ITEMS.items()}
+        _it = _mg.get(_k) or {}
+        if _k != "management" and scn.management_covers_camo_dispatch and _fee is not None:
+            mg_state[_k] = ("covered", None)                       # covered by the management fee entered: never added a second time
+            continue
+        if _it.get("amount") is None:
+            mg_state[_k] = ("none", None)                          # nothing entered: nothing added, and NOT a confirmed zero
+            continue
+        _u, _err = amount_to_usd(_it.get("amount"), _it.get("ccy", "USD"), scn.fx)
+        if _err:
+            _flag(fl, "error", "management_amount", f"{_lab}: {_err}")
+            return res
+        mg_rows.append((_k, _lab, _u)); mg_added += _u; mg_state[_k] = ("added", _u)
+    res["management"] = {k: dict(status=mg_state[k][0], label=l, amount_usd=mg_state[k][1]) for k, l in MANAGEMENT_ITEMS.items()}
     fixed_total = fixed_src + fixed_delta + (scn.extra_fixed or 0.0) + mg_added
 
     budget = fixed_total + var_annual
@@ -932,7 +939,7 @@ def _compute_core(row, scn: Scenario, today: date | None = None) -> dict:
                               edited=ed, source_value=s))
     sum_fx = sum(c["annual_usd"] for c in comps)
     for _k, _lab, _u in mg_rows:
-        comps.append(dict(category="Fixed", key="mgmt_" + _k, label=f"{_lab} (added separately, not-included part only)", annual_usd=_u, hourly_usd=None, edited=True, source_value=None))
+        comps.append(dict(category="Fixed", key="mgmt_" + _k, label=f"{_lab} (entered by the user, added once to the fixed costs)", annual_usd=_u, hourly_usd=None, edited=True, source_value=None))
         sum_fx += _u
     if scn.extra_fixed:
         comps.append(dict(category="Fixed", key="extra_fixed", label="User-added fixed cost (not in report)",
@@ -1123,7 +1130,9 @@ THRESHOLD_NOTE = ("Indicative threshold based on the costs and assumptions enter
 OWNERSHIP_NOTE = ("Economic ownership costs: economic depreciation (not tax amortisation) and loan INTEREST only (not capital repayment, not a full loan instalment). "
                   "Taxes are excluded. This is an economic result, not cash flow.")
 MANAGEMENT_ITEMS = {"management": "Management fee", "camo": "CAMO", "dispatch": "Dispatch / flight support"}
-MANAGEMENT_STATUS = {"unconfirmed": "Inclusion not confirmed", "included": "Already included in the base or a package", "added": "Added separately (not-included part only)"}
+MANAGEMENT_STATUS = {"none": "Not entered", "added": "Added once to the fixed costs", "covered": "Covered by the management fee entered (not added again)"}
+MANAGEMENT_NOTE = "Management fees are not included in the reference costs."
+MANAGEMENT_EXCLUDED = "Management fees excluded."
 
 
 def amount_to_usd(amount, ccy, fx):
@@ -1288,24 +1297,15 @@ def costs_scope(row, res: dict, scn: Scenario) -> dict:
                 not_confirmed.append(f"{label}: not available in this source — not confirmed (it may be included in another line; not treated as zero).")
     else:
         not_confirmed.append("Historical sheet: component detail is not available — only totals; the content of each total is not confirmed and no breakdown is invented.")
-    # management / CAMO / dispatch (operating costs, not ownership costs)
-    mg = res.get("management") or {}
-    for k, lab in MANAGEMENT_ITEMS.items():
-        st_ = (mg.get(k) or {}).get("status", "unconfirmed")
-        if st_ == "included":
-            included.append(dict(label=f"{lab}: declared by the user as already included in the base or a package (not added again)", category="Declared", annual_usd=None, hourly_usd=None))
-        elif st_ == "unconfirmed":
-            not_confirmed.append(f"{lab}: inclusion not confirmed — it may be included in the base or a package; nothing is added and it is not treated as zero.")
-    if scn.cycle_status == "included":
-        included.append(dict(label="Per-landing / per-cycle costs: declared by the user as already included in the hourly costs (not added again)", category="Declared", annual_usd=None, hourly_usd=None))
-    elif scn.cycle_status == "none":
-        not_confirmed.append("Per-landing / per-cycle costs: not specified — they may already be inside the hourly costs; nothing is added.")
+    # management fees are not in the reference costs; CAMO / dispatch / per-landing costs only appear when the user enters them (no repetitive warning otherwise)
+    if ((res.get("management") or {}).get("management") or {}).get("status") != "added":
+        exclusions.append(MANAGEMENT_EXCLUDED + " " + MANAGEMENT_NOTE)
     not_confirmed += [
         "Maintenance events outside the hourly and annual maintenance lines (calendar and major inspections): whether they are covered is not confirmed — it depends on the aircraft's maintenance status.",
         "Landing gear overhaul and engine / APU overhaul or restoration events: coverage not confirmed.",
         "Maintenance and engine programme coverage, minimums, caps and exclusions: not confirmed.",
         "Unbudgeted or exceptional expenses, and any entry fee / buy-in of a programme: not included unless entered by the user.",
-        "Insurance, hangar, crew and management arrangements of a specific aircraft may differ from the averages used here.",
+        "Insurance, hangar and crew arrangements of a specific aircraft may differ from the averages used here.",
     ]
     own = pr.get("ownership") or {}
     if pr.get("available"):
