@@ -1254,6 +1254,11 @@ def _results_csv(res,disp):
     for c in res["components"]: rows.append((f"component_{c['category'].lower()}_{c['key']}_annual_usd",c["annual_usd"]))
     return pd.DataFrame(rows,columns=["item","value"]).to_csv(index=False).encode("utf-8-sig")
 
+def _say(ok,success_msg,error_msg):
+    """Show a success or an error. A statement, never a bare conditional expression (Streamlit would print its value)."""
+    if ok: st.success(success_msg)
+    else: st.error(error_msg)
+
 def _broker_for_pdf():
     """Broker name / logo of the LOGGED-IN owner only (Pro). Loaded from storage; cached per owner in the session."""
     em=st.session_state.get("auth_email")
@@ -1327,21 +1332,21 @@ def _render_my_scenarios(df,aid,scn,res,disp,is_pro):
                     if st.button("Recalculate with the current base",key=f"rc_{sid}"): st.session_state[f"_rc_{sid}"]=True
                 with a2:
                     if st.button("Duplicate",key=f"dp_{sid}"):
-                        ok,out=STORE.duplicate_scenario(_sb_rest,owner,sid); (st.success("Duplicated.") if ok else st.error(out))
+                        ok,out=STORE.duplicate_scenario(_sb_rest,owner,sid); _say(ok,"Duplicated.",out)
                 with a3: rn=st.text_input("Rename",value=it["name"],key=f"rn_{sid}",label_visibility="collapsed",max_chars=STORE.MAX_NAME)
                 with a4:
                     if st.button("Rename",key=f"rnb_{sid}"):
-                        (st.success("Renamed.") if STORE.rename_scenario(_sb_rest,owner,sid,rn) else st.error("Could not rename."))
+                        _say(STORE.rename_scenario(_sb_rest,owner,sid,rn),"Renamed.","Could not rename.")
                 if is_pro and folders:
                     mv=st.selectbox("Move to folder",["No folder"]+[f["name"] for f in folders],key=f"mv_{sid}")
                     if st.button("Move",key=f"mvb_{sid}"):
                         tgt=next((f["id"] for f in folders if f["name"]==mv),None)
-                        (st.success("Moved.") if STORE.move_scenario(_sb_rest,owner,sid,tgt) else st.error("Could not move."))
+                        _say(STORE.move_scenario(_sb_rest,owner,sid,tgt),"Moved.","Could not move.")
                 cf=st.checkbox("I confirm I want to delete this scenario (it can be restored from “Recently deleted”)",key=f"dc_{sid}")
                 if st.button("Delete",key=f"dl_{sid}"):
                     if not cf: st.warning("Tick the confirmation first.")
                     else:
-                        (st.success("Deleted. You can restore it below.") if STORE.delete_scenario(_sb_rest,owner,sid,True) else st.error("Could not delete."))
+                        _say(STORE.delete_scenario(_sb_rest,owner,sid,True),"Deleted. You can restore it below.","Could not delete.")
                 if st.session_state.get(f"_rc_{sid}"):
                     sub=df[df["aircraft_id"]==it["aircraft_id"]]
                     if not len(sub): st.error("This aircraft is no longer in the database.")
@@ -1363,7 +1368,7 @@ def _render_my_scenarios(df,aid,scn,res,disp,is_pro):
                     g1.markdown(f"{g['name']} — {g['aircraft_id']}")
                     with g2:
                         if st.button("Restore",key=f"rs_{g['id']}"):
-                            (st.success("Restored.") if STORE.restore_scenario(_sb_rest,owner,g["id"]) else st.error("Could not restore."))
+                            _say(STORE.restore_scenario(_sb_rest,owner,g["id"]),"Restored.","Could not restore.")
     elif sec=="Compare aircraft":
         _render_compare(df)
     elif sec=="Client folders":
@@ -1371,18 +1376,18 @@ def _render_my_scenarios(df,aid,scn,res,disp,is_pro):
         st.caption("Folders are private to your account. Deleting a folder keeps its scenarios (they become “No folder”).")
         nf=st.text_input("New folder name",key="fd_new",max_chars=STORE.MAX_NAME)
         if st.button("Create folder",key="fd_create"):
-            ok,out=STORE.create_folder(_sb_rest,owner,nf); (st.success("Folder created.") if ok else st.error(out))
+            ok,out=STORE.create_folder(_sb_rest,owner,nf); _say(ok,"Folder created.",out)
         for f in folders:
             n=len(STORE.list_scenarios(_sb_rest,owner,folder_id=f["id"]))
             f1,f2,f3=st.columns([3,2,2])
             with f1: rn=st.text_input(f"{f['name']} ({n} scenario{'s' if n!=1 else ''})",value=f["name"],key=f"fr_{f['id']}")
             with f2:
-                if st.button("Rename folder",key=f"frb_{f['id']}"): (st.success("Renamed.") if STORE.rename_folder(_sb_rest,owner,f["id"],rn) else st.error("Could not rename."))
+                if st.button("Rename folder",key=f"frb_{f['id']}"): _say(STORE.rename_folder(_sb_rest,owner,f["id"],rn),"Renamed.","Could not rename.")
             with f3:
                 cf=st.checkbox("Confirm deletion",key=f"fdc_{f['id']}")
                 if st.button("Delete folder",key=f"fdb_{f['id']}"):
                     if not cf: st.warning("Tick the confirmation first.")
-                    else: (st.success("Folder deleted; its scenarios are kept.") if STORE.delete_folder(_sb_rest,owner,f["id"],True) else st.error("Could not delete."))
+                    else: _say(STORE.delete_folder(_sb_rest,owner,f["id"],True),"Folder deleted; its scenarios are kept.","Could not delete.")
         if not folders: st.caption("No folder yet.")
     else:
         st.markdown('<div class="section-header">Report branding</div>',unsafe_allow_html=True)
@@ -1731,6 +1736,7 @@ def main():
     # ── Cost Master EDITORS (rendered first so every tab uses the same scenario) ─────
     ov_fixed={}; ov_var={}; extra_fixed_usd=0.0; extra_var_usd=0.0
     mgmt={}; mg_cov=False; cyc_status="none"; cyc_cost=None; cyc_ccy="USD"; cyc_avg=None
+    crew_add={}; omp_usd=None
     with tab4:
         if not is_pro:
             premium_gate("pro")
@@ -1749,6 +1755,7 @@ def main():
                 st.caption("Edit a value to REPLACE that report component. The total is rebuilt as report total + your change, so nothing is counted twice. "
                            "Fuel is edited in the sidebar (burn × price).")
                 with st.expander("🔒 Fixed costs — annual (the report total already includes all five lines)",expanded=True):
+                    st.caption(E.CREW_BASIS_NOTE)
                     cols=st.columns(3)
                     for i,(k,(f,_l)) in enumerate(E.FIXED_COMPONENTS.items()):
                         label=E.fixed_label(row,k); src=E.num(row,f)
@@ -1757,6 +1764,14 @@ def main():
                             else:
                                 v=st.number_input(f"{label} ({disp.ccy}/yr)",min_value=0.0,value=float(disp.conv(src)),step=1000.0,format="%.0f",key=f"ovf_{k}_{_k}",disabled=_dis)
                                 if abs(disp.to_usd(v)-src)>0.5: ov_fixed[k]=disp.to_usd(v)
+                with st.expander("👥 Additional crew — not in the report (annual)",expanded=False):
+                    st.caption(E.CREW_BASIS_NOTE+" Default 0: nothing is added until you enter a number of people and an annual salary (employer cost) per person.")
+                    for _ck,_cl in E.CREW_ITEMS.items():
+                        cc1,cc2,cc3=st.columns([1,2,1])
+                        with cc1: _cn=st.number_input(f"{_cl} — number",min_value=0,max_value=20,value=0,step=1,key=f"crw_n_{_ck}_{_k}",disabled=_dis)
+                        with cc2: _cs=st.number_input(f"{_cl} — annual salary per person",min_value=0.0,value=0.0,step=1000.0,format="%.0f",key=f"crw_s_{_ck}_{_k}",disabled=_dis)
+                        with cc3: _cc=st.selectbox(f"{_cl} currency",["USD","EUR"],key=f"crw_c_{_ck}_{_k}",disabled=_dis)
+                        crew_add[_ck]=dict(count=int(_cn),salary=float(_cs),ccy=_cc)
                 with st.expander("⚡ Variable costs — per flown hour (the report total already includes fuel)",expanded=True):
                     cols=st.columns(3)
                     for i,(k,(hf,af,label)) in enumerate(E.var_components_for(row).items()):
@@ -1766,6 +1781,10 @@ def main():
                             else:
                                 v=st.number_input(f"{label} ({disp.ccy}/h)",min_value=0.0,value=float(disp.conv(src)),step=10.0,format="%.0f",key=f"ovv_{k}_{_k}",disabled=_dis)
                                 if abs(disp.to_usd(v)-src)>0.005: ov_var[k]=disp.to_usd(v)
+                    _om=st.number_input(f"Other maintenance programme — not in the report ({disp.ccy}/h)",min_value=0.0,value=None,step=10.0,format="%.0f",
+                                        key=f"omp_{_k}",placeholder="optional",disabled=_dis,
+                                        help="Any additional maintenance programme (airframe, engine, APU, components...) charged per flown hour and not already in the report. Enter it once only.")
+                    if _om: omp_usd=disp.to_usd(_om)
                 with st.expander("➕ Costs not in the report (user-added)",expanded=False):
                     x1,x2=st.columns(2)
                     with x1: _xf=st.number_input(f"Extra fixed cost ({disp.ccy}/yr)",min_value=0.0,value=0.0,step=1000.0,format="%.0f",key=f"xf_{_k}",disabled=_dis)
@@ -1782,9 +1801,9 @@ def main():
                     st.caption("Optional. Leave empty if not needed: nothing is added.")
                     if _mfee is not None:
                         mg_cov=st.checkbox("My management fee already covers CAMO and dispatch",key=f"mgcov_{_k}",disabled=_dis)
-                    for _mk,_ml in (("camo","CAMO"),("dispatch","Dispatch / flight support")):
+                    for _mk,_ml in (("aoc","AOC management fee"),("camo","CAMO"),("dispatch","Dispatch / flight support"),("gov_taxes","Government taxes and charges")):
                         ma1,ma2=st.columns([2,1])
-                        _cov=bool(mg_cov and _mfee is not None)
+                        _cov=bool(mg_cov and _mfee is not None and _mk in ("camo","dispatch"))
                         with ma1: _a=st.number_input(f"{_ml} — annual cost",min_value=0.0,value=None,step=1000.0,format="%.0f",key=f"mga_{_mk}_{_k}",placeholder="optional",disabled=(_dis or _cov))
                         with ma2: _c=st.selectbox(f"{_ml} currency",["USD","EUR"],key=f"mgc_{_mk}_{_k}",disabled=(_dis or _cov))
                         mgmt[_mk]=dict(amount=_a,ccy=_c)
@@ -1798,6 +1817,8 @@ def main():
                         with cy2: cyc_ccy=st.selectbox("Currency per landing",["USD","EUR"],key=f"cycccy_{_k}",disabled=_dis)
                         cyc_avg=st.number_input("Average flight duration (hours)",min_value=0.0,value=None,step=0.1,format="%.2f",key=f"cyca_{_k}",placeholder="not entered",disabled=_dis)
                         if cyc_cost is None or not cyc_avg: st.warning("Enter the additional cost per landing and the average flight duration, or untick the option.")
+                st.caption("Depreciation and loan interest are entered in the sidebar (Ownership costs); they only enter the economic result. "
+                           + ("Entered: " + ", ".join(x for x,y in (("depreciation",_dep),("loan interest",_int)) if y is not None) if (_dep is not None or _int is not None) else "Not entered yet."))
                 st.button("↺ Reset all edits",key="ov_reset",on_click=_bump_overrides,disabled=_dis)
 
     # ── One recap + one button replace the four confirmations; any change of a concerned assumption makes it obsolete ─────
@@ -1809,14 +1830,14 @@ def main():
             _rate_txt=(f"{rate_ccy} {rate_in:,.0f} per billed hour — {_gross_txt}" if rate_in>0 else "not entered")
             _comm_txt=("not applicable (rate already net)" if rate_basis=="net" else (f"{commission_pct:g} % of gross revenue, deducted once" if commission_pct is not None else "not entered"))
             _pos_txt=(f"{pos_ratio:g} h per billed hour" if pos_ratio is not None else (f"{float(posit):g} h per year" if _pm!="Ratio per billed hour" else "not entered"))
-            _scope_txt=("Reference costs of the selected model"+(" with your adjustments" if (ov_fixed or ov_var or extra_fixed_usd or extra_var_usd or any((v or {}).get("amount") for v in mgmt.values()) or cyc_status=="added") else "")
+            _scope_txt=("Reference costs of the selected model"+(" with your adjustments" if (ov_fixed or ov_var or extra_fixed_usd or extra_var_usd or any((v or {}).get("amount") for v in mgmt.values()) or cyc_status=="added" or omp_usd or any(((v or {}).get("count") or 0)*((v or {}).get("salary") or 0) for v in crew_add.values())) else "")
                         +". Not a validation that the data is complete.")
             _recap=[("Charter rate and basis",_rate_txt),("Commission",_comm_txt),("Positioning",_pos_txt),
                     ("Private / owner / other hours",f"{float(other):g} h per year"),("Other commercial fees",f"{disp.money(disp.to_usd(fees_in))} per year"),("Cost scope",_scope_txt)]
             for _l,_v in _recap: st.markdown(f"- **{_l}:** {_v}")
             _complete=bool(rate_in>0 and rate_basis and (rate_basis=="net" or commission_pct is not None) and not (_pm=="Ratio per billed hour" and pos_ratio is None) and billed>0)
             _sig=hashlib.md5(repr((aid,mode,rate_in,rate_ccy,rate_basis,commission_pct,billed,posit,pos_ratio,other,fees_in,supp_rev,supp_cost,
-                                   sorted(ov_fixed.items()),sorted(ov_var.items()),extra_fixed_usd,extra_var_usd,repr(mgmt),mg_cov,cyc_status,cyc_cost,cyc_ccy,cyc_avg,
+                                   sorted(ov_fixed.items()),sorted(ov_var.items()),extra_fixed_usd,extra_var_usd,repr(mgmt),repr(crew_add),omp_usd,mg_cov,cyc_status,cyc_cost,cyc_ccy,cyc_avg,
                                    repr(fuel),_dep,_depc,_int,_intc,disp.ccy)).encode()).hexdigest()
             if st.button(CONFIRM_LABEL,key="conf_btn",disabled=not _complete,width="stretch"): st.session_state["_conf_sig"]=_sig
             confirmed=(st.session_state.get("_conf_sig")==_sig) and _complete
@@ -1830,7 +1851,7 @@ def main():
                    supplements_retained_usd=supp_rev,supplements_cost_usd=supp_cost,positioning_ratio=pos_ratio,positioning_confirmed=confirmed,
                    private_hours_confirmed=confirmed,other_fees_confirmed=confirmed,limits_reviewed=confirmed,
                    depreciation_annual=_dep,depreciation_ccy=_depc,interest_annual=_int,interest_ccy=_intc,
-                   management=mgmt,management_covers_camo_dispatch=bool(mg_cov),cycle_status=cyc_status,cycle_cost=cyc_cost,cycle_cost_ccy=cyc_ccy,avg_flight_hours=cyc_avg,
+                   management=mgmt,management_covers_camo_dispatch=bool(mg_cov),cycle_status=cyc_status,cycle_cost=cyc_cost,cycle_cost_ccy=cyc_ccy,avg_flight_hours=cyc_avg,additional_crew=crew_add,other_maint_program_h=omp_usd,
                    other_commercial_fees=float(disp.to_usd(fees_in)),fuel=fuel,fixed_overrides=ov_fixed,var_overrides_h=ov_var,
                    extra_fixed=float(extra_fixed_usd),extra_var_h=float(extra_var_usd),fx=fx)
     res=E.compute(row,scn)
@@ -1928,7 +1949,9 @@ def main():
                 else: st.info("Cost per hour is not applicable: annual flown hours are zero.")
             _mb=res.get("menkor_base") or {}
             if mode=="reference":
-                st.info("Report reference — original published values. Cost edits and the Menkor cost base apply to Custom simulation only.")
+                st.info("Report reference — original published values. Cost edits apply to Custom simulation only.")
+            elif _mb.get("applied") and not st.session_state.get("auth_is_admin"):
+                st.caption(E.COST_EVOLUTION_NOTE)
             elif _mb.get("applied"):
                 with st.expander("📋 Menkor cost base — original published values vs base values (read-only)",expanded=False):
                     st.caption(_mb["text"]+" Your edits replace these values.")
@@ -1941,7 +1964,7 @@ def main():
                     if _mb.get("delta_total") is not None:
                         st.caption(f"Total on the published basis: {D(_mb['published_budget_original'])} original budget {'+' if _mb['delta_total']>=0 else '−'} {D(abs(_mb['delta_total']))} = {D(_mb['published_budget_adjusted'])} (Menkor cost base).")
             else:
-                st.caption("Menkor cost base: no adjustment for this record (original published values).")
+                st.caption(E.COST_EVOLUTION_NOTE)
             if st.session_state.get("auth_is_admin"):      # internal traceability only: never shown to clients
                 with st.expander("🔎 Data provenance — extracted / calculated / converted / missing"):
                     if _prov is None: _prov=get_prov()

@@ -85,6 +85,8 @@ def user_entered_fields(scn: E.Scenario) -> list[str]:
     if scn.var_overrides_h: out.append("variable_cost_edits")
     if any((v or {}).get("amount") for v in (scn.management or {}).values()): out.append("management")
     if scn.cycle_status != "none": out.append("cost_per_landing")
+    if any(((v or {}).get("count") or 0) * ((v or {}).get("salary") or 0) > 0 for v in (scn.additional_crew or {}).values()): out.append("crew_additional")
+    if scn.other_maint_program_h: out.append("other_maintenance_programme")
     if scn.fx.usd_to_eur: out.append("exchange_rate")
     return sorted(set(out))
 

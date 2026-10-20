@@ -43,3 +43,10 @@ Nouveau module `menkor_store.py`, onglet « 🗂 My scenarios » (Essentiel : sc
 - Carburant : la méthode de prix (mon prix moyen / prix du rapport / benchmark régional) se choisit directement dans le bloc « Fuel ». Le benchmark (région + prix modifiable, avertissements conservés) donne un budget et un PDF sans saisir de prix. Par défaut, aucun prix n'est supposé.
 - « Entered by you » ne liste plus que les hypothèses réellement saisies (plus les valeurs par défaut).
 - Tests : 286 OK.
+
+## v20.2
+- Correction : « Delete » affichait un objet interne (Streamlit « magic » sur une expression conditionnelle). Helper `_say()` partout + test AST `tests/magic_scan.py` qui interdit toute expression nue dans `app.py`.
+- Cost Master : note « base équipage = 2 pilotes » ; équipage additionnel (mécanicien navigant, personnel de cabine : nombre × salaire annuel, 0 par défaut = rien ajouté) ; « Other maintenance programme » (par heure, vide = non saisi) ; « AOC management fee » à côté de CAMO ; taxes gouvernementales. Amortissement et prêt restent dans la barre latérale (Ownership), rappelés dans Cost Master.
+- PDF / écrans clients : retrait des mentions « +15 % », « Menkor cost base », « Economic reference date not documented », « currency assumed » et des 5 lignes d'annexe demandées. Nouvelle note : budget dépendant de chaque avion (MSN, programme de maintenance, événements) ; coûts évoluant avec l'inflation, révision périodique, carburant = moyenne de benchmarks régionaux mondiaux. Le tableau +15 % reste visible pour l'admin seulement.
+- Moteur 2.3 (les anciens scénarios sauvegardés sont signalés comme calculés avec une version antérieure). Le « management fee » ne masque plus AOC ni taxes (seulement CAMO/dispatch).
+- Tests : 308 OK (enregistreur, pas un navigateur réel).

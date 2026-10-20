@@ -13,7 +13,7 @@ from io import BytesIO
 from pathlib import Path
 from xml.sax.saxutils import escape
 
-from menkor_engine import (USG_TO_L, current_date, BUSINESS_TZ_NAME, AVERAGE_PRICE_LABEL, THRESHOLD_LABEL, THRESHOLD_LABEL_FR, THRESHOLD_NOTE, THRESHOLD_ECON_LABEL, THRESHOLD_ECON_LABEL_FR, OWNERSHIP_NOTE, MANAGEMENT_STATUS)
+from menkor_engine import (USG_TO_L, current_date, BUSINESS_TZ_NAME, AVERAGE_PRICE_LABEL, THRESHOLD_LABEL, THRESHOLD_LABEL_FR, THRESHOLD_NOTE, COST_EVOLUTION_NOTE, CREW_BASIS_NOTE, THRESHOLD_ECON_LABEL, THRESHOLD_ECON_LABEL_FR, OWNERSHIP_NOTE, MANAGEMENT_STATUS)
 
 _HERE = Path(__file__).resolve().parent
 _FONT_FILES = {"MenkorSans": "LiberationSans-Regular.ttf", "MenkorSans-Bold": "LiberationSans-Bold.ttf", "MenkorSans-Italic": "LiberationSans-Italic.ttf"}
@@ -186,17 +186,9 @@ def build_report_pdf(res: dict, disp, alerts: list, logo_bytes: bytes | None = N
         Wm.append("Partial data: web estimate (not a full reference record). Fixed costs are not equivalent to the full Menkor reference records; operator validation advised.")
     if kind == "historical":
         Wm.append("Historical sheet: totals only, currency not documented (treated as USD, unverified), fuel not separable.")
-    _erd = dts.get("economic_reference_date")
-    Wm.append(f"Economic reference date of the figures: {_erd}." if _erd and str(_erd).lower() != "unknown" else "Economic reference date not documented: the cost figures carry no validity date.")
     if is_ref:
-        Wm.append("Report reference: original published values, hours and fuel price of the report. The Menkor cost-base adjustment and user edits are not used.")
-    elif act.get("applied"):
-        Wm.append(f"Menkor cost base: selected cost lines include a {act.get('pct', 0):+g}% Menkor adjustment on the original values (details in the annex).")
-        Wx.append(act.get("text") or "Menkor cost base: selected costs include a Menkor adjustment applied to the original published values.")
-        if act.get("delta_total") is not None:
-            Wx.append(f"Menkor cost base on the published basis: {M(act['published_budget_original'])} original budget {'+' if act['delta_total'] >= 0 else '−'} {M(abs(act['delta_total']))} = {M(act['published_budget_adjusted'])}.")
-    else:
-        Wm.append("Menkor cost base: no adjustment for this record (original published values).")
+        Wm.append("Report reference: original published values, hours and fuel price of the report. User edits are not used.")
+    Wm.append(COST_EVOLUTION_NOTE)
     avg = fuel.get("average")
     if avg and avg.get("price"):
         Wm.append(f"Fuel: average annual price of {avg['currency']} {avg['price']:,.3f} per litre entered by the user, taxes and fees included according to the operating habits. "
@@ -293,11 +285,11 @@ def build_report_pdf(res: dict, disp, alerts: list, logo_bytes: bytes | None = N
                             ("TOPPADDING", (0, 0), (-1, -1), 2.5), ("BOTTOMPADDING", (0, 0), (-1, -1), 2.5), ("LEFTPADDING", (0, 0), (-1, -1), 7), ("RIGHTPADDING", (0, 0), (-1, -1), 7)]))
     story += [Spacer(1, 4 * mm), wt]
     if sc and sc.get("exclusions"):
-        ex = [t for t in sc["exclusions"]][:4]
-        xt = Table([[Paragraph("<b>Main exclusions</b>", sW)]] + [[Paragraph("• " + escape(t), sW)] for t in ex]
-                   + ([[Paragraph(escape(f"{len(sc['exclusions']) - 4} further exclusion(s) and the full list of costs included are in the annex."), sSm)]] if len(sc["exclusions"]) > 4 else [])
-                   + [[Paragraph(escape(THRESHOLD_NOTE), sSm)]] if has_charter else
-                   [[Paragraph("<b>Main exclusions</b>", sW)]] + [[Paragraph("• " + escape(t), sW)] for t in ex], colWidths=[174 * mm])
+        ex = [t for t in sc["exclusions"]][:6]
+        rows_x = ([[Paragraph("<b>Main exclusions</b>", sW)]] + [[Paragraph("• " + escape(t), sW)] for t in ex]
+                  + ([[Paragraph(escape(f"{len(sc['exclusions']) - 6} further exclusion(s) and the full list of costs included are in the annex."), sSm)]] if len(sc["exclusions"]) > 6 else [])
+                  + [[Paragraph(escape(THRESHOLD_NOTE), sSm)]])
+        xt = Table(rows_x, colWidths=[174 * mm])
         xt.setStyle(TableStyle([("FONTNAME", (0, 0), (-1, -1), FR), ("BOX", (0, 0), (-1, -1), 0.8, HexColor("#C5CCD9")), ("BACKGROUND", (0, 0), (-1, -1), LIGHT),
                                 ("TOPPADDING", (0, 0), (-1, -1), 2.5), ("BOTTOMPADDING", (0, 0), (-1, -1), 2.5), ("LEFTPADDING", (0, 0), (-1, -1), 7), ("RIGHTPADDING", (0, 0), (-1, -1), 7)]))
         story += [Spacer(1, 3 * mm), xt]
@@ -392,18 +384,8 @@ def build_report_pdf(res: dict, disp, alerts: list, logo_bytes: bytes | None = N
     ws = res.get("web_source")
     if ws:
         A.append(["Partial web estimate", "USD and US gallon assumed — to confirm; no validity date is documented."])
-    _erd = dts.get("economic_reference_date")
-    A.append(["Economic reference date", str(_erd) if _erd and str(_erd).lower() != "unknown" else "Economic reference date not documented"])
-    if act.get("applied"):
-        A.append(["Menkor cost base", act.get("text", "")])
-        for it in act["items"]:
-            if it["before"] is None:
-                A.append(["  · " + it["item"], it["note"]])
-            else:
-                A.append(["  · " + it["item"], f"{M(it['before'])} → {M(it['after'])} ({M(it['delta'])})" + (f" ({fmt_pct(it['pct'], 1, sign=True)})" if it.get("pct") is not None else "") + (f" — {it['note']}" if it.get("note") else "")])
-        A.append(["  · scope", "Fuel, insurance, crew salaries/expenses, catering, crew travel and misc are unchanged in the base. User edits replace the base values."])
-    else:
-        A.append(["Menkor cost base", "Not used: original published values" if is_ref else "No adjustment for this record (original published values)"])
+    A.append(["Cost evolution and fuel", COST_EVOLUTION_NOTE])
+    A.append(["Crew basis", CREW_BASIS_NOTE])
     A.append(["Currency", disp.note()])
     sc = res["scenario"]
     if is_ref:

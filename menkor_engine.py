@@ -26,7 +26,7 @@ from pathlib import Path
 
 import pandas as pd
 
-ENGINE_VERSION = "2.2"
+ENGINE_VERSION = "2.3"
 DB_VERSION = "v17-167-models-adj15"
 BASE_FILE = "menkor_base_couts_ajustes_15pct.csv"   # Menkor cost base: selected costs already +15 % (see menkor_* metadata), originals kept in original__* columns
 _HERE = Path(__file__).resolve().parent
@@ -477,12 +477,7 @@ def menkor_base_info(row) -> dict:
 
 
 def menkor_base_text(info: dict) -> str:
-    if not info.get("applied"):
-        return "Menkor cost base: no adjustment for this record (original published values)."
-    return (f"Menkor cost base: selected costs (maintenance, airport fees, crew training, hangar) include a Menkor adjustment of +{info['pct']:g}% "
-            "applied to the original published values; fuel, insurance, crew salaries and expenses, catering and misc are unchanged. "
-            "It is a Menkor assumption, not verified market inflation; the economic reference date is unknown. "
-            "The original published values are kept separately and are used by Report reference.")
+    return COST_EVOLUTION_NOTE
 
 
 def menkor_base_items(row, orig) -> list:
@@ -551,6 +546,10 @@ class Scenario:
     cycle_cost: float | None = None
     cycle_cost_ccy: str = "USD"
     avg_flight_hours: float | None = None
+    # costs NOT in the report, entered by the user (None / empty = not entered, nothing added)
+    additional_crew: dict = field(default_factory=dict)   # 'flight_engineer' | 'flight_attendant' -> dict(count, salary (annual, per person), ccy)
+    other_maint_program_h: float | None = None            # other maintenance programme, per flown hour
+    other_maint_program_ccy: str = "USD"
 
     def canonical(self) -> dict:
         return asdict(self)
@@ -866,7 +865,13 @@ def _compute_core(row, scn: Scenario, today: date | None = None) -> dict:
             _flag(fl, "error", "cycle_inputs", "Per-cycle cost: enter the cost per cycle (with a dated rate if in EUR) and the average flight duration in hours. " + (_err or ""))
             return res
         cyc_h = _cc / scn.avg_flight_hours          # cost per cycle spread over the flown hours: applied to the flown hours only (not counted again in the hourly costs)
-    nonfuel_h += var_delta + (scn.extra_var_h or 0.0) + cyc_h
+    omp_h = 0.0
+    if scn.other_maint_program_h:
+        omp_h, _err = amount_to_usd(scn.other_maint_program_h, scn.other_maint_program_ccy, scn.fx)
+        if _err:
+            _flag(fl, "error", "other_maint_amount", f"Other maintenance programme: {_err}")
+            return res
+    nonfuel_h += var_delta + (scn.extra_var_h or 0.0) + cyc_h + omp_h
 
     var_h = nonfuel_h + fuel_h
     var_annual = H * var_h
@@ -889,7 +894,7 @@ def _compute_core(row, scn: Scenario, today: date | None = None) -> dict:
     _fee = (_mg.get("management") or {}).get("amount")
     for _k, _lab in MANAGEMENT_ITEMS.items():
         _it = _mg.get(_k) or {}
-        if _k != "management" and scn.management_covers_camo_dispatch and _fee is not None:
+        if _k in ("camo", "dispatch") and scn.management_covers_camo_dispatch and _fee is not None:
             mg_state[_k] = ("covered", None)                       # covered by the management fee entered: never added a second time
             continue
         if _it.get("amount") is None:
@@ -900,6 +905,21 @@ def _compute_core(row, scn: Scenario, today: date | None = None) -> dict:
             _flag(fl, "error", "management_amount", f"{_lab}: {_err}")
             return res
         mg_rows.append((_k, _lab, _u)); mg_added += _u; mg_state[_k] = ("added", _u)
+    crew_state = {}
+    for _k, _lab in CREW_ITEMS.items():
+        _c = (scn.additional_crew or {}).get(_k) or {}
+        _n, _sal = _c.get("count"), _c.get("salary")
+        if not _n or not _sal or _n <= 0 or _sal <= 0:
+            crew_state[_k] = dict(status="none", label=_lab, count=_n or 0, amount_usd=None)       # default 0: nothing added
+            continue
+        _u, _err = amount_to_usd(_sal, _c.get("ccy", "USD"), scn.fx)
+        if _err:
+            _flag(fl, "error", "crew_amount", f"{_lab}: {_err}")
+            return res
+        _tot = _u * float(_n)
+        mg_rows.append((f"crew_{_k}", f"{_lab} ({float(_n):g} × annual salary)", _tot)); mg_added += _tot
+        crew_state[_k] = dict(status="added", label=_lab, count=float(_n), amount_usd=_tot)
+    res["crew_additional"] = crew_state
     res["management"] = {k: dict(status=mg_state[k][0], label=l, amount_usd=mg_state[k][1]) for k, l in MANAGEMENT_ITEMS.items()}
     fixed_total = fixed_src + fixed_delta + (scn.extra_fixed or 0.0) + mg_added
 
@@ -924,7 +944,7 @@ def _compute_core(row, scn: Scenario, today: date | None = None) -> dict:
                        if scn.fuel.price_source == "average" else None,
                        benchmark=res.get("fuel_benchmark") if scn.fuel.price_source == "benchmark" else None)
     res["fixed"] = dict(source_total=fixed_src, override_delta=fixed_delta, extra=scn.extra_fixed or 0.0,
-                        annual_total=fixed_total, includes="crew expense, crew training, hangar, insurance, aircraft misc")
+                        annual_total=fixed_total, includes="crew expense (two pilots), crew training, hangar, insurance, aircraft misc")
     res["variable"] = dict(nonfuel_per_h=nonfuel_h, fuel_per_h=fuel_h, per_h=var_h, annual=var_annual,
                            source_nonfuel_per_h=(var_src - fuel_cost_src) / ref_h,
                            includes="fuel, airframe maintenance, engine/APU maintenance, crew misc (travel, catering, airport fees, other)")
@@ -966,6 +986,9 @@ def _compute_core(row, scn: Scenario, today: date | None = None) -> dict:
         comps.append(dict(category="Variable", key="extra_var", label="User-added variable cost (not in report)",
                           annual_usd=H * scn.extra_var_h, hourly_usd=scn.extra_var_h, edited=True, source_value=None))
         vs += scn.extra_var_h
+    if omp_h:
+        comps.append(dict(category="Variable", key="other_maint_program", label="Other maintenance programme (entered by the user, not in the report)", annual_usd=H * omp_h, hourly_usd=omp_h, edited=True, source_value=None))
+        vs += omp_h
     if cyc_h:
         comps.append(dict(category="Variable", key="cycle_cost", label="Per-cycle costs (user-added)", annual_usd=H * cyc_h, hourly_usd=cyc_h, edited=True, source_value=None))
         vs += cyc_h
@@ -1000,7 +1023,7 @@ def _compute_reference(row, scn, res, ref_h, fixed_src, var_src, fuel_cost_src, 
     elif abs(fixed_src + var_src - budget_src) > 1.0:
         _flag(fl, "warn", "budget_sum", f"The published fixed and variable totals differ from the published budget by {abs(fixed_src + var_src - budget_src):,.0f} USD.")
     res["fixed"] = dict(source_total=fixed_src, override_delta=0.0, extra=0.0, annual_total=fixed_src,
-                        includes="crew expense, crew training, hangar, insurance, aircraft misc")
+                        includes="crew expense (two pilots), crew training, hangar, insurance, aircraft misc")
     res["variable"] = dict(nonfuel_per_h=(var_src - fuel_cost_src) / ref_h, fuel_per_h=fuel_cost_src / ref_h,
                            per_h=var_src / ref_h, annual=var_src,
                            source_nonfuel_per_h=(var_src - fuel_cost_src) / ref_h,
@@ -1039,7 +1062,7 @@ def _compute_reference(row, scn, res, ref_h, fixed_src, var_src, fuel_cost_src, 
     res["budget_usd"] = budget
     res["cost_per_h_usd"] = budget / ref_h
     res["available"] = True
-    _flag(fl, "info", "reference_mode", "Report reference: published totals at the report's own hours and fuel price, original published values only (the Menkor cost-base adjustment and every edit are not used). Switch to Custom simulation (Advanced settings) to adjust costs.")
+    _flag(fl, "info", "reference_mode", "Report reference: published totals at the report's own hours and fuel price, original published values only (cost edits are not used). Switch to Custom simulation (Advanced settings) to adjust costs.")
     return res
 
 
@@ -1126,10 +1149,17 @@ THRESHOLD_LABEL = "Operating cost coverage threshold"
 THRESHOLD_LABEL_FR = "Seuil de couverture des coûts d'exploitation renseignés"
 THRESHOLD_ECON_LABEL = "Economic coverage threshold including the ownership costs entered"
 THRESHOLD_ECON_LABEL_FR = "Seuil intégrant les coûts économiques de possession renseignés"
-THRESHOLD_NOTE = ("Estimate based on your assumptions. Aircraft-specific maintenance events and programme exclusions may materially change the result.")
+THRESHOLD_NOTE = ("Estimate based on averages and your assumptions. The real budget depends on each individual aircraft: its serial number (MSN), its maintenance programme "
+                  "(airframe, engine and APU programmes, coverage and exclusions), upcoming maintenance events, age and utilisation, and your intended operation.")
+COST_EVOLUTION_NOTE = ("Costs evolve with inflation and market conditions: Menkor reviews the average costs periodically. "
+                       "The fuel cost is an average based on world regional benchmarks; the aircraft's fuel base (where it refuels) can strongly affect it.")
 OWNERSHIP_NOTE = ("Economic ownership costs: economic depreciation (not tax amortisation) and loan INTEREST only (not capital repayment, not a full loan instalment). "
                   "Taxes are excluded. This is an economic result, not cash flow.")
-MANAGEMENT_ITEMS = {"management": "Management fee", "camo": "CAMO", "dispatch": "Dispatch / flight support"}
+MANAGEMENT_ITEMS = {"management": "Management fee", "aoc": "AOC management fee", "camo": "CAMO", "dispatch": "Dispatch / flight support",
+                    "gov_taxes": "Government taxes and charges"}
+CREW_ITEMS = {"flight_engineer": "Flight engineer", "flight_attendant": "Flight attendant"}
+CREW_BASIS_NOTE = ("The reference crew expense is based on two pilots only: no flight engineer and no cabin crew (flight attendants) are included. "
+                   "Add them in Cost Master if your operation needs them.")
 MANAGEMENT_STATUS = {"none": "Not entered", "added": "Added once to the fixed costs", "covered": "Covered by the management fee entered (not added again)"}
 MANAGEMENT_NOTE = "Management fees are not included in the reference costs."
 MANAGEMENT_EXCLUDED = "Management fees excluded."
@@ -1317,22 +1347,28 @@ def costs_scope(row, res: dict, scn: Scenario) -> dict:
                 exclusions.append(f"{lab}: {v:,.0f} USD per year entered — used ONLY in the economic result and the economic threshold, not in the operating threshold.")
     else:
         exclusions.append("Economic depreciation and loan interest: not entered — not included.")
+    _crew = res.get("crew_additional") or {}
+    if not any(v.get("status") == "added" for v in _crew.values()):
+        exclusions.append("Crew: the reference expense covers two pilots only — no flight engineer or cabin crew included.")
+    else:
+        for v in _crew.values():
+            if v.get("status") != "added":
+                exclusions.append(f"Crew: no {v['label'].lower()} included (reference expense covers two pilots).")
+    if ((res.get("management") or {}).get("gov_taxes") or {}).get("status") != "added":
+        exclusions.append("Government taxes and charges: not included unless entered.")
     exclusions.append("Taxes (income, corporate, VAT, import duties) are excluded.")
     exclusions.append("Capital repayment of a loan is never a cost; tax amortisation is not economic depreciation; economic result is not cash flow.")
     ex_f, ex_v = (0.0, 0.0) if scn.mode == "reference" else (scn.extra_fixed or 0.0, scn.extra_var_h or 0.0)
     if ex_f or ex_v:
         exclusions.append(f"User-added costs are included: {ex_f:,.0f} USD per year fixed and {ex_v:,.0f} USD per flown hour; their content is not verified by the application.")
     limits = [
-        "The costs come from the Menkor cost base (originals preserved separately; selected lines carry the Menkor +15 % assumption). "
-        "They are averages, not the budget of a specific aircraft (serial number, maintenance status, programme coverage, intended operation).",
+        "The costs are averages, not the budget of a specific aircraft (serial number, maintenance status, programme coverage, intended operation).",
         "Cost types are kept apart: annual subscriptions and minimums and other fixed costs stay fixed when hours change; hourly costs follow flown hours; per-cycle costs follow cycles; "
         "exceptional expenses and buy-ins are not spread automatically.",
         "Fuel is an average economic assumption (burn × price), not a flight-planning calculation.",
         "An expense covered by a programme or a management package must be entered once only: nothing is added automatically on top.",
     ]
     hist_note = []
-    if res.get("historical") or str((res.get("dates") or {}).get("economic_reference_date", "unknown")) == "unknown":
-        hist_note.append("The economic reference date of the cost figures is unknown (no report date in the base): validity date not confirmed.")
     return dict(included=included, not_confirmed=not_confirmed, exclusions=exclusions, limits=limits + hist_note)
 
 
@@ -1416,7 +1452,7 @@ def provenance_for(prov: pd.DataFrame, row) -> pd.DataFrame:
 
 
 STATUS_TEXT_CLIENT = {
-    "pdf_extracted_review_required": "Menkor reference record: average costs, to be reviewed for a specific aircraft.",
+    "pdf_extracted_review_required": None,      # the standard record: no alert for the client (the averages are explained in the report notes)
     "source_values_review_required": "Some values of this record are invalid and left empty — review required.",
     "model_name_and_source_values_review_required": "Some values of this record are invalid and left empty — review required.",
     "model_name_review_required": "This record is under review.",
@@ -1431,7 +1467,9 @@ def alerts_for(row, checks: pd.DataFrame, conflicts: pd.DataFrame, conversions: 
     Client wording by default (no field names, tolerances, file names, dates of extraction, providers); `admin=True` adds the internal traceability."""
     out = []
     status = str(row.get("record_status"))
-    out.append(dict(level="info", text=(STATUS_TEXT if admin else STATUS_TEXT_CLIENT).get(status, status if admin else "This record is under review.")))
+    _st = (STATUS_TEXT if admin else STATUS_TEXT_CLIENT).get(status, status if admin else "This record is under review.")
+    if _st:
+        out.append(dict(level="info", text=_st))
     if status == LEGACY_STATUS:
         out.append(dict(level="warn", text="Currency of historical amounts is undocumented and unverified."))
         return out
@@ -1448,8 +1486,6 @@ def alerts_for(row, checks: pd.DataFrame, conflicts: pd.DataFrame, conversions: 
         out.append(dict(level="info", text="Annual fuel cost and volume are derived (burn × price × 300 h), not printed annual amounts."))
         out.append(dict(level="info", text="Technical data (ranges, cabin, ceiling, passengers) come from a separate public technical summary. Contradictory cruise speeds and missing weights stay unavailable."))
     else:
-        out.append(dict(level="info", text="Economic reference date not documented: the cost figures carry no validity date."))
-        out.append(dict(level="info", text="Source amounts are in USD; the currency is assumed, not confirmed."))
         if admin:
             out.append(dict(level="info", text=f"[internal] extraction_date ({row.get('extraction_date')}) is the processing date, not a market date."))
     aid, sf = row["aircraft_id"], row.get("source_file")
