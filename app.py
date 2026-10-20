@@ -9,6 +9,7 @@ from io import BytesIO
 import base64
 import hashlib
 import re as _re
+import html as _html
 import warnings
 warnings.filterwarnings("ignore")
 
@@ -1147,7 +1148,10 @@ def _render_alerts(res,alerts,title="Data status & alerts"):
     """Alerts next to the results: errors/warnings are visible, informational notes are in an expander."""
     shown=[x for x in res["flags"] if x["level"] in ("error","warn")]+[a for a in alerts if a["level"] in ("error","warn")]
     for x in shown:
-        (st.error if x["level"]=="error" else st.warning)(x["text"])
+        if str(x["text"]).startswith("[internal]"):        # admin-only housekeeping: small, grey, italic — never a red/orange box
+            st.markdown(f'<div style="font-size:.7rem;font-style:italic;color:#8496B0;margin:.15rem 0">{_re.sub(r"^\[internal\]\s*","Admin note · ",_html.escape(str(x["text"])))}</div>',unsafe_allow_html=True)
+        else:
+            (st.error if x["level"]=="error" else st.warning)(x["text"])
     infos=[x for x in res["flags"] if x["level"]=="info"]+[a for a in alerts if a["level"]=="info"]
     if infos:
         with st.expander(f"ℹ {title} — {len(infos)} note(s)"):
