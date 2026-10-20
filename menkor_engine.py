@@ -960,7 +960,7 @@ def _compute_core(row, scn: Scenario, today: date | None = None) -> dict:
                               edited=ed, source_value=s))
     sum_fx = sum(c["annual_usd"] for c in comps)
     for _k, _lab, _u in mg_rows:
-        comps.append(dict(category="Fixed", key="mgmt_" + _k, label=f"{_lab} (entered by the user, added once to the fixed costs)", annual_usd=_u, hourly_usd=None, edited=True, source_value=None))
+        comps.append(dict(category="Fixed", key="mgmt_" + _k, label=_lab, annual_usd=_u, hourly_usd=None, edited=True, source_value=None))
         sum_fx += _u
     if scn.extra_fixed:
         comps.append(dict(category="Fixed", key="extra_fixed", label="User-added fixed cost (not in report)",

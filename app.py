@@ -1773,6 +1773,20 @@ def main():
                         with cc3: _cc=st.selectbox(f"{_cl} currency",["USD","EUR"],key=f"crw_c_{_ck}_{_k}",disabled=_dis)
                         crew_add[_ck]=dict(count=int(_cn),salary=float(_cs),ccy=_cc)
                 with st.expander("⚡ Variable costs — per flown hour (the report total already includes fuel)",expanded=True):
+                    if journey!=J_C:
+                        _fm={"average":"My average annual fuel price","report":"Report price","benchmark":"Regional market benchmark","manual":"Dated local quote"}.get(fuel.price_source,fuel.price_source)
+                        _fd=f"**⛽ Fuel (set in the sidebar)** — price method: **{_fm}**"
+                        if fuel.price_source=="benchmark":
+                            _bi_,_be_=E.benchmark_price_info(fuel)
+                            if _bi_: _fd+=f" · region: **{_bi_['region']}** · {_bi_['used_usd_l']:.3f} USD/L"+(" (adjusted by you)" if _bi_.get("user_adjusted") else "")
+                            else: _fd+=" · region or price not set"
+                        elif fuel.price_source=="average": _fd+=f" · **{fuel.price:.3f} {fuel.currency}/L**" if fuel.price else " · price not entered"
+                        elif fuel.price_source=="report":
+                            _rp_=E.num(row,"reference_fuel_price_usd_per_l"); _fd+=f" · **{_rp_:.3f} USD/L**" if _rp_ else " · price missing"
+                        elif fuel.price: _fd+=f" · **{fuel.price:.3f} {fuel.currency}/{fuel.unit}**"
+                        _fd+=f" · burn method: **{fuel.burn_method}**"
+                        st.markdown(_fd)
+                        st.caption("Fuel is part of the variable costs below; change the method, region or price in the sidebar (Fuel).")
                     cols=st.columns(3)
                     for i,(k,(hf,af,label)) in enumerate(E.var_components_for(row).items()):
                         src=E.num(row,hf)
@@ -1781,24 +1795,23 @@ def main():
                             else:
                                 v=st.number_input(f"{label} ({disp.ccy}/h)",min_value=0.0,value=float(disp.conv(src)),step=10.0,format="%.0f",key=f"ovv_{k}_{_k}",disabled=_dis)
                                 if abs(disp.to_usd(v)-src)>0.005: ov_var[k]=disp.to_usd(v)
-                    _om=st.number_input(f"Other maintenance programme — not in the report ({disp.ccy}/h)",min_value=0.0,value=None,step=10.0,format="%.0f",
-                                        key=f"omp_{_k}",placeholder="optional",disabled=_dis,
-                                        help="Any additional maintenance programme (airframe, engine, APU, components...) charged per flown hour and not already in the report. Enter it once only.")
+                    st.caption("Other maintenance programme: any additional programme (airframe, engine, APU, components…) charged per flown hour and not already in the report. Enter it once only.")
+                    _oc,_=st.columns([1,2])
+                    with _oc: _om=st.number_input(f"Other maintenance programme — not in the report ({disp.ccy}/h)",min_value=0.0,value=None,step=10.0,format="%.0f",
+                                                  key=f"omp_{_k}",placeholder="optional",disabled=_dis)
                     if _om: omp_usd=disp.to_usd(_om)
                 with st.expander("➕ Costs not in the report (user-added)",expanded=False):
                     x1,x2=st.columns(2)
                     with x1: _xf=st.number_input(f"Extra fixed cost ({disp.ccy}/yr)",min_value=0.0,value=0.0,step=1000.0,format="%.0f",key=f"xf_{_k}",disabled=_dis)
                     with x2: _xv=st.number_input(f"Extra variable cost ({disp.ccy}/flown h)",min_value=0.0,value=0.0,step=10.0,format="%.0f",key=f"xv_{_k}",disabled=_dis)
                     extra_fixed_usd=disp.to_usd(_xf); extra_var_usd=disp.to_usd(_xv)
-                st.markdown("**Management fees**")
-                st.caption(E.MANAGEMENT_NOTE)
-                mf1,mf2=st.columns([2,1])
-                with mf1: _mfee=st.number_input("Annual management fee",min_value=0.0,value=None,step=1000.0,format="%.0f",key=f"mgfee_{_k}",placeholder="optional",disabled=_dis)
-                with mf2: _mfc=st.selectbox("Management fee currency",["USD","EUR"],key=f"mgfeec_{_k}",disabled=_dis)
-                mgmt["management"]=dict(amount=_mfee,ccy=_mfc)
-                if _mfee is None: st.caption(E.MANAGEMENT_EXCLUDED)
                 with st.expander("⚙ Advanced adjustments",expanded=False):
                     st.caption("Optional. Leave empty if not needed: nothing is added.")
+                    st.caption(E.MANAGEMENT_NOTE)
+                    mf1,mf2=st.columns([2,1])
+                    with mf1: _mfee=st.number_input("Annual management fee",min_value=0.0,value=None,step=1000.0,format="%.0f",key=f"mgfee_{_k}",placeholder="optional",disabled=_dis)
+                    with mf2: _mfc=st.selectbox("Management fee currency",["USD","EUR"],key=f"mgfeec_{_k}",disabled=_dis)
+                    mgmt["management"]=dict(amount=_mfee,ccy=_mfc)
                     if _mfee is not None:
                         mg_cov=st.checkbox("My management fee already covers CAMO and dispatch",key=f"mgcov_{_k}",disabled=_dis)
                     for _mk,_ml in (("aoc","AOC management fee"),("camo","CAMO"),("dispatch","Dispatch / flight support"),("gov_taxes","Government taxes and charges")):
