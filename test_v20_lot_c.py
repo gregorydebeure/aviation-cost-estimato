@@ -67,7 +67,10 @@ class TestScenarioStore(unittest.TestCase):
         self.assertEqual(row["name"], "My plan"); self.assertEqual(row["db_version"], E.DB_VERSION); self.assertEqual(row["engine_version"], E.ENGINE_VERSION)
         back = S.scenario_from_dict(row["payload"]["scenario"])
         self.assertEqual(back.canonical(), scn.canonical()); self.assertEqual(back.config_hash(), scn.config_hash())
-        self.assertIn("depreciation_annual", row["payload"]["user_entered"]); self.assertNotIn("mode", row["payload"]["user_entered"])
+        ue = row["payload"]["user_entered"]
+        for need in ("depreciation_annual", "charter_rate", "commission_pct", "fuel_price", "hours", "management", "exchange_rate"): self.assertIn(need, ue)
+        self.assertNotIn("mode", ue)
+        blank = S.user_entered_fields(E.Scenario(aircraft_id="dassault_falcon_7x")); self.assertEqual(blank, [])   # defaults are never presented as user entries
         self.assertEqual(row["payload"]["snapshot"]["config_hash"], self.res["config_hash"])
 
     def test_absent_value_stays_absent_never_zero(self):
@@ -368,6 +371,42 @@ class TestEventsWiring(unittest.TestCase):
             n = len([e for e in r.t.get("events", []) if e["event"] == "study_request_received"])
             self.assertEqual(n >= 1, bool(expected))   # the recorder presses the button in every placement of the form
             self.assertNotIn("a@b.co", repr(r.t.get("events", [])))
+
+
+
+
+class TestBenchmarkAtFirstLevel(unittest.TestCase):
+    """The regional benchmark is chosen next to the fuel price (not buried in Advanced settings) and gives a result and a PDF without typing a price."""
+    OV = {"Aircraft model": "dassault_falcon_7x", "Fuel price method": "Regional market benchmark", "📄 Generate PDF Report": True}
+
+    def test_benchmark_gives_budget_and_report_without_typing_a_price(self):
+        for mm in [k for k in sys.modules if k == "app" or k.startswith("streamlit") or k.startswith("plotly")]: del sys.modules[mm]
+        st = F.install({"__real_defaults__": True, **self.OV}, {"auth_email": "a@x.co"})
+        import app
+        app.render_auth = lambda: (True, True); app._process_day_pass_return = lambda: None; app._get_logo = lambda: ""
+        app._sb_rest = FakeRest(); app._storage_configured = lambda: False
+        try: app.main()
+        except F.StopApp: pass
+        t = text(st)
+        self.assertNotIn(app.FUEL_PRICE_MISSING, t)
+        self.assertIn("weekly regional refinery", t); self.assertIn("Main refuelling region", [l for k, l, key, d in st.widgets])
+        dl = [a[1] for k, a, kw in st.log if k == "download_button" and "PDF" in a[0]]
+        self.assertTrue(dl)
+        import subprocess, tempfile
+        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as f: f.write(dl[0])
+        out = subprocess.run(["pdftotext", "-layout", f.name, "-"], capture_output=True, text=True).stdout; os.unlink(f.name)
+        self.assertRegex(out, r"(?i)refinery|benchmark")
+        self.assertRegex(out, r"Annual budget")
+
+    def test_default_still_assumes_no_price(self):
+        for mm in [k for k in sys.modules if k == "app" or k.startswith("streamlit") or k.startswith("plotly")]: del sys.modules[mm]
+        st = F.install({"__real_defaults__": True, "Aircraft model": "dassault_falcon_7x"}, {"auth_email": "a@x.co"})
+        import app
+        app.render_auth = lambda: (True, True); app._process_day_pass_return = lambda: None; app._get_logo = lambda: ""
+        app._sb_rest = FakeRest(); app._storage_configured = lambda: False
+        try: app.main()
+        except F.StopApp: pass
+        self.assertIn(app.FUEL_PRICE_MISSING, text(st))
 
 
 if __name__ == "__main__": unittest.main()

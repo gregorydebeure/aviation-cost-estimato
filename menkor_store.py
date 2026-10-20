@@ -66,16 +66,27 @@ def scenario_from_dict(d: dict) -> E.Scenario:
 
 
 def user_entered_fields(scn: E.Scenario) -> list[str]:
-    """Names of top-level assumptions that differ from a blank scenario = typed / chosen by the user (the rest comes from the reference data)."""
-    base = E.Scenario(aircraft_id=scn.aircraft_id).canonical()
-    cur = scn.canonical()
+    """Assumptions the user really supplied (typed or chosen), as opposed to defaults and reference data.
+    A field only counts when it carries an entered value: a default or an empty field is never listed."""
     out = []
-    for k, v in cur.items():
-        if k in ("aircraft_id",):
-            continue
-        if v != base.get(k):
-            out.append(k)
-    return sorted(out)
+    if scn.billed_hours or scn.positioning_hours or scn.other_hours: out.append("hours")
+    f = scn.fuel
+    if f.price is not None: out.append("fuel_price")
+    if f.price_source in ("benchmark", "manual"): out.append("fuel_price_method")
+    if f.burn_method != "published": out.append("fuel_burn_method")
+    if scn.charter_rate is not None:
+        out.append("charter_rate")
+        if scn.commission_pct is not None: out.append("commission_pct")
+    for k in ("other_commercial_fees", "extra_fixed", "extra_var_h"):
+        if getattr(scn, k): out.append(k)
+    for k in ("supplements_retained_usd", "supplements_cost_usd", "depreciation_annual", "interest_annual", "positioning_ratio"):
+        if getattr(scn, k) is not None: out.append(k)
+    if scn.fixed_overrides: out.append("fixed_cost_edits")
+    if scn.var_overrides_h: out.append("variable_cost_edits")
+    if any((v or {}).get("amount") for v in (scn.management or {}).values()): out.append("management")
+    if scn.cycle_status != "none": out.append("cost_per_landing")
+    if scn.fx.usd_to_eur: out.append("exchange_rate")
+    return sorted(set(out))
 
 
 def results_snapshot(res: dict) -> dict:

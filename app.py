@@ -1564,29 +1564,46 @@ def main():
 
         # ── Fuel: ONE prominent field (average annual price); other methods are in Advanced settings ─────
         fuel=E.FuelConfig()
-        _ap=None; _apc="USD"
+        _ap=None; _apc="USD"; _bm_region=None; _bm_price=None; ps=None; src_opts=[]
         with _bx_fuel:
             st.markdown('<div class="section-header">⛽ Fuel</div>',unsafe_allow_html=True)
             if journey==J_C: st.caption("The aircraft-specific budget is prepared manually: no fuel input is needed here.")
             elif hist: st.caption("Not available for historical sheets: fuel is included in the hourly rate and cannot be separated.")
             else:
-                st.caption(FUEL_PRICE_HELP)
-                ac1,ac2=st.columns([2,1])
-                with ac1: _ap=st.number_input("Average annual fuel price (per litre)",min_value=0.0,value=None,step=0.05,format="%.3f",key="fu_avg_price",
-                                              placeholder="enter your price",disabled=_locked,help=FUEL_PRICE_HELP)
-                with ac2: _apc=st.selectbox("Fuel price currency",["USD","EUR"],key="fu_avg_ccy",disabled=_locked,
-                                            help="EUR is converted with the dated exchange rate entered under Currency conversion.")
+                _rp=E.num(row,"reference_fuel_price_usd_per_l")
+                _cv=_convs[(_convs["aircraft_id"]==aid)&(_convs["field"]=="reference_fuel_price_usd_per_l")]
+                _bdf=E.load_fuel_benchmarks()
+                src_opts=["My average annual fuel price",f"Report price ({_rp:.3f} USD/L)" if _rp else "Report price (missing)"]
+                if len(_bdf): src_opts.append("Regional market benchmark")
+                ps=st.radio("Fuel price method",src_opts,key=f"fps_{aid}",disabled=_locked,
+                            help="Your own average price, the report's price, or a regional market benchmark you can adjust. No price is assumed unless you choose one.")
+                if ps==src_opts[0]:
+                    st.caption(FUEL_PRICE_HELP)
+                    ac1,ac2=st.columns([2,1])
+                    with ac1: _ap=st.number_input("Average annual fuel price (per litre)",min_value=0.0,value=None,step=0.05,format="%.3f",key="fu_avg_price",
+                                                  placeholder="enter your price",disabled=_locked,help=FUEL_PRICE_HELP)
+                    with ac2: _apc=st.selectbox("Fuel price currency",["USD","EUR"],key="fu_avg_ccy",disabled=_locked,
+                                                help="EUR is converted with the dated exchange rate entered under Currency conversion.")
+                elif len(src_opts)>2 and ps==src_opts[2]:
+                    st.markdown("**Regional market benchmark — annual planning assumption**")
+                    st.warning(E.BENCHMARK_DISCLAIMER)
+                    _rid=_bdf["region_id"].tolist(); _rname=dict(zip(_bdf["region_id"],_bdf["region"]))
+                    _bm_region=st.selectbox("Main refuelling region",_rid,format_func=lambda x:_rname[x],key="fu_bm_region",disabled=_locked,
+                                            help="Main refuelling region: the aircraft record does not determine all of its fuel purchases.")
+                    _br=_bdf[_bdf["region_id"]==_bm_region].iloc[0]
+                    st.caption(f"Reference: weekly regional refinery reference · {_br['period_label']} ({_br['period_start']} to {_br['period_end']}) · "
+                               f"{float(_br['price_us_cents_per_us_gallon']):.2f} US cents per US gallon = {float(_br['price_usd_per_l']):.3f} USD/L. "
+                               "Weekly refinery reference: not a real-time feed, not an annual average, not a forecast, and not a delivered price.")
+                    _bm_price=st.number_input("Average fuel price used (USD/L)",min_value=0.0,value=round(float(_br["price_usd_per_l"]),3),step=0.01,format="%.3f",
+                                              key="fu_bm_price_"+_bm_region,disabled=_locked,help="Pre-filled with the benchmark of the selected region; you can edit it.")
+                else:
+                    st.caption(f"Report price used: {_rp:.3f} USD/L." if _rp else "The report price is missing for this model.")
                 if _locked: st.caption("Report reference uses the report's own fuel price. Switch to Custom simulation in Advanced settings to use yours.")
 
         if journey!=J_C and not hist:
             with _bx_adv:
-                st.markdown("**Fuel price method and consumption**")
-                rp=E.num(row,"reference_fuel_price_usd_per_l")
+                st.markdown("**Fuel consumption**")
                 _cv=_convs[(_convs["aircraft_id"]==aid)&(_convs["field"]=="reference_fuel_price_usd_per_l")]
-                _bdf=E.load_fuel_benchmarks()
-                src_opts=["My average annual fuel price",f"Report price ({rp:.3f} USD/L)" if rp else "Report price (missing)"]
-                if len(_bdf): src_opts.append("Regional market benchmark")
-                ps=st.radio("Fuel price method",src_opts,key=f"fps_{aid}",disabled=_locked)
                 if len(_cv): st.caption(f"Report prints {_cv.iloc[0]['source_value']} {_cv.iloc[0]['source_unit']} → {float(_cv.iloc[0]['converted_value']):.3f} USD/L (1 US gal = 3.785411784 L; GAL assumed US gallon, to confirm).")
                 bm_opts={"Published hourly burn":"published","Derived from annual volume":"derived","Custom burn (L/h)":"custom"}
                 bm=st.selectbox("Burn method",list(bm_opts),key=f"bm_{aid}",disabled=_locked,
@@ -1601,21 +1618,10 @@ def main():
                 if average:
                     fuel.price=_ap if (_ap and _ap>0) else None; fuel.currency=_apc
                 if bench_on:
-                    with st.container():
-                        st.markdown("**Regional market benchmark — annual planning assumption**")
-                        st.warning(E.BENCHMARK_DISCLAIMER)
-                        _rid=_bdf["region_id"].tolist(); _rname=dict(zip(_bdf["region_id"],_bdf["region"]))
-                        fuel.benchmark_region=st.selectbox("Main refuelling region",_rid,format_func=lambda x:_rname[x],key="fu_bm_region",disabled=_locked,
-                                                           help="Main refuelling region: the aircraft record does not determine all of its fuel purchases.")
-                        _br=_bdf[_bdf["region_id"]==fuel.benchmark_region].iloc[0]
-                        st.caption(f"Reference: weekly regional refinery reference · {_br['period_label']} ({_br['period_start']} to {_br['period_end']}) · "
-                                   f"{float(_br['price_us_cents_per_us_gallon']):.2f} US cents per US gallon = {float(_br['price_usd_per_l']):.3f} USD/L. "
-                                   "Weekly refinery reference: not a real-time feed, not an annual average, not a forecast, and not a delivered price.")
-                        _pu=st.number_input("Average fuel price used (USD/L)",min_value=0.0,value=round(float(_br["price_usd_per_l"]),3),step=0.01,format="%.3f",
-                                            key="fu_bm_price_"+fuel.benchmark_region,disabled=_locked,
-                                            help="Pre-filled with the benchmark of the selected region; you can edit it.")
-                        fuel.price=_pu if _pu>0 else None
-                        _bi,_be=E.benchmark_price_info(fuel)
+                    fuel.benchmark_region=_bm_region
+                    fuel.price=_bm_price if (_bm_price and _bm_price>0) else None
+                    _bi,_be=E.benchmark_price_info(fuel)
+                    with _bx_fuel:
                         if _be: st.warning(_be)
                         elif _bi["user_adjusted"]: st.caption(E.BENCHMARK_USER_ADJUSTED)
                 st.markdown("**Dated local fuel quote (optional)**")
@@ -1649,8 +1655,8 @@ def main():
             with _bx_fuel:
                 if fuel.price_source=="average" and fuel.price is None and not _locked:
                     st.warning(FUEL_PRICE_MISSING)
-                elif fuel.price_source!="average" and not _locked:
-                    st.caption("Another fuel price method is selected in Advanced settings: the field above is not used.")
+                elif fuel.price_source=="manual" and not _locked:
+                    st.caption("A detailed local quote (Advanced settings) is used instead of the fuel price method above.")
 
         with _bx_ccy:
             st.markdown('<div class="section-header">💱 Currency</div>',unsafe_allow_html=True)
