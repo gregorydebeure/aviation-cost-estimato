@@ -11,7 +11,7 @@ Design
   the user changed versus the defaults, and a snapshot of the main results AS SAVED. Reloading never recomputes silently.
 """
 from __future__ import annotations
-import base64, dataclasses, datetime as _dt, hashlib, re, uuid
+import base64, copy, dataclasses, datetime as _dt, hashlib, re, uuid
 
 import menkor_engine as E
 
@@ -109,7 +109,7 @@ def version_status(stored: dict) -> dict:
 
 
 # ─────────────────────────────── scenarios ───────────────────────────────
-def save_scenario(rest, owner, name, scn: E.Scenario, res: dict, folder_id=None):
+def save_scenario(rest, owner, name, scn: E.Scenario, res: dict, folder_id=None, msn: str = ""):
     o = _owner(owner); n = _clean_name(name)
     if not n:
         return False, "Please enter a name for the scenario."
@@ -121,7 +121,7 @@ def save_scenario(rest, owner, name, scn: E.Scenario, res: dict, folder_id=None)
     if folder_id and not get_folder(rest, o, folder_id):
         return False, "Unknown folder."
     row = dict(id=str(uuid.uuid4()), owner_email=o, name=n, folder_id=folder_id or None, aircraft_id=scn.aircraft_id,
-               payload=dict(scenario=scenario_to_dict(scn), user_entered=user_entered_fields(scn), snapshot=results_snapshot(res)),
+               payload=dict(scenario=scenario_to_dict(scn), user_entered=user_entered_fields(scn), snapshot=results_snapshot(res), msn=_clean_name(msn or "")[:40]),
                db_version=E.DB_VERSION, engine_version=E.ENGINE_VERSION, config_hash=res.get("config_hash"),
                created_at=_now(), updated_at=_now(), deleted_at=None)
     st_, data = rest("POST", "scenarios", json=row)
@@ -147,6 +147,16 @@ def list_scenarios(rest, owner, folder_id=None, deleted=False):
 def get_scenario(rest, owner, sid):
     st_, data = rest("GET", "scenarios", params={"owner_email": _eq(_owner(owner)), "id": _eq(sid), "select": "*"})
     return data[0] if _ok(st_) and isinstance(data, list) and data else None
+
+
+def get_scenarios_for_compare(rest, owner, ids):
+    """Owner-filtered, non-deleted scenarios for a comparison, in the order requested. Another owner's id simply returns nothing."""
+    out = []
+    for sid in dict.fromkeys(ids or []):
+        it = get_scenario(rest, owner, sid)
+        if it and not it.get("deleted_at"):
+            out.append(it)
+    return out
 
 
 def _patch(rest, owner, sid, fields):
@@ -291,11 +301,82 @@ def delete_broker_profile(rest, owner):
 
 
 # ─────────────────────────────── comparison (Pro) ───────────────────────────────
+CMP_INDICATIVE_NOTE = "Model-level estimates, not aircraft-specific budgets. Management fees excluded unless explicitly added."
+CMP_INDICATIVE_BASE = ("Indicative comparison: each model's average costs, the aircraft's own fuel burn, and the common hours and fuel price. "
+                       "No Cost Master edit is applied.")
+CMP_HOURS_NOTE = "Equal annual hours do not imply equivalent missions or aircraft capabilities."
+CMP_NO_RANKING_NOTE = ("Operating budget and economic cost are shown separately and are never ranked together. Compare figures only when the scope and the assumptions "
+                       "shown are the same; a lower figure is not a recommendation.")
+CMP_HARMONISE_HOURS_NOTE = ("Total flown hours are replaced; billed, positioning and other hours are scaled proportionally so the original split is kept "
+                            "(a scenario with no hours gets them as non-billed hours).")
+MGMT_KEYS = ("management", "aoc", "camo", "dispatch")
+
+
+def _price_problem(v):
+    """None = fine. A price that is entered but invalid is reported, never silently replaced by the common value."""
+    if v is None:
+        return None
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return "Fuel price must be a number."
+    if f != f or f in (float("inf"), float("-inf")) or f <= 0:
+        return "Fuel price must be greater than zero."
+    return None
+
+
+def _hours_problem(v):
+    if v is None:
+        return None
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return "Annual flown hours must be a number."
+    if f != f or f < 0 or f > 8760:
+        return "Annual flown hours must be between 0 and 8,760."
+    return None
+
+
+def _result_row(key, label, scn: E.Scenario, res: dict, extra: dict | None = None) -> dict:
+    """One comparison line from the SAME engine result used everywhere else. Missing stays None (never zero)."""
+    fuel = res.get("fuel") or {}
+    mg = res.get("management") or {}
+    mg_added = [k for k in MGMT_KEYS if (mg.get(k) or {}).get("status") == "added"]
+    mg_total = sum((mg[k].get("amount_usd") or 0.0) for k in mg_added)
+    crew = res.get("crew_additional") or {}
+    crew_added = any((v or {}).get("status") == "added" for v in crew.values())
+    dep = intr = None
+    if scn.depreciation_annual is not None:
+        dep, _e = E.amount_to_usd(scn.depreciation_annual, scn.depreciation_ccy, scn.fx)
+    if scn.interest_annual is not None:
+        intr, _e = E.amount_to_usd(scn.interest_annual, scn.interest_ccy, scn.fx)
+    budget = res.get("budget_usd")
+    econ = (budget + dep + intr) if (budget is not None and dep is not None and intr is not None) else None
+    not_entered = []
+    if not mg_added: not_entered.append("management fee")
+    if not crew_added: not_entered.append("additional crew")
+    if (mg.get("gov_taxes") or {}).get("status") != "added": not_entered.append("government taxes")
+    if dep is None: not_entered.append("depreciation")
+    if intr is None: not_entered.append("loan interest")
+    row = dict(key=key, label=label, aircraft_id=scn.aircraft_id, model=res.get("model"), available=bool(res.get("available")),
+               hours=(res.get("hours") or {}).get("flown"), burn_l_h=fuel.get("burn_l_h"), fuel_price_usd_l=fuel.get("price_usd_l"),
+               fuel_price_entered=scn.fuel.price, fuel_price_ccy=scn.fuel.currency, fuel_method=scn.fuel.price_source,
+               fixed_annual_usd=(res.get("fixed") or {}).get("annual_total"), variable_annual_usd=(res.get("variable") or {}).get("annual"),
+               budget_usd=budget, cost_per_h_usd=res.get("cost_per_h_usd"),
+               management_included_usd=mg_total if mg_added else None, management_text=(f"Included: {', '.join(mg_added)}" if mg_added else "Excluded (not entered)"),
+               not_entered=not_entered, depreciation_usd=dep, interest_usd=intr, economic_cost_usd=econ,
+               mode=scn.mode, config_hash=res.get("config_hash"),
+               flags=[f["text"] for f in res.get("flags", []) if f.get("level") in ("warn", "error")][:3])
+    row.update(extra or {})
+    return row
+
+
 def compare_aircraft(df, ids, common: dict, adjustments: dict | None = None):
-    """Compare 2–3 aircraft under COMMON hypotheses with optional per-aircraft adjustments.
-    common: flown_hours (float), fuel_price (float|None), fuel_ccy ('USD'|'EUR'), fx (E.Fx).
-    adjustments: {aircraft_id: {"flown_hours": x, "fuel_price": y}} — explicit, shown as such; never applied to the other aircraft.
-    Returns one dict per aircraft; a missing input leaves the figures None (never zero) and says which input is missing."""
+    """INDICATIVE model comparison: each model's own cost base, COMMON annual hours and fuel price, the aircraft's own burn.
+    common: flown_hours (float|None), fuel_price (float|None), fuel_ccy ('USD'|'EUR'), fx (E.Fx).
+    adjustments: {aircraft_id: {"flown_hours": x, "fuel_price": y}} — explicit, labelled, never applied to another aircraft.
+      empty (None / key absent) = the common value is used; an entered 0 is a real zero (hours); an invalid price is an ERROR, never a silent fallback.
+    Zero hours keep the fixed costs and give a cost per hour of None ('n/a'). No Cost Master edit is injected."""
     ids = list(dict.fromkeys(ids))
     if not 2 <= len(ids) <= 3:
         raise ValueError("compare 2 or 3 aircraft")
@@ -304,28 +385,73 @@ def compare_aircraft(df, ids, common: dict, adjustments: dict | None = None):
     for aid in ids:
         sub = df[df["aircraft_id"] == aid]
         if not len(sub):
-            out.append(dict(aircraft_id=aid, available=False, missing=["aircraft not in the database"], adjusted=[])); continue
-        a = adj.get(aid) or {}
-        hours = a.get("flown_hours", common.get("flown_hours")); price = a.get("fuel_price", common.get("fuel_price"))
-        adjusted = [k for k in ("flown_hours", "fuel_price") if k in a and a[k] is not None]
+            out.append(dict(aircraft_id=aid, label=aid, available=False, missing=["aircraft not in the database"], errors=[], adjusted=[])); continue
+        row = sub.iloc[0]; a = adj.get(aid) or {}
+        hours = a["flown_hours"] if a.get("flown_hours") is not None else common.get("flown_hours")
+        price = a["fuel_price"] if a.get("fuel_price") is not None else common.get("fuel_price")
+        adjusted = [k for k in ("flown_hours", "fuel_price") if a.get(k) is not None]
+        errors = [e for e in (_hours_problem(hours), _price_problem(price)) if e]
         missing = []
-        if not hours or hours <= 0:
-            missing.append("annual flown hours")
-        if price is None or price <= 0:
-            missing.append("fuel price")
-        row = sub.iloc[0]
-        if missing:
-            out.append(dict(aircraft_id=aid, model=str(row["model"]), available=False, missing=missing, adjusted=adjusted)); continue
+        if hours is None: missing.append("annual flown hours")
+        if price is None: missing.append("fuel price")
+        if errors or missing:
+            out.append(dict(aircraft_id=aid, label=str(row["model"]), model=str(row["model"]), available=False, missing=missing, errors=errors, adjusted=adjusted)); continue
         scn = E.Scenario(aircraft_id=aid, mode="simulation", other_hours=float(hours), fx=common.get("fx") or E.Fx(),
                          fuel=E.FuelConfig(price_source="average", price=float(price), currency=common.get("fuel_ccy", "USD")))
         res = E.compute(row, scn)
-        fuel = res.get("fuel") or {}
-        out.append(dict(aircraft_id=aid, model=res["model"], available=bool(res["available"]), missing=[] if res["available"] else ["incomplete reference data"],
-                        adjusted=adjusted, hours=float(hours), fuel_price=float(price), budget_usd=res.get("budget_usd"), cost_per_h_usd=res.get("cost_per_h_usd"),
-                        fixed_annual_usd=(res.get("fixed") or {}).get("annual_total"), variable_annual_usd=(res.get("variable") or {}).get("annual"),
-                        burn_l_h=fuel.get("burn_l_h"), config_hash=res.get("config_hash"),
-                        flags=[f["text"] for f in res.get("flags", []) if f.get("level") in ("warn", "error")][:3]))
+        r = _result_row(aid, str(row["model"]), scn, res, dict(adjusted=adjusted, errors=[], missing=[] if res["available"] else ["incomplete reference data"]))
+        r["fuel_price"] = float(price); r["hours"] = float(hours)
+        out.append(r)
     return out
+
+
+# ─────────────────────────────── comparison of SAVED scenarios (same engine as Cost Master) ───────────────────────────────
+def harmonise(scn: E.Scenario, common: dict):
+    """Return (copy, replaced) — the copy carries the common hours / fuel price; the stored scenario is never touched.
+    replaced: {"flown_hours": (old, new), "fuel_price": (old, new)} for what was really replaced."""
+    c = copy.deepcopy(scn); replaced = {}
+    h = common.get("flown_hours")
+    if h is not None:
+        old = scn.flown_hours
+        if old > 0:
+            k = float(h) / old
+            c.billed_hours = scn.billed_hours * k; c.positioning_hours = scn.positioning_hours * k; c.other_hours = scn.other_hours * k
+        else:
+            c.billed_hours = 0.0; c.positioning_hours = 0.0; c.other_hours = float(h)
+        replaced["flown_hours"] = (old, float(h))
+    p = common.get("fuel_price")
+    if p is not None:
+        old_p = (scn.fuel.price, scn.fuel.currency, scn.fuel.price_source)
+        c.fuel = dataclasses.replace(scn.fuel, price_source="average", price=float(p), currency=common.get("fuel_ccy", "USD"), benchmark_region="")
+        replaced["fuel_price"] = (old_p, (float(p), common.get("fuel_ccy", "USD"), "average"))
+    return c, replaced
+
+
+def compare_saved(df, items: list, common: dict | None = None):
+    """Compare 2–3 SAVED scenarios with the same engine as Cost Master. Each keeps its own aircraft and assumptions (default).
+    common (optional, explicit): flown_hours / fuel_price / fuel_ccy — applied to a COPY, the saved scenarios are never modified; what was replaced is listed.
+    A scenario saved with another base / engine version is recalculated now AND flagged (its saved figures are shown next to the new ones)."""
+    if not 2 <= len(items) <= 3:
+        raise ValueError("compare 2 or 3 scenarios")
+    common = {k: v for k, v in (common or {}).items()} if common else {}
+    pe = _price_problem(common.get("fuel_price")); he = _hours_problem(common.get("flown_hours"))
+    if pe or he:
+        return [], [e for e in (he, pe) if e]
+    out = []
+    for it in items:
+        payload = it.get("payload") or {}
+        scn = scenario_from_dict(payload.get("scenario"))
+        sub = df[df["aircraft_id"] == scn.aircraft_id]
+        label = str(it.get("name") or scn.aircraft_id); msn = (payload.get("msn") or "")
+        vs = version_status(it); snap = payload.get("snapshot") or {}
+        if not len(sub):
+            out.append(dict(key=it.get("id"), label=label, aircraft_id=scn.aircraft_id, available=False, missing=["aircraft not in the database"], replaced={}, version=vs)); continue
+        use, replaced = harmonise(scn, common) if (common.get("flown_hours") is not None or common.get("fuel_price") is not None) else (scn, {})
+        res = E.compute(sub.iloc[0], use)
+        r = _result_row(it.get("id"), label, use, res, dict(msn=msn, replaced=replaced, version=vs, saved_budget_usd=snap.get("budget_usd"),
+                                                        missing=[] if res["available"] else ["incomplete data for this scenario"], errors=[]))
+        out.append(r)
+    return out, []
 
 
 # ─────────────────────────────── product events ───────────────────────────────

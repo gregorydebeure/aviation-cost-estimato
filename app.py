@@ -1409,47 +1409,148 @@ def _render_my_scenarios(df,aid,scn,res,disp,is_pro):
                 if STORE.delete_broker_profile(_sb_rest,owner): st.session_state.pop("_broker_cache",None); st.success("Branding removed.")
                 else: st.error("Could not remove.")
 
+def _cmp_frames(rows,D,saved):
+    """Comparison tables from the engine rows. Operating budget and economic cost are in SEPARATE tables and are never ranked or sorted together."""
+    main_rows=[]; own_rows=[]
+    for o in rows:
+        if not o.get("available"):
+            why=(o.get("errors") or [])+(["Missing: "+", ".join(o["missing"])] if o.get("missing") else [])
+            main_rows.append({"Aircraft / scenario":o.get("label") or o.get("model") or o.get("aircraft_id"),"Annual operating budget":"not computed","Notes":"; ".join(why)}); continue
+        fp=(f"{o['fuel_price_usd_l']:.3f} USD/L" if o.get("fuel_price_usd_l") is not None else "n/a")
+        if o.get("fuel_price_ccy")=="EUR" and o.get("fuel_price_entered"): fp+=f" (entered {o['fuel_price_entered']:.3f} EUR)"
+        nm=o.get("label") or o.get("model")
+        if saved: nm=f"{nm} — {o.get('model')}"+(f" · {o['msn']}" if o.get("msn") else "")
+        notes=list(o.get("flags") or [])
+        if o.get("adjusted"): notes.append("adjusted: "+", ".join(x.replace("_"," ") for x in o["adjusted"])+" (this aircraft only)")
+        v=o.get("version") or {}
+        if v.get("changed"): notes.append("saved with an earlier base/calculation version — recalculated now (saved budget "+D(o.get("saved_budget_usd"))+")")
+        if o.get("replaced"): notes.append("replaced by common assumptions: "+", ".join(x.replace("_"," ") for x in o["replaced"]))
+        main_rows.append({"Aircraft / scenario":nm,"Total flown hours":f"{o['hours']:,.0f}" if o.get("hours") is not None else "n/a",
+                          "Fuel burn (L/h)":f"{o['burn_l_h']:,.0f}" if o.get("burn_l_h") is not None else "not available","Fuel price":fp,
+                          "Fixed costs / year":D(o.get("fixed_annual_usd")) if o.get("fixed_annual_usd") is not None else "not available",
+                          "Variable costs / year":D(o.get("variable_annual_usd")) if o.get("variable_annual_usd") is not None else "not available",
+                          "Annual operating budget":D(o["budget_usd"]),"Cost / flown hour":D(o["cost_per_h_usd"]) if o.get("cost_per_h_usd") is not None else "n/a",
+                          "Management":(D(o["management_included_usd"])+" included" if o.get("management_included_usd") is not None else o["management_text"]),
+                          "Not entered":", ".join(o.get("not_entered") or []) or "—","Notes":"; ".join(notes) or "—"})
+        if o.get("depreciation_usd") is not None or o.get("interest_usd") is not None:
+            own_rows.append({"Aircraft / scenario":nm,"Economic depreciation / year":D(o.get("depreciation_usd")) if o.get("depreciation_usd") is not None else "not entered",
+                             "Loan interest / year":D(o.get("interest_usd")) if o.get("interest_usd") is not None else "not entered",
+                             "Annual economic cost (operating budget + both)":D(o["economic_cost_usd"]) if o.get("economic_cost_usd") is not None else "not complete"})
+    return main_rows,own_rows
+
+def _cmp_csv(rows,main_rows,meta):
+    import csv as _csv, io as _io
+    b=_io.StringIO(); w=_csv.writer(b)
+    for k,v in meta: w.writerow([k,v])
+    w.writerow([])
+    if main_rows:
+        cols=list(dict.fromkeys(c for r in main_rows for c in r)); w.writerow(cols)
+        for r in main_rows: w.writerow([r.get(c,"") for c in cols])
+    return b.getvalue().encode("utf-8")
+
+def _render_cmp_results(rows,disp,saved,mode_label,notes_extra=()):
+    D=disp.money
+    main_rows,own_rows=_cmp_frames(rows,D,saved)
+    st.dataframe(pd.DataFrame(main_rows),width="stretch",hide_index=True)
+    if own_rows:
+        st.markdown("**Ownership costs entered — shown separately**")
+        st.dataframe(pd.DataFrame(own_rows),width="stretch",hide_index=True)
+        st.caption(E.OWNERSHIP_NOTE)
+    st.caption(disp.note() if disp.ccy=="EUR" else "Amounts in USD (source currency). EUR amounts entered in a scenario are converted with the dated rate saved in that scenario.")
+    for n in notes_extra: st.caption(n)
+    st.caption(STORE.CMP_NO_RANKING_NOTE); st.caption(STORE.CMP_HOURS_NOTE)
+    sig=hashlib.sha256(repr([(r.get("key"),r.get("config_hash"),r.get("hours")) for r in rows]).encode()).hexdigest()[:10]
+    meta=[("Comparison",mode_label),("Base version",E.DB_VERSION),("Calculation version",E.ENGINE_VERSION),("Comparison reference",sig),("Currency",disp.ccy),("Note",STORE.CMP_NO_RANKING_NOTE)]
+    st.download_button("⬇ Download comparison (CSV)",_cmp_csv(rows,main_rows,meta),file_name=f"Menkor_comparison_{sig}.csv",mime="text/csv",key=f"cmp_csv_{sig}")
+
 def _render_compare(df):
-    st.markdown('<div class="section-header">Compare 2–3 aircraft</div>',unsafe_allow_html=True)
-    st.caption("Common hypotheses apply to every aircraft you select. An adjustment applies to ONE aircraft only and is labelled as such. Missing inputs are shown as missing, never as zero.")
+    st.markdown('<div class="section-header">Compare aircraft</div>',unsafe_allow_html=True)
+    cmode=st.radio("Comparison type",["Indicative model comparison","Compare my saved scenarios"],horizontal=True,key="cmp_mode")
+    if cmode=="Indicative model comparison": _render_cmp_indicative(df)
+    else: _render_cmp_saved(df)
+
+def _render_cmp_indicative(df):
+    st.caption(STORE.CMP_INDICATIVE_NOTE); st.caption(STORE.CMP_INDICATIVE_BASE)
     models=sorted(df["model"].tolist()); idmap=dict(zip(df["model"],df["aircraft_id"]))
     picks=st.multiselect("Aircraft (2 or 3)",models,key="cmp_pick",max_selections=3)
     c1,c2,c3=st.columns(3)
     with c1: hrs=st.number_input("Common annual flown hours",min_value=0.0,value=None,step=10.0,placeholder="enter hours",key="cmp_hours")
     with c2: pr=st.number_input("Common fuel price (per litre)",min_value=0.0,value=None,step=0.05,placeholder="enter price",key="cmp_price")
     with c3: ccy=st.selectbox("Fuel price currency",["USD","EUR"],key="cmp_ccy")
-    fx=E.Fx(); 
+    fx=E.Fx()
     if ccy=="EUR":
         r1,r2=st.columns(2)
         with r1: rate=st.number_input("EUR for 1 USD",min_value=0.0,value=None,step=0.01,placeholder="rate",key="cmp_rate")
         with r2: rd=st.text_input("Rate date (YYYY-MM-DD)",key="cmp_rdate")
         fx=E.Fx("USD",rate if rate else None,rd or None,"")
     adj={}
-    for m in picks:
-        a1,a2=st.columns(2)
-        with a1: ah=st.number_input(f"Adjust hours — {m} only (optional)",min_value=0.0,value=None,step=10.0,key=f"cmp_ah_{idmap[m]}")
-        with a2: ap=st.number_input(f"Adjust fuel price — {m} only (optional)",min_value=0.0,value=None,step=0.05,key=f"cmp_ap_{idmap[m]}")
-        d={}
-        if ah: d["flown_hours"]=float(ah)
-        if ap: d["fuel_price"]=float(ap)
-        if d: adj[idmap[m]]=d
+    with st.expander("Adjustments — exceptions for ONE aircraft only (optional)",expanded=False):
+        st.caption("Empty = the common value is used. An hours value of 0 is a real zero (fixed costs stay, cost per hour is n/a). An invalid fuel price is reported, never replaced silently.")
+        for m in picks:
+            a1,a2=st.columns(2)
+            with a1: ah=st.number_input(f"Adjust hours — {m} only",min_value=0.0,value=None,step=10.0,key=f"cmp_ah_{idmap[m]}")
+            with a2: ap=st.number_input(f"Adjust fuel price — {m} only",min_value=None,value=None,step=0.05,key=f"cmp_ap_{idmap[m]}")
+            d={}
+            if ah is not None: d["flown_hours"]=float(ah)
+            if ap is not None: d["fuel_price"]=float(ap)
+            if d: adj[idmap[m]]=d
     if len(picks)<2: st.info("Select 2 or 3 aircraft."); return
     out=STORE.compare_aircraft(df,[idmap[m] for m in picks],dict(flown_hours=hrs,fuel_price=pr,fuel_ccy=ccy,fx=fx),adj)
-    D=E.Display(E.Fx()).money
-    rows=[]
     for o in out:
-        if o.get("available"):
-            rows.append({"Aircraft":o["model"],"Flown hours":f"{o['hours']:,.0f}"+(" (adjusted)" if "flown_hours" in o["adjusted"] else ""),
-                         "Fuel price / L":f"{o['fuel_price']:.2f} {ccy}"+(" (adjusted)" if "fuel_price" in o["adjusted"] else ""),
-                         "Fuel burn (L/h)":f"{o['burn_l_h']:,.0f}" if o.get("burn_l_h") is not None else "not available",
-                         "Fixed costs / year":D(o["fixed_annual_usd"]) if o.get("fixed_annual_usd") is not None else "not available",
-                         "Variable costs / year":D(o["variable_annual_usd"]) if o.get("variable_annual_usd") is not None else "not available",
-                         "Annual budget":D(o["budget_usd"]),"Cost / flown hour":D(o["cost_per_h_usd"]) if o.get("cost_per_h_usd") is not None else "not available",
-                         "Scope / data":"; ".join(o["flags"]) if o.get("flags") else "Reference data complete for this scenario"})
-        else:
-            rows.append({"Aircraft":o.get("model",o["aircraft_id"]),"Annual budget":"not computed","Scope / data":"Missing: "+", ".join(o["missing"])})
-    st.dataframe(pd.DataFrame(rows),width="stretch",hide_index=True)
-    st.caption("Amounts in USD (source currency). Budgets are indicative averages from the reference data, not aircraft-specific budgets.")
+        for e in (o.get("errors") or []): st.error(f"{o.get('label') or o['aircraft_id']}: {e}")
+    if ccy=="EUR" and pr is not None and not fx.is_valid(): st.warning("A EUR fuel price needs a dated EUR/USD rate: the figures are not computed until it is entered.")
+    if ccy=="EUR" and not fx.is_valid() and pr is not None:
+        st.info("Enter the rate and its date to compute with a EUR price."); return
+    _render_cmp_results(out,E.Display(E.Fx()),False,"Indicative model comparison")
+
+def _render_cmp_saved(df):
+    owner=st.session_state.get("auth_email")
+    if not owner: st.info("Log in to compare your saved scenarios."); return
+    items=[x for x in STORE.list_scenarios(_sb_rest,owner) if not x.get("deleted_at")]
+    if len(items)<2: st.info("Save at least two scenarios from Cost Master (“Save scenario”) to compare them here."); return
+    lab={}
+    for it in items:
+        sn=(it.get("payload") or {}).get("snapshot") or {}; ms=(it.get("payload") or {}).get("msn")
+        lab[it["id"]]=f"{it['name']} — {sn.get('model') or it['aircraft_id']}"+(f" · {ms}" if ms else "")+f" · {_fmt_date(it.get('created_at'))}"
+    if "cmp_saved_pick" in st.session_state: st.session_state["cmp_saved_pick"]=[i for i in st.session_state["cmp_saved_pick"] if i in lab][:3]   # never a stale id
+    pick=st.multiselect("Saved scenarios (2 or 3)",list(lab),format_func=lambda x:lab[x],key="cmp_saved_pick",max_selections=3)
+    st.caption("Each scenario keeps its own aircraft and its own assumptions: nothing entered for one aircraft is applied to another. Same calculation engine as Cost Master.")
+    harm=st.radio("Assumptions",["Use each scenario’s assumptions","Apply common assumptions"],key="cmp_harm",horizontal=True)
+    common={}; disp=E.Display(E.Fx())
+    if harm=="Apply common assumptions":
+        st.caption("The comparison is recalculated on a COPY; your saved scenarios are not modified. "+STORE.CMP_HARMONISE_HOURS_NOTE)
+        h1,h2,h3=st.columns(3)
+        with h1: ch=st.number_input("Common annual flown hours",min_value=0.0,value=None,step=10.0,placeholder="keep each scenario’s hours",key="cmp_s_hours")
+        with h2: cp=st.number_input("Common fuel price (per litre)",min_value=None,value=None,step=0.05,placeholder="keep each scenario’s fuel",key="cmp_s_price")
+        with h3: cc=st.selectbox("Fuel price currency",["USD","EUR"],key="cmp_s_ccy")
+        dcy=st.selectbox("Display currency",["USD","EUR"],key="cmp_s_disp")
+        rate=None; rd=None
+        if cc=="EUR" or dcy=="EUR":
+            r1,r2=st.columns(2)
+            with r1: rate=st.number_input("EUR for 1 USD",min_value=0.0,value=None,step=0.01,key="cmp_s_rate")
+            with r2: rd=st.text_input("Rate date (YYYY-MM-DD)",key="cmp_s_rdate")
+        fxc=E.Fx(dcy,rate if rate else None,rd or None,"")
+        if (cc=="EUR" and cp is not None) and not fxc.is_valid():
+            st.warning("A EUR fuel price needs a dated EUR/USD rate: enter it to compute."); return
+        common=dict(flown_hours=ch,fuel_price=(cp if cp is None or cc=="USD" else cp/fxc.usd_to_eur),fuel_ccy="USD")
+        if cp is not None and cc=="EUR": common["fuel_ccy"]="USD"
+        disp=E.Display(fxc)
+        if dcy=="EUR" and disp.eur_blocked: st.warning("EUR display needs a dated rate: amounts stay in USD until it is entered.")
+    if len(pick)<2: st.info("Select 2 or 3 saved scenarios."); return
+    chosen=STORE.get_scenarios_for_compare(_sb_rest,owner,pick)
+    if len(chosen)<2: st.warning("Some selected scenarios are no longer available."); return
+    rows,errs=STORE.compare_saved(df,chosen,common)
+    for e in errs: st.error(e)
+    if errs: return
+    for o in rows:
+        if (o.get("version") or {}).get("changed"):
+            st.warning(f"“{o['label']}” was saved with another base or calculation version: it is recalculated with the current ones; its saved budget is shown in the notes.")
+    extra=[]
+    for o in rows:
+        for k,(old,new) in (o.get("replaced") or {}).items():
+            if k=="flown_hours": extra.append(f"{o['label']}: hours {old:,.0f} → {new:,.0f} (replaced)")
+            else: extra.append(f"{o['label']}: fuel price method/price replaced by the common price")
+    _render_cmp_results(rows,disp,True,"Saved scenarios — "+harm,notes_extra=extra)
 
 def main():
     for k,v in [("database",None),("cost_master",None),("pdf_report",None),
@@ -2450,6 +2551,44 @@ def main():
                 if url:
                     st.markdown(f'<div style="text-align:center;margin-top:.8rem"><a href="{url}" target="_blank" style="background:#C9A84C;color:#0B1629;padding:.6rem 1.5rem;border-radius:5px;font-weight:700;text-decoration:none">💳 Pay € 300 and Submit Request</a></div>', unsafe_allow_html=True)
                     st.info("After payment, our team prepares your personalized market report. Delivery timeframe confirmed when your request is reviewed.")
+
+    # ── Cost Master → saved scenarios → comparison ──────────────────────────────────────────────────────────
+    with tab4:
+        if is_pro and not hist and journey!=J_C:
+            st.markdown("<hr>",unsafe_allow_html=True)
+            st.markdown('<div class="section-header">💾 Save this scenario / compare</div>',unsafe_allow_html=True)
+            _own=st.session_state.get("auth_email")
+            if mode=="reference":
+                st.info("Switch to Custom simulation to save a scenario with your own assumptions.")
+            elif not _own: st.info("Log in to save a scenario.")
+            elif not _storage_configured(): st.warning("Scenario storage is not configured on this installation: nothing can be saved for now.")
+            elif not res["available"]: st.info("Complete the assumptions (hours and fuel price) to save a computed scenario.")
+            else:
+                st.caption(f"Current scenario: {res['model']} · reference {res['config_hash']}. All the assumptions entered here are saved (not only totals), with the base and calculation versions. "
+                           "Edits made for one aircraft are never applied to another aircraft.")
+                s1,s2=st.columns([3,2])
+                with s1: _snm=st.text_input("Scenario name",key="cm_sv_name",max_chars=STORE.MAX_NAME)
+                with s2: _smsn=st.text_input("Aircraft name / MSN (optional)",key="cm_sv_msn",max_chars=40)
+                b1,b2=st.columns(2)
+                with b1:
+                    if st.button("💾 Save scenario",key="cm_sv_btn"):
+                        _ok,_out=STORE.save_scenario(_sb_rest,_own,_snm,scn,res,msn=_smsn)
+                        if _ok:
+                            st.session_state["_cm_last_saved"]=(_out,res["config_hash"],STORE._clean_name(_snm))
+                            st.success(f"Scenario “{STORE._clean_name(_snm)}” saved.")
+                            _track("scenario_saved",{"plan":_plan_key()},once_key=f"saved:{_out}")
+                        else: st.error(_out)
+                with b2:
+                    _ls=st.session_state.get("_cm_last_saved")
+                    if st.button("➕ Add to comparison",key="cm_cmp_btn"):
+                        if not _ls or _ls[1]!=res["config_hash"]:
+                            st.warning("Save this scenario first: it has changed since the last save (or was never saved).")
+                        else:
+                            _ids=[i for i in st.session_state.get("cmp_saved_ids",[]) if i!=_ls[0]]+[_ls[0]]
+                            st.session_state["cmp_saved_ids"]=_ids[-3:]
+                            st.session_state["cmp_saved_pick"]=_ids[-3:]            # preselected in My scenarios → Compare aircraft → saved scenarios
+                            st.success(f"“{_ls[2]}” added ({len(st.session_state['cmp_saved_ids'])}/3). Open My scenarios → Compare aircraft → Compare my saved scenarios.")
+                if st.session_state.get("cmp_saved_ids"): st.caption(f"In the comparison basket: {len(st.session_state['cmp_saved_ids'])} scenario(s).")
 
     # ── TAB 7 : MY SCENARIOS ───────────────────────────────────────────
     with tab7:
