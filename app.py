@@ -236,6 +236,7 @@ def _get_logo():
 # coefficient and the generic CM_OP/CM_DIR/CM_IND amounts have been removed.
 import menkor_engine as E
 import menkor_report as RPT
+import menkor_store as STORE
 
 
 @st.cache_data(show_spinner=False)
@@ -363,9 +364,18 @@ def cm_bar(res,disp,category,title):
     return fig
 
 # ─── PDF (built by menkor_report from the engine result) ─────────────────────
-def generate_pdf_report(res,disp,alerts):
+# Public address of the app: the SAME address already used for the Stripe return URLs in this file. An APP_PUBLIC_URL secret overrides it.
+APP_PUBLIC_URL="https://aviation-cost-estimator.onrender.com"
+
+def _study_url():
+    """Configured destination of the aircraft-specific budget request (opens the journey 'Request an aircraft-specific budget'). Never invented."""
+    try: base=str(st.secrets.get("APP_PUBLIC_URL") or APP_PUBLIC_URL)
+    except Exception: base=APP_PUBLIC_URL
+    return base.rstrip("/")+"/?journey=budget"
+
+def generate_pdf_report(res,disp,alerts,broker=None):
     logo=_get_logo()
-    return RPT.build_report_pdf(res,disp,alerts,base64.b64decode(logo) if logo else None)
+    return RPT.build_report_pdf(res,disp,alerts,base64.b64decode(logo) if logo else None,study_url=_study_url(),broker=broker)
 
 
 def generate_quotation_pdf(qr, aircraft_row):
@@ -553,6 +563,41 @@ def _sb_update_user(email,fields):
         return r.status_code in (200,204)
     except Exception: return False
 
+def _sb_rest(method,table,params=None,json=None,prefer=None):
+    """Transport used by menkor_store (existing Supabase service access, server side). Returns (status, data); (0, None) when not configured or unreachable."""
+    try:
+        import requests
+        url,key=_sb_base()
+        if not url or not key: return 0,None
+        h=dict(_sb_headers())
+        h["Prefer"]=prefer or ("return=minimal" if method!="GET" else "")
+        if not h["Prefer"]: h.pop("Prefer")
+        r=requests.request(method,f"{url}/rest/v1/{table}",headers=h,params=params,json=json,timeout=6)
+        data=None
+        if method=="GET" and r.status_code==200:
+            try: data=r.json()
+            except Exception: data=None
+        return r.status_code,data
+    except Exception:
+        return 0,None
+
+def _storage_configured():
+    try:
+        u,k=_sb_base(); return bool(u and k)
+    except Exception: return False
+
+def _track(event,props=None,once_key=None):
+    """Anonymous product event (whitelisted: no e-mail / name / free text / MSN / folder content — see menkor_store.EVENTS & ALLOWED_PROPS).
+    No-op when storage is not configured or EVENTS_ENABLED=0; never raises; deduplicated across Streamlit reruns by `once_key`."""
+    try:
+        if str(st.secrets.get("EVENTS_ENABLED","1"))=="0" or not _storage_configured(): return False
+        return STORE.track(_sb_rest,st.session_state,event,props,once_key)
+    except Exception:
+        return False
+
+def _plan_key():
+    return "pro" if st.session_state.get("auth_plan")=="pro" else ("essentiel" if st.session_state.get("auth_plan")=="essentiel" else "free")
+
 def _notify_admin_new_signup(email):
     """Best-effort: registration must never fail because of this. Returns (ok, detail) for diagnostics."""
     try:
@@ -580,6 +625,7 @@ def _register(email,pwd):
     if not ok:
         return False,f"Could not create account — {detail}"
     _notify_admin_new_signup(email)
+    _track("signup",{"plan":"free"},once_key="signup")
     return True,"Account created!"
 
 def _login(email,pwd):
@@ -674,7 +720,11 @@ def _check_sub(email):
                     elif pid==ess_price and plan!="pro": plan="essentiel"; active_cid=active_cid or cust.id
             if plan=="pro": break
         if active_cid: _sb_update_user(email,{"stripe_cid":active_cid})
+        _prev=(_sb_get_user(email) or {}).get("plan")
         _sb_update_user(email,{"plan":plan,"active":plan is not None})
+        # Server-verified (Stripe) transitions only. Renewals need Stripe webhooks, which this app does not have: not tracked.
+        if plan and not _prev: _track("subscription_activated",{"plan":plan,"source":"stripe_check"},once_key=f"sub_on:{plan}")
+        elif _prev and not plan: _track("subscription_cancelled",{"plan":_prev,"source":"stripe_check"},once_key="sub_off")
         return plan
     except Exception: return None
 
@@ -854,33 +904,20 @@ def render_auth():
     plan=st.session_state.get("auth_plan")
     return plan in ("essentiel","pro"), plan=="pro"
 
-def premium_gate(required="pro"):
-    email=st.session_state.get("auth_email")
-    req_label="Pro" if required=="pro" else "Essentiel"
-    price_label=PLAN_LABELS.get(required,"")
-    st.markdown(f"""<div style="background:linear-gradient(135deg,#112244 0%,#1A3A6E 100%);
-         border:1px solid #C9A84C;border-radius:12px;padding:2.5rem;text-align:center;margin:2rem 0 1rem 0">
-        <div style="font-size:2rem;margin-bottom:.8rem">🔒</div>
-        <div style="font-size:1.3rem;font-weight:700;color:#E8C46A;margin-bottom:.5rem">{req_label} Feature</div>
-        <div style="font-size:.9rem;color:#8496B0;margin-bottom:.2rem">This section requires the <b style="color:#C9A84C">{price_label}</b> plan.</div>
-    </div>""", unsafe_allow_html=True)
+PLAN_ROWS=[("Dashboard — free demo (Falcon 7X, report scenario)",True,True,True),
+           ("Dashboard — any aircraft, your hours and fuel price",False,True,True),
+           ("Profitability",False,True,True),("Sensitivity",False,True,True),
+           ("Cost Master, PDF report and CSV export",False,False,True),("Quotation",False,False,True),
+           ("Market Search (manual service, € 300 per request, separate)",True,True,True)]
 
-    def _cell(included,is_current_col):
+def _plan_table(required=None):
+    """Free / Essentiel / Pro comparison. Prices are the existing ones; only features that exist today are listed."""
+    def _cell(included,hi):
         mark='<span style="color:#4ADE80;font-weight:700">✓</span>' if included else '<span style="color:#4A5568">—</span>'
-        bg="background:rgba(201,168,76,.10);" if is_current_col else ""
+        bg="background:rgba(201,168,76,.10);" if hi else ""
         return f'<td style="text-align:center;padding:.5rem .4rem;{bg}">{mark}</td>'
-
-    rows=[("Dashboard",True,True,True),("Profitability",False,True,True),
-          ("Sensitivity",False,True,True),("Cost Master",False,False,True),
-          ("Quotation",False,False,True),("Market Search",True,True,True)]
-    body="".join(
-        f'<tr><td style="padding:.5rem .6rem;color:#D6E4F7;font-size:.82rem;'
-        + ('font-weight:700;color:#E8C46A;' if name in ("Cost Master","Quotation","Profitability","Sensitivity") and
-             ((required=="essentiel" and name in ("Profitability","Sensitivity")) or (required=="pro" and name in ("Cost Master","Quotation"))) else '')
-        + f'">{name}</td>{_cell(free_,False)}{_cell(ess_,required=="essentiel")}{_cell(pro_,required=="pro")}</tr>'
-        for name,free_,ess_,pro_ in rows
-    )
-    st.markdown(f"""<table style="width:100%;border-collapse:collapse;background:#13233F;border:1px solid #1A3A6E;border-radius:6px;margin-bottom:1.5rem">
+    body="".join(f'<tr><td style="padding:.5rem .6rem;color:#D6E4F7;font-size:.82rem">{name}</td>{_cell(f_,False)}{_cell(e_,required=="essentiel")}{_cell(p_,required=="pro")}</tr>' for name,f_,e_,p_ in PLAN_ROWS)
+    st.markdown(f"""<table style="width:100%;border-collapse:collapse;background:#13233F;border:1px solid #1A3A6E;border-radius:6px;margin-bottom:1rem">
         <thead><tr style="border-bottom:1px solid #1A3A6E">
             <th style="text-align:left;padding:.5rem .6rem;font-size:.68rem;letter-spacing:.08em;text-transform:uppercase;color:#8496B0">Feature</th>
             <th style="padding:.5rem .4rem;font-size:.7rem;color:#8496B0">Free</th>
@@ -890,8 +927,23 @@ def premium_gate(required="pro"):
         <tbody>{body}</tbody>
     </table>""", unsafe_allow_html=True)
 
-    if not email: st.info("👈 Create a free account in the sidebar.")
+def _plan_access():
+    """Direct access to the existing sign-up / subscription flow (nothing new is created here)."""
+    email=st.session_state.get("auth_email")
+    if not email: st.info("👈 Create a free account (or log in) in the sidebar, then choose a plan.")
     else: _plan_buttons(email,current_plan=st.session_state.get("auth_plan"))
+
+def premium_gate(required="pro"):
+    req_label="Pro" if required=="pro" else "Essentiel"
+    price_label=PLAN_LABELS.get(required,"")
+    st.markdown(f"""<div style="background:linear-gradient(135deg,#112244 0%,#1A3A6E 100%);
+         border:1px solid #C9A84C;border-radius:12px;padding:2.5rem;text-align:center;margin:2rem 0 1rem 0">
+        <div style="font-size:2rem;margin-bottom:.8rem">🔒</div>
+        <div style="font-size:1.3rem;font-weight:700;color:#E8C46A;margin-bottom:.5rem">{req_label} Feature</div>
+        <div style="font-size:.9rem;color:#8496B0;margin-bottom:.2rem">This section requires the <b style="color:#C9A84C">{price_label}</b> plan.</div>
+    </div>""", unsafe_allow_html=True)
+    _plan_table(required)
+    _plan_access()
 
 # ─── THRESHOLD, COSTS SCOPE, MANUAL BUDGET OFFER ─────────────────────────────
 
@@ -915,12 +967,61 @@ def _render_threshold(pr,D):
     th=pr.get("threshold") or {}; te=pr.get("threshold_economic") or {}
     _render_one_threshold(th,E.THRESHOLD_LABEL,E.THRESHOLD_LABEL_FR)
     st.caption(E.THRESHOLD_NOTE)
+    with st.expander("How the thresholds are calculated",expanded=False):
+        st.markdown(f"`{E.THRESHOLD_FORMULA}` — F = fixed costs, V = variable cost per flown hour, Hp = private/other hours, A = other fees net of supplements, "
+                    "R = charter rate per billed hour, c = commission, p = positioning hours per billed hour. Positioning keeps the same ratio per billed hour, private hours stay constant, "
+                    "fixed costs stay fixed; the result is rounded up to the next whole billed hour. If the contribution per billed hour is zero or negative, no threshold is attainable.")
     if th.get("status") in ("awaiting_confirmation","ratio_undefined"): return
     st.markdown("<hr>",unsafe_allow_html=True)
     _render_one_threshold(te,E.THRESHOLD_ECON_LABEL,E.THRESHOLD_ECON_LABEL_FR,show_assumptions=False)
     if te.get("status") in ("ok","exceeds_year") and pr.get("economic_result") is not None:
         e1,e2=st.columns(2); e1.metric("Economic ownership costs entered",D(pr["ownership_costs_total"])); e2.metric("Economic result (operating result − ownership costs)",D(pr["economic_result"]))
     st.caption(E.OWNERSHIP_NOTE+" Revenue paid by the owner to the operator for the owner's own flights is not external charter revenue and does not reduce the owner's consolidated cost.")
+
+DEMO_AID="dassault_falcon_7x"
+
+def _render_free_demo(df,aid,model_name):
+    """Free demo: ONE aircraft in the report-reference scenario (published hours and fuel price — nothing invented). It never computes the visitor's own selection."""
+    st.markdown('<div class="section-header">Free demo — Dassault Falcon 7X</div>',unsafe_allow_html=True)
+    st.info("Free demo: one aircraft (Dassault Falcon 7X) in the Menkor report-reference scenario, i.e. the report's own hours and fuel price. "
+            "It is not your aircraft, your hours or your fuel price.")
+    drow=df[df["aircraft_id"]==DEMO_AID]
+    if not len(drow): st.caption("The demo aircraft is not available in this database."); return
+    dfx=E.Fx("USD",None,None); dd=E.Display(dfx)
+    dres=E.compute(drow.iloc[0],E.Scenario(aircraft_id=DEMO_AID,mode="reference",fx=dfx))
+    if not dres["available"]: st.caption("The demo is not available right now."); return
+    v=dres["variable"]
+    d1,d2,d3,d4=st.columns(4)
+    d1.metric("Demo — Annual Fixed Costs",dd.money(dres["fixed"]["annual_total"]))
+    d2.metric("Demo — Annual Variable Costs",dd.money(v["annual"]))
+    d3.metric("Demo — Total Annual Budget",dd.money(dres["budget_usd"]))
+    d4.metric("Demo — Cost / flown hour",dd.money(dres["cost_per_h_usd"]) if dres["cost_per_h_usd"] is not None else "n/a")
+    g1,g2=st.columns(2)
+    with g1:
+        st.markdown('<div class="section-header">Demo — annual cost breakdown</div>',unsafe_allow_html=True)
+        st.plotly_chart(chart_donut(dres,dd),width="stretch",config={"displayModeBar":False})
+    with g2:
+        st.markdown('<div class="section-header">Demo — report preview</div>',unsafe_allow_html=True)
+        st.markdown(f'''<div class="metric-card"><div class="metric-label">Sample report — preview only</div>
+            <div style="font-size:1rem;font-weight:700;color:#D6E4F7">AVIATION COST REPORT — Dassault Falcon 7X</div>
+            <div class="metric-sub" style="margin-top:.4rem">Annual budget {dd.money(dres["budget_usd"])} · cost per flown hour {dd.money(dres["cost_per_h_usd"]) if dres["cost_per_h_usd"] is not None else "n/a"} · {dres["hours"]["flown"]:,.0f} flown hours</div>
+            <div class="metric-sub" style="margin-top:.4rem">Page 1: cost summary, results, essential assumptions, main exclusions. Page 2: detailed breakdown, scenarios, link to a custom study.</div>
+            <div class="metric-sub" style="margin-top:.4rem;color:#F59E0B">The PDF report for your own scenario is available with the Pro plan.</div></div>''',unsafe_allow_html=True)
+    if aid!=DEMO_AID: st.caption(f"Your selection ({model_name}) is available with an Essentiel or Pro plan.")
+    st.markdown('<div class="section-header">What each plan includes</div>',unsafe_allow_html=True)
+    _plan_table(None)
+    _plan_access()
+
+def _ownership_total(scn):
+    """(total USD or None, missing labels or None): depreciation + interest entered; None total when one is missing (never zero)."""
+    miss=[]; tot=0.0
+    for lab,amt,ccy in (("economic depreciation",scn.depreciation_annual,scn.depreciation_ccy),("loan interest",scn.interest_annual,scn.interest_ccy)):
+        if amt is None: miss.append(lab); continue
+        u,e=E.amount_to_usd(amt,ccy,scn.fx)
+        if e: miss.append(lab); continue
+        tot+=u
+    if len(miss)==2: return None,None
+    return (tot if not miss else None),miss
 
 def _render_costs_scope(row,res,scn,D,where="scope"):
     """Block 'Costs included & limitations'."""
@@ -938,9 +1039,9 @@ def _render_costs_scope(row,res,scn,D,where="scope"):
         _render_budget_cta(res["model"],where)
     return sc
 
-BUDGET_OFFER_TITLE="Aircraft-specific operating budget"
-BUDGET_OFFER_TEXT=("Get a tailored operating budget based on the aircraft's serial number, maintenance status, programme coverage and your intended operation. "
-                   "Prepared manually by Menkor Aviation.")
+BUDGET_OFFER_TITLE="What will this specific aircraft cost you?"
+BUDGET_OFFER_TEXT="A manually prepared budget based on serial number, programme coverage, upcoming maintenance and your intended operation."
+BUDGET_BUTTON="Request my aircraft budget"
 BUDGET_DELIVERABLES=["Detailed operating budget.","Recurring costs and identified exceptional expenses over three years.",
                      "First-year cash flow shown separately from the smoothed economic budget.","Private and charter scenarios.",
                      "Net cost remaining to the owner after the charter contribution.",
@@ -974,33 +1075,28 @@ def _send_budget_request(data,secrets=None,post=None):
         return False,f"{type(e).__name__}"
 
 def _budget_form(model_name,where):
-    """Single request path: one button, one inline form (no extra window). `where` makes the widget keys unique per place."""
-    if st.button("Request a budget for your aircraft",key=f"bq_open_{where}"): st.session_state[f"_bq_open_{where}"]=True
+    """Single request path: one button, one short inline form. `where` makes the widget keys unique per place.
+    The owned / acquisition question has NO preselected answer."""
+    if st.button(BUDGET_BUTTON,key=f"bq_open_{where}"): st.session_state[f"_bq_open_{where}"]=True
     if not st.session_state.get(f"_bq_open_{where}"): return
     with st.form(f"budget_request_form_{where}"):
         f1,f2=st.columns(2)
         with f1: nm=st.text_input("Name",key=f"bq_name_{where}")
         with f2: em=st.text_input("Email",key=f"bq_email_{where}")
-        g1,g2,g3=st.columns(3)
-        with g1: md=st.text_input("Aircraft model",value=model_name,key=f"bq_model_{where}")
-        with g2: yr=st.text_input("Year (optional)",key=f"bq_year_{where}")
-        with g3: msn=st.text_input("MSN (optional at first contact)",key=f"bq_msn_{where}")
-        base=st.text_input("Intended region / base",key=f"bq_base_{where}")
-        h1,h2=st.columns(2)
-        with h1: hp=st.text_input("Planned private hours per year (if known)",key=f"bq_hp_{where}")
-        with h2: hc=st.text_input("Planned charter hours per year (if known)",key=f"bq_hc_{where}")
-        own=st.radio("Aircraft status",["Already owned","Acquisition project"],key=f"bq_own_{where}",horizontal=True)
-        prog=st.text_input("Known programmes (if available)",key=f"bq_prog_{where}")
+        md=st.text_input("Aircraft model",value=model_name or "",key=f"bq_model_{where}")
+        own=st.radio("Aircraft status",["Already owned","Acquisition project"],index=None,key=f"bq_own_{where}",horizontal=True)
         msg=st.text_area("Message",key=f"bq_msg_{where}",max_chars=1500)
-        st.caption("Technical documents may be requested after the first exchange. Please do not send sensitive files through this form.")
+        st.caption("Please do not send sensitive documents through this form; technical documents may be requested after the first exchange.")
         sub=st.form_submit_button("Send request")
     if sub:
         if not (nm.strip() and em.strip() and md.strip()): st.warning("Please fill in name, email and aircraft model."); return
         if not _re.match(r"[^@\s]+@[^@\s]+\.[^@\s]+",em.strip()): st.warning("Please enter a valid email address."); return
-        data={"Name":nm.strip(),"Email":em.strip(),"Aircraft model":md.strip(),"Year":yr.strip(),"MSN":msn.strip(),"Region / base":base.strip(),
-              "Private hours / year":hp.strip(),"Charter hours / year":hc.strip(),"Status":own,"Known programmes":prog.strip(),"Message":msg.strip()[:1500]}
+        if not own: st.warning("Please tell us whether the aircraft is already owned or an acquisition project."); return
+        data={"Name":nm.strip(),"Email":em.strip(),"Aircraft model":md.strip(),"Status":own,"Message":msg.strip()[:1500]}
         ok,detail=_send_budget_request(data)
-        if ok: st.success("Your request has been transmitted to Menkor Aviation. We will contact you to confirm the next steps.")
+        if ok:
+            st.success("Your request has been transmitted to Menkor Aviation. We will contact you to confirm the next steps.")
+            _track("study_request_received",{"plan":_plan_key()},once_key=f"study:{where}")
         elif detail=="not_configured": st.error("Your request could not be sent: reception is not configured on this installation. No request has been recorded. "
                                                 "Please try again later or contact Menkor Aviation directly."); st.caption(BUDGET_CONFIG_HELP)
         else: st.error(f"Your request could not be sent ({detail}). No request has been recorded: please try again later.")
@@ -1034,6 +1130,14 @@ def _on_search():
         st.session_state["ac_search_note"]=f"No aircraft or alias matches '{q}'." if q.strip() else ""
     st.session_state["ac_search"]=""
 
+J_A,J_B,J_C="Estimate operating costs","Simulate charter operations","Request an aircraft-specific budget"
+JOURNEYS=[J_A,J_B,J_C]
+FUEL_PRICE_HELP="Enter your average fuel purchase price, including applicable fuel taxes and fees."
+FUEL_PRICE_MISSING="Enter your average annual fuel price to calculate the operating budget. No fuel price is assumed."
+CONFIRM_LABEL="Confirm assumptions and calculate"
+# widgets that exist in only one journey: their values survive a switch of journey (never reinterpreted as another input)
+_JOURNEY_KEYS=("th_{a}","bh_{a}","ph_{a}","oh_{a}","rate_{a}","rateccy_{a}","rbasis_{a}","comm_{a}","fps_{a}","bm_{a}","cb_{a}")
+_JOURNEY_KEYS_G=("pos_mode","pos_ratio","fu_avg_price","fu_avg_ccy","fx_rate","fx_date","own_dep","own_int","supp_rev","supp_cost","calc_mode")
 _KEEP_KEYS=("q_margin","fleet_mf")   # widgets only shown in Custom simulation: their value survives a visit to Report reference
 
 def _bump_overrides():
@@ -1076,15 +1180,13 @@ def _prov_table(row,prov):
 
 def _results_csv(res,disp):
     """CSV export of the current result with its assumptions and exchange rate (same engine result as screen/PDF)."""
-    rows=[("config_id",res["config_hash"]),("aircraft_id",res["aircraft_id"]),("model",res["model"]),("mode",res["mode"]),
-          ("source","Menkor reference database"),("record_type",E.source_label(res.get("source_kind"))),
-          ("menkor_base_version",res["menkor_base"].get("version")),("menkor_base_adjustment_applied_in_this_result",res["menkor_base"]["applied"]),
+    _erd=(res.get("dates") or {}).get("economic_reference_date")
+    rows=[("scenario_reference",res["config_hash"]),("model",res["model"]),("mode",res["mode"]),
+          ("menkor_base_adjustment_applied_in_this_result",res["menkor_base"]["applied"]),
           ("menkor_base_adjustment_pct",res["menkor_base"].get("pct")),("menkor_base_adjustment_status",res["menkor_base"].get("status")),
           ("menkor_base_text",res["menkor_base"].get("text","")),("original_published_budget_usd",res["menkor_base"].get("published_budget_original")),
           ("menkor_base_delta_budget_usd",res["menkor_base"].get("delta_total")),
-          ("economic_reference_date",(res.get("dates") or {}).get("economic_reference_date","unknown")),
-          ("consultation_date",(res.get("dates") or {}).get("consultation_date") or ""),("extraction_date",(res.get("dates") or {}).get("extraction_date") or ""),
-          ("web_source_url",(res.get("web_source") or {}).get("url","")),("web_source_consulted",(res.get("web_source") or {}).get("access_date","")),
+          ("economic_reference_date",str(_erd) if _erd and str(_erd).lower()!="unknown" else "Economic reference date not documented"),
           ("source_currency","USD"),("display_currency",disp.ccy),("usd_to_eur_rate",disp.fx.usd_to_eur if disp.ccy=="EUR" else ""),
           ("rate_date",disp.fx.rate_date if disp.ccy=="EUR" else ""),("hours_flown",res["hours"]["flown"]),
           ("annual_fixed_usd",res["fixed"].get("annual_total")),("variable_per_hour_usd",res["variable"].get("per_h")),
@@ -1098,9 +1200,9 @@ def _results_csv(res,disp):
                    ("fuel_average_price_usd_per_litre",_av["price_usd_l"]),("fuel_average_fx_usd_to_eur",_av.get("fx_rate") or ""),("fuel_average_fx_date",_av.get("fx_date") or "")]
     _bm=(res.get("fuel") or {}).get("benchmark")
     if _bm:
-        rows+=[("fuel_price_method","Regional market benchmark"),("fuel_benchmark_region",_bm["region"]),("fuel_benchmark_region_id",_bm["region_id"]),
+        rows+=[("fuel_price_method","Regional market benchmark"),("fuel_benchmark_region",_bm["region"]),
                ("fuel_benchmark_period",_bm["period_label"]),("fuel_benchmark_period_start",_bm["period_start"]),("fuel_benchmark_period_end",_bm["period_end"]),
-               ("fuel_benchmark_source",_bm["benchmark"]),("fuel_benchmark_source_url",_bm["url_1"]),
+               ("fuel_benchmark_nature","weekly regional refinery reference (not an into-wing price)"),
                ("fuel_benchmark_price_us_cents_per_us_gallon",_bm["source_cents_usg"]),("fuel_benchmark_price_usd_per_l",_bm["benchmark_usd_l"]),
                ("fuel_price_used_usd_per_l",_bm["used_usd_l"]),("fuel_price_currency_unit",_bm["unit"]),("fuel_price_user_adjusted",_bm["user_adjusted"]),
                ("fuel_price_qualification","user hypothesis" if _bm["user_adjusted"] else "refinery reference"),
@@ -1110,7 +1212,7 @@ def _results_csv(res,disp):
         rows+=[("fuel_validity_status",fv["status"]),("fuel_validity_date",fv.get("date") or ""),("fuel_validity_checked_on",fv["today"]),
                ("fuel_validity_timezone",fv["tz"]),("fuel_expired_price_confirmed_as_historical",fv.get("confirmed",False))]
     for fl_ in res["flags"]:
-        if fl_["level"] in ("warn","error"): rows.append((f"flag_{fl_['level']}_{fl_['code']}",fl_["text"]))
+        if fl_["level"] in ("warn","error"): rows.append(("warning" if fl_["level"]=="warn" else "error",fl_["text"]))
     pr=res.get("profit")
     if pr and pr.get("available"):
         rows+=[("charter_rate_basis","already net of commission" if pr["rate_basis"]=="net" else "before commission (gross)"),("charter_rate_usd_per_billed_hour",pr["rate_usd"]),
@@ -1152,6 +1254,198 @@ def _results_csv(res,disp):
     for c in res["components"]: rows.append((f"component_{c['category'].lower()}_{c['key']}_annual_usd",c["annual_usd"]))
     return pd.DataFrame(rows,columns=["item","value"]).to_csv(index=False).encode("utf-8-sig")
 
+def _broker_for_pdf():
+    """Broker name / logo of the LOGGED-IN owner only (Pro). Loaded from storage; cached per owner in the session."""
+    em=st.session_state.get("auth_email")
+    if not em or not _storage_configured(): return None
+    c=st.session_state.get("_broker_cache")
+    if not c or c.get("owner")!=em:
+        prof=STORE.get_broker_profile(_sb_rest,em)
+        c={"owner":em,"profile":prof}; st.session_state["_broker_cache"]=c
+    prof=c["profile"]
+    if not prof or not (prof.get("broker_name") or prof.get("logo")): return None
+    return dict(name=prof.get("broker_name") or "",logo=prof.get("logo"))
+
+def _broker_sig(b):
+    if not b: return ""
+    return hashlib.md5(((b.get("name") or "")+"|").encode()+(b.get("logo") or b"")).hexdigest()[:10]
+
+def _fmt_date(iso):
+    return str(iso or "")[:10]
+
+def _render_my_scenarios(df,aid,scn,res,disp,is_pro):
+    """Personal scenarios (Essentiel+), comparison / folders / report branding (Pro). Owner = the authenticated session e-mail, never a typed value."""
+    owner=st.session_state.get("auth_email")
+    if not owner: st.info("Log in to save and find your scenarios."); return
+    if not _storage_configured():
+        st.warning("Scenario storage is not configured on this installation (SUPABASE_URL / SUPABASE_SERVICE_KEY). Nothing can be saved for now."); return
+    sections=["Saved scenarios"]+(["Compare aircraft","Client folders","Report branding"] if is_pro else [])
+    sec=st.radio("Section",sections,horizontal=True,key="ms_section",label_visibility="collapsed")
+    if sec not in sections: sec="Saved scenarios"      # e.g. the plan changed since the last run: never expose a Pro section
+    folders=STORE.list_folders(_sb_rest,owner) if is_pro else []
+    fname={f["id"]:f["name"] for f in folders}
+    if sec=="Saved scenarios":
+        st.markdown('<div class="section-header">Save the current scenario</div>',unsafe_allow_html=True)
+        st.caption(f"Current scenario: {res['model']} · scenario reference {res['config_hash']}. Everything you entered is saved with the base version, the calculation version and the date.")
+        c1,c2=st.columns([3,2])
+        with c1: nm=st.text_input("Scenario name",key="sv_name",max_chars=STORE.MAX_NAME)
+        fid=None
+        with c2:
+            if is_pro and folders:
+                pick=st.selectbox("Folder",["No folder"]+[f["name"] for f in folders],key="sv_folder")
+                fid=next((f["id"] for f in folders if f["name"]==pick),None)
+        if st.button("Save current scenario",key="sv_btn"):
+            ok,out=STORE.save_scenario(_sb_rest,owner,nm,scn,res,folder_id=fid)
+            if ok:
+                st.success(f"Scenario “{STORE._clean_name(nm)}” saved.")
+                _track("scenario_saved",{"plan":_plan_key()},once_key=f"saved:{out}")
+            else: st.error(out)
+        st.markdown('<div class="section-header">Your scenarios</div>',unsafe_allow_html=True)
+        flt=None
+        if is_pro and folders:
+            fp=st.selectbox("Show",["All folders"]+[f["name"] for f in folders],key="sv_filter")
+            flt=next((f["id"] for f in folders if f["name"]==fp),None)
+        items=STORE.list_scenarios(_sb_rest,owner,folder_id=flt)
+        if not items: st.caption("No saved scenario yet.")
+        for it in items:
+            sid=it["id"]; snap=(it.get("payload") or {}).get("snapshot") or {}; vs=STORE.version_status(it)
+            stored=STORE.scenario_from_dict((it.get("payload") or {}).get("scenario"))
+            Dd=E.Display(stored.fx).money
+            with st.container():
+                st.markdown(f"**{it['name']}** — {snap.get('model') or it['aircraft_id']} · saved {_fmt_date(it.get('created_at'))}"+(f" · folder: {fname.get(it.get('folder_id'),'—')}" if is_pro else ""))
+                if vs["changed"]:
+                    st.warning("The Menkor database or the calculation engine has changed since this scenario was saved. The figures below are the figures AS SAVED; "
+                               "use “Recalculate with the current base” to see the current result.")
+                m1,m2,m3=st.columns(3)
+                m1.metric("Annual budget (as saved)",Dd(snap["budget_usd"]) if snap.get("budget_usd") is not None else "not computed")
+                m2.metric("Cost / flown hour (as saved)",Dd(snap["cost_per_h_usd"]) if snap.get("cost_per_h_usd") is not None else "not computed")
+                m3.metric("Operating result (as saved)",Dd(snap["operating_result_usd"]) if snap.get("operating_result_usd") is not None else "not computed")
+                ue=(it.get("payload") or {}).get("user_entered") or []
+                st.caption("Entered by you: "+(", ".join(x.replace("_"," ") for x in ue) if ue else "nothing (reference data only)")+". Everything else comes from the Menkor reference data.")
+                a1,a2,a3,a4=st.columns(4)
+                with a1:
+                    if st.button("Recalculate with the current base",key=f"rc_{sid}"): st.session_state[f"_rc_{sid}"]=True
+                with a2:
+                    if st.button("Duplicate",key=f"dp_{sid}"):
+                        ok,out=STORE.duplicate_scenario(_sb_rest,owner,sid); (st.success("Duplicated.") if ok else st.error(out))
+                with a3: rn=st.text_input("Rename",value=it["name"],key=f"rn_{sid}",label_visibility="collapsed",max_chars=STORE.MAX_NAME)
+                with a4:
+                    if st.button("Rename",key=f"rnb_{sid}"):
+                        (st.success("Renamed.") if STORE.rename_scenario(_sb_rest,owner,sid,rn) else st.error("Could not rename."))
+                if is_pro and folders:
+                    mv=st.selectbox("Move to folder",["No folder"]+[f["name"] for f in folders],key=f"mv_{sid}")
+                    if st.button("Move",key=f"mvb_{sid}"):
+                        tgt=next((f["id"] for f in folders if f["name"]==mv),None)
+                        (st.success("Moved.") if STORE.move_scenario(_sb_rest,owner,sid,tgt) else st.error("Could not move."))
+                cf=st.checkbox("I confirm I want to delete this scenario (it can be restored from “Recently deleted”)",key=f"dc_{sid}")
+                if st.button("Delete",key=f"dl_{sid}"):
+                    if not cf: st.warning("Tick the confirmation first.")
+                    else:
+                        (st.success("Deleted. You can restore it below.") if STORE.delete_scenario(_sb_rest,owner,sid,True) else st.error("Could not delete."))
+                if st.session_state.get(f"_rc_{sid}"):
+                    sub=df[df["aircraft_id"]==it["aircraft_id"]]
+                    if not len(sub): st.error("This aircraft is no longer in the database.")
+                    else:
+                        nres=E.compute(sub.iloc[0],stored)
+                        st.markdown(f"Recalculated now with base **{E.DB_VERSION}** / engine **{E.ENGINE_VERSION}** (saved with **{vs['saved_db']}** / **{vs['saved_engine']}**):")
+                        nb=nres.get("budget_usd"); ob=snap.get("budget_usd")
+                        if nb is None: st.info("The current base cannot compute this scenario (missing data). Saved figures are unchanged.")
+                        else:
+                            st.metric("Annual budget — recalculated",Dd(nb),delta=(Dd(nb-ob) if ob is not None else None),delta_color="off")
+                            if ob is not None and abs(nb-ob)<0.5: st.caption("Same result as saved.")
+                            else: st.caption("The recalculated result differs from the saved one: the saved figures are NOT updated.")
+                st.markdown("<hr>",unsafe_allow_html=True)
+        gone=STORE.list_scenarios(_sb_rest,owner,deleted=True)
+        if gone:
+            with st.expander(f"Recently deleted ({len(gone)})"):
+                for g in gone:
+                    g1,g2=st.columns([4,1])
+                    g1.markdown(f"{g['name']} — {g['aircraft_id']}")
+                    with g2:
+                        if st.button("Restore",key=f"rs_{g['id']}"):
+                            (st.success("Restored.") if STORE.restore_scenario(_sb_rest,owner,g["id"]) else st.error("Could not restore."))
+    elif sec=="Compare aircraft":
+        _render_compare(df)
+    elif sec=="Client folders":
+        st.markdown('<div class="section-header">Client folders</div>',unsafe_allow_html=True)
+        st.caption("Folders are private to your account. Deleting a folder keeps its scenarios (they become “No folder”).")
+        nf=st.text_input("New folder name",key="fd_new",max_chars=STORE.MAX_NAME)
+        if st.button("Create folder",key="fd_create"):
+            ok,out=STORE.create_folder(_sb_rest,owner,nf); (st.success("Folder created.") if ok else st.error(out))
+        for f in folders:
+            n=len(STORE.list_scenarios(_sb_rest,owner,folder_id=f["id"]))
+            f1,f2,f3=st.columns([3,2,2])
+            with f1: rn=st.text_input(f"{f['name']} ({n} scenario{'s' if n!=1 else ''})",value=f["name"],key=f"fr_{f['id']}")
+            with f2:
+                if st.button("Rename folder",key=f"frb_{f['id']}"): (st.success("Renamed.") if STORE.rename_folder(_sb_rest,owner,f["id"],rn) else st.error("Could not rename."))
+            with f3:
+                cf=st.checkbox("Confirm deletion",key=f"fdc_{f['id']}")
+                if st.button("Delete folder",key=f"fdb_{f['id']}"):
+                    if not cf: st.warning("Tick the confirmation first.")
+                    else: (st.success("Folder deleted; its scenarios are kept.") if STORE.delete_folder(_sb_rest,owner,f["id"],True) else st.error("Could not delete."))
+        if not folders: st.caption("No folder yet.")
+    else:
+        st.markdown('<div class="section-header">Report branding</div>',unsafe_allow_html=True)
+        st.caption("Your name and logo appear on the PDF report you generate. The Menkor mention, the assumptions, the limits and the exclusions are always kept.")
+        cur=STORE.get_broker_profile(_sb_rest,owner) or {"broker_name":"","logo":None}
+        bn=st.text_input("Broker / company name",value=cur["broker_name"],key="br_name",max_chars=STORE.MAX_BROKER_NAME)
+        up=st.file_uploader("Logo (PNG or JPEG, max 400 KB)",type=["png","jpg","jpeg"],key="br_logo")
+        keep=st.checkbox("Keep my current logo",value=True,key="br_keep") if cur["logo"] else False
+        if cur["logo"]: st.image(cur["logo"],width=120)
+        b1,b2=st.columns(2)
+        with b1:
+            if st.button("Save branding",key="br_save"):
+                logo=up.getvalue() if up is not None else (cur["logo"] if keep else None)
+                ok,msg=STORE.save_broker_profile(_sb_rest,owner,bn,logo)
+                if ok: st.session_state.pop("_broker_cache",None); st.success("Branding saved. Generate the PDF again to apply it.")
+                else: st.error(msg or "Could not save.")
+        with b2:
+            if st.button("Remove branding",key="br_del"):
+                if STORE.delete_broker_profile(_sb_rest,owner): st.session_state.pop("_broker_cache",None); st.success("Branding removed.")
+                else: st.error("Could not remove.")
+
+def _render_compare(df):
+    st.markdown('<div class="section-header">Compare 2–3 aircraft</div>',unsafe_allow_html=True)
+    st.caption("Common hypotheses apply to every aircraft you select. An adjustment applies to ONE aircraft only and is labelled as such. Missing inputs are shown as missing, never as zero.")
+    models=sorted(df["model"].tolist()); idmap=dict(zip(df["model"],df["aircraft_id"]))
+    picks=st.multiselect("Aircraft (2 or 3)",models,key="cmp_pick",max_selections=3)
+    c1,c2,c3=st.columns(3)
+    with c1: hrs=st.number_input("Common annual flown hours",min_value=0.0,value=None,step=10.0,placeholder="enter hours",key="cmp_hours")
+    with c2: pr=st.number_input("Common fuel price (per litre)",min_value=0.0,value=None,step=0.05,placeholder="enter price",key="cmp_price")
+    with c3: ccy=st.selectbox("Fuel price currency",["USD","EUR"],key="cmp_ccy")
+    fx=E.Fx(); 
+    if ccy=="EUR":
+        r1,r2=st.columns(2)
+        with r1: rate=st.number_input("EUR for 1 USD",min_value=0.0,value=None,step=0.01,placeholder="rate",key="cmp_rate")
+        with r2: rd=st.text_input("Rate date (YYYY-MM-DD)",key="cmp_rdate")
+        fx=E.Fx("USD",rate if rate else None,rd or None,"")
+    adj={}
+    for m in picks:
+        a1,a2=st.columns(2)
+        with a1: ah=st.number_input(f"Adjust hours — {m} only (optional)",min_value=0.0,value=None,step=10.0,key=f"cmp_ah_{idmap[m]}")
+        with a2: ap=st.number_input(f"Adjust fuel price — {m} only (optional)",min_value=0.0,value=None,step=0.05,key=f"cmp_ap_{idmap[m]}")
+        d={}
+        if ah: d["flown_hours"]=float(ah)
+        if ap: d["fuel_price"]=float(ap)
+        if d: adj[idmap[m]]=d
+    if len(picks)<2: st.info("Select 2 or 3 aircraft."); return
+    out=STORE.compare_aircraft(df,[idmap[m] for m in picks],dict(flown_hours=hrs,fuel_price=pr,fuel_ccy=ccy,fx=fx),adj)
+    D=E.Display(E.Fx()).money
+    rows=[]
+    for o in out:
+        if o.get("available"):
+            rows.append({"Aircraft":o["model"],"Flown hours":f"{o['hours']:,.0f}"+(" (adjusted)" if "flown_hours" in o["adjusted"] else ""),
+                         "Fuel price / L":f"{o['fuel_price']:.2f} {ccy}"+(" (adjusted)" if "fuel_price" in o["adjusted"] else ""),
+                         "Fuel burn (L/h)":f"{o['burn_l_h']:,.0f}" if o.get("burn_l_h") is not None else "not available",
+                         "Fixed costs / year":D(o["fixed_annual_usd"]) if o.get("fixed_annual_usd") is not None else "not available",
+                         "Variable costs / year":D(o["variable_annual_usd"]) if o.get("variable_annual_usd") is not None else "not available",
+                         "Annual budget":D(o["budget_usd"]),"Cost / flown hour":D(o["cost_per_h_usd"]) if o.get("cost_per_h_usd") is not None else "not available",
+                         "Scope / data":"; ".join(o["flags"]) if o.get("flags") else "Reference data complete for this scenario"})
+        else:
+            rows.append({"Aircraft":o.get("model",o["aircraft_id"]),"Annual budget":"not computed","Scope / data":"Missing: "+", ".join(o["missing"])})
+    st.dataframe(pd.DataFrame(rows),width="stretch",hide_index=True)
+    st.caption("Amounts in USD (source currency). Budgets are indicative averages from the reference data, not aircraft-specific budgets.")
+
 def main():
     for k,v in [("database",None),("cost_master",None),("pdf_report",None),
                 ("auth_email",None),("auth_plan",None),("auth_is_admin",False),("auth_pass_tier",None),
@@ -1162,6 +1456,9 @@ def main():
     # Keep the value of widgets that are not drawn in every mode (Streamlit forgets a widget that is skipped for one run):
     for _k in _KEEP_KEYS:
         if _k in st.session_state: st.session_state[_k]=st.session_state[_k]
+    _a0=st.session_state.get("ac_sel")
+    for _k in _JOURNEY_KEYS_G+tuple(x.format(a=_a0) for x in _JOURNEY_KEYS):
+        if _k in st.session_state: st.session_state[_k]=st.session_state[_k]
 
     _process_day_pass_return()
     if st.session_state.get("_day_pass_toast"):
@@ -1169,6 +1466,7 @@ def main():
         st.success(f"✓ {_tier.capitalize()} day pass activated — full access for the next {_hrs}h.")
 
     is_essentiel,is_pro=render_auth()
+    _track("visit",{"plan":_plan_key()},once_key="visit")
     # A day pass unlocks the same tiers as a subscription, just temporarily — merge both into the
     # effective access level without any extra Stripe/Supabase calls (expiry check is local/cheap).
     _active_pass=st.session_state.get("auth_pass_tier")
@@ -1203,6 +1501,12 @@ def main():
 
     # ── Sidebar ─────────────────────────────────────────────────────────────
     with st.sidebar:
+        st.markdown('<div class="section-header">🧭 What do you want to do?</div>',unsafe_allow_html=True)
+        if "journey" not in st.session_state:
+            try:
+                if str(st.query_params.get("journey",""))=="budget": st.session_state["journey"]=J_C
+            except Exception: pass
+        journey=st.radio("What do you want to do?",JOURNEYS,key="journey",label_visibility="collapsed")
         st.markdown('<div class="section-header">✈ Aircraft Selection</div>',unsafe_allow_html=True)
         st.text_input("Quick find (model or alias, e.g. Global 7000)",key="ac_search",on_change=_on_search)
         if st.session_state.get("ac_search_note"): st.caption(st.session_state["ac_search_note"])
@@ -1218,84 +1522,107 @@ def main():
         hist=not bool(row["has_detail"])
         skind=row["source_kind"]
         if hist: st.caption("Historical sheet: totals only, detailed report still to be reconstructed.")
-        elif skind=="web_estimate": st.caption("Menkor reference database — partial web estimate (Guardian Jet economics + public technical summary), not a full reference record.")
+        elif skind=="web_estimate": st.caption("Partial web estimate — not a full Menkor reference record.")
 
-        st.markdown('<div class="section-header">🧭 Calculation mode</div>',unsafe_allow_html=True)
-        mode_lbl=st.radio("Calculation mode",["Report reference","Custom simulation"],key="calc_mode",label_visibility="collapsed",
-                          help="Report reference = published totals with the report's own hours and fuel price. Custom simulation = recalculated from your hours, fuel and cost edits.")
-        mode="reference" if mode_lbl=="Report reference" else "simulation"
+        _bx_hours=st.container(); _bx_fuel=st.container(); _bx_ccy=st.container(); _bx_charter=st.container()
+        _bx_own=st.container(); _bx_conf=st.container(); _bx_adv=st.expander("⚙ Advanced settings",expanded=False)
+
+        # Calculation mode lives in the closed advanced section (default: Custom simulation, recalculated from your hours and fuel price)
+        if journey==J_C:
+            mode="reference"
+        else:
+            with _bx_adv:
+                st.caption("Optional — the default settings are enough for a first estimate.")
+                mode_lbl=st.radio("Calculation mode",["Custom simulation","Report reference"],key="calc_mode",
+                                  help="Custom simulation = recalculated from your hours, fuel price and cost edits. Report reference = published totals with the report's own hours and fuel price.")
+            mode="reference" if mode_lbl=="Report reference" else "simulation"
         _locked=(mode=="reference")
 
         ref_h=E.num(row,"legacy_Heures_Base" if hist else "reference_annual_hours")
         ref_i=int(ref_h) if ref_h else 0
-        st.markdown('<div class="section-header">🕐 Flight Hours</div>',unsafe_allow_html=True)
-        if _locked: st.caption(f"Report reference: {ref_i} h/year (fixed). Switch to Custom simulation to change hours.")
-        billed=st.slider("Billed charter hours / year",0,1500,min(ref_i,1500),step=10,key=f"bh_{aid}",disabled=_locked)
-        posit=st.slider("Positioning hours (flown, not billed)",0,600,0,step=10,key=f"ph_{aid}",disabled=_locked)
-        other=st.slider("Owner / private / other hours (not billed)",0,1500,0,step=10,key=f"oh_{aid}",disabled=_locked)
-        if not _locked:
-            st.caption(f"Total flown hours: **{billed+posit+other} h** — variable costs apply to every flown hour; only billed hours earn revenue.")
-            if billed+posit+other>E.HOURS_IN_YEAR: st.warning("More than 8,760 hours in a year is not possible.")
+        billed=0; posit=0; other=0
+        with _bx_hours:
+            if journey!=J_C:
+                st.markdown('<div class="section-header">🕐 Flight Hours</div>',unsafe_allow_html=True)
+                if _locked: st.caption(f"Report reference: {ref_i} h/year (fixed). Switch to Custom simulation in Advanced settings to change hours.")
+                if journey==J_A:
+                    other=st.slider("Total annual flown hours",0,2000,min(ref_i,2000),step=10,key=f"th_{aid}",disabled=_locked,
+                                    help="All hours flown in the year, whatever the use. Variable costs apply to every flown hour. No charter revenue is assumed.")
+                    if not _locked: st.caption("These hours are not treated as billed charter hours.")
+                    if st.session_state.get(f"bh_{aid}") or st.session_state.get(f"oh_{aid}") or st.session_state.get(f"ph_{aid}"):
+                        st.caption("Charter-simulation hours you entered earlier are kept but not used in this view.")
+                else:
+                    billed=st.slider("Billed charter hours / year",0,1500,min(ref_i,1500),step=10,key=f"bh_{aid}",disabled=_locked)
+                    posit=st.slider("Positioning hours (flown, not billed)",0,600,0,step=10,key=f"ph_{aid}",disabled=_locked)
+                    other=st.slider("Owner / private / other hours (not billed)",0,1500,0,step=10,key=f"oh_{aid}",disabled=_locked)
+                    if st.session_state.get(f"th_{aid}") and not _locked:
+                        st.caption("The total flown hours of the cost estimate are not converted into charter hours: enter billed, positioning and private hours here.")
+                if not _locked:
+                    st.caption(f"Total flown hours: **{billed+posit+other} h**" + (" — variable costs apply to every flown hour; only billed hours earn revenue." if journey==J_B else ""))
+                    if billed+posit+other>E.HOURS_IN_YEAR: st.warning("More than 8,760 hours in a year is not possible.")
+        if journey==J_C: other=ref_i
 
+        # ── Fuel: ONE prominent field (average annual price); other methods are in Advanced settings ─────
         fuel=E.FuelConfig()
-        if hist:
+        _ap=None; _apc="USD"
+        with _bx_fuel:
             st.markdown('<div class="section-header">⛽ Fuel</div>',unsafe_allow_html=True)
-            st.caption("Not available for historical sheets: fuel is included in the hourly rate and cannot be separated.")
-        else:
-            st.markdown('<div class="section-header">⛽ Fuel (litres)</div>',unsafe_allow_html=True)
-            rp=E.num(row,"reference_fuel_price_usd_per_l")
-            _cv=_convs[(_convs["aircraft_id"]==aid)&(_convs["field"]=="reference_fuel_price_usd_per_l")]
-            _bdf=E.load_fuel_benchmarks()
-            src_opts=[f"Report price ({rp:.3f} USD/L)" if rp else "Report price (missing)","My average fuel price"]
-            if len(_bdf): src_opts.append("Regional market benchmark")
-            ps=st.radio("Fuel price method",src_opts,key=f"fps_{aid}",disabled=_locked)
-            if len(_cv): st.caption(f"Report prints {_cv.iloc[0]['source_value']} {_cv.iloc[0]['source_unit']} → {float(_cv.iloc[0]['converted_value']):.3f} USD/L (1 US gal = 3.785411784 L; GAL assumed US gallon, to confirm).")
-            bm_opts={"Published hourly burn":"published","Derived from annual volume":"derived","Custom burn (L/h)":"custom"}
-            bm=st.selectbox("Burn method",list(bm_opts),key=f"bm_{aid}",disabled=_locked,
-                            help="Average economic assumption, not a flight-planning calculation.")
-            _pb,_db=E.num(row,"fuel_burn_l_per_h"),E.num(row,"fuel_burn_from_annual_l_per_h")
-            st.caption(f"Published: {_pb:,.0f} L/h · derived from annual volume: {_db:,.1f} L/h" if (_pb and _db) else "Burn data incomplete for this model.")
-            cburn=None
-            if bm_opts[bm]=="custom":
-                cburn=st.number_input("Average burn (L/h)",min_value=0.0,value=float(_pb or 0.0),step=10.0,key=f"cb_{aid}",disabled=_locked)
-            average=(ps==src_opts[1]); bench_on=(len(src_opts)>2 and ps==src_opts[2])
-            fuel=E.FuelConfig(price_source="average" if average else ("benchmark" if bench_on else "report"),burn_method=bm_opts[bm],custom_burn_l_h=cburn)
-            if bench_on:
-                with st.expander("Regional market benchmark — annual planning assumption",expanded=True):
-                    st.warning(E.BENCHMARK_DISCLAIMER)
-                    if _locked: st.caption("Report reference ignores this entry (your values are kept). Switch to Custom simulation to adjust costs.")
-                    _rid=_bdf["region_id"].tolist(); _rname=dict(zip(_bdf["region_id"],_bdf["region"]))
-                    fuel.benchmark_region=st.selectbox("Main refuelling region",_rid,format_func=lambda x:_rname[x],key="fu_bm_region",disabled=_locked,
-                                                       help="Main refuelling region: the aircraft record does not determine all of its fuel purchases.")
-                    _br=_bdf[_bdf["region_id"]==fuel.benchmark_region].iloc[0]
-                    st.caption(f"Reference: {_br['benchmark']} · {_br['period_label']} ({_br['period_start']} to {_br['period_end']}) · "
-                               f"{float(_br['price_us_cents_per_us_gallon']):.2f} US cents per US gallon = {float(_br['price_usd_per_l']):.3f} USD/L. "
-                               "Weekly refinery reference: not a real-time feed, not an annual average, not a forecast.")
-                    _pu=st.number_input("Average fuel price used (USD/L)",min_value=0.0,value=round(float(_br["price_usd_per_l"]),3),step=0.01,format="%.3f",
-                                        key="fu_bm_price_"+fuel.benchmark_region,disabled=_locked,
-                                        help="Pre-filled with the benchmark of the selected region; you can edit it.")
-                    fuel.price=_pu if _pu>0 else None
-                    _bi,_be=E.benchmark_price_info(fuel)
-                    if _be: st.warning(_be)
-                    elif _bi["user_adjusted"]: st.caption(E.BENCHMARK_USER_ADJUSTED)
-            if average:
-                with st.expander("Average fuel price — annual planning assumption",expanded=True):
-                    st.caption("One average price per litre for the whole year. It includes the fuel taxes and fees that normally apply, "
-                               "according to your operating habits. It is a planning hypothesis: not a verified local price and not a real-time price.")
-                    if _locked: st.caption("Report reference ignores this entry (your values are kept). Switch to Custom simulation to adjust costs.")
-                    ac1,ac2=st.columns(2)
-                    with ac1: _ap=st.number_input("Average price per litre",min_value=0.0,value=0.0,step=0.05,format="%.3f",key="fu_avg_price",disabled=_locked)
-                    with ac2: fuel.currency=st.selectbox("Currency of the average price",["USD","EUR"],key="fu_avg_ccy",disabled=_locked,
-                                                         help="EUR is converted with the dated exchange rate entered in the Currency section.")
-                    fuel.price=_ap if _ap>0 else None
-                    if fuel.price is None: st.warning("Enter the average price per litre: until then the simulation is unavailable (no default value is invented).")
-            # Advanced module — kept separate from the annual-planning path. Off by default.
-            with st.expander("🔧 Advanced — dated local fuel quote (optional)",expanded=False):
+            if journey==J_C: st.caption("The aircraft-specific budget is prepared manually: no fuel input is needed here.")
+            elif hist: st.caption("Not available for historical sheets: fuel is included in the hourly rate and cannot be separated.")
+            else:
+                st.caption(FUEL_PRICE_HELP)
+                ac1,ac2=st.columns([2,1])
+                with ac1: _ap=st.number_input("Average annual fuel price (per litre)",min_value=0.0,value=None,step=0.05,format="%.3f",key="fu_avg_price",
+                                              placeholder="enter your price",disabled=_locked,help=FUEL_PRICE_HELP)
+                with ac2: _apc=st.selectbox("Fuel price currency",["USD","EUR"],key="fu_avg_ccy",disabled=_locked,
+                                            help="EUR is converted with the dated exchange rate entered under Currency conversion.")
+                if _locked: st.caption("Report reference uses the report's own fuel price. Switch to Custom simulation in Advanced settings to use yours.")
+
+        if journey!=J_C and not hist:
+            with _bx_adv:
+                st.markdown("**Fuel price method and consumption**")
+                rp=E.num(row,"reference_fuel_price_usd_per_l")
+                _cv=_convs[(_convs["aircraft_id"]==aid)&(_convs["field"]=="reference_fuel_price_usd_per_l")]
+                _bdf=E.load_fuel_benchmarks()
+                src_opts=["My average annual fuel price",f"Report price ({rp:.3f} USD/L)" if rp else "Report price (missing)"]
+                if len(_bdf): src_opts.append("Regional market benchmark")
+                ps=st.radio("Fuel price method",src_opts,key=f"fps_{aid}",disabled=_locked)
+                if len(_cv): st.caption(f"Report prints {_cv.iloc[0]['source_value']} {_cv.iloc[0]['source_unit']} → {float(_cv.iloc[0]['converted_value']):.3f} USD/L (1 US gal = 3.785411784 L; GAL assumed US gallon, to confirm).")
+                bm_opts={"Published hourly burn":"published","Derived from annual volume":"derived","Custom burn (L/h)":"custom"}
+                bm=st.selectbox("Burn method",list(bm_opts),key=f"bm_{aid}",disabled=_locked,
+                                help="Average economic assumption, not a flight-planning calculation.")
+                _pb,_db=E.num(row,"fuel_burn_l_per_h"),E.num(row,"fuel_burn_from_annual_l_per_h")
+                st.caption(f"Published: {_pb:,.0f} L/h · derived from annual volume: {_db:,.1f} L/h" if (_pb and _db) else "Burn data incomplete for this model.")
+                cburn=None
+                if bm_opts[bm]=="custom":
+                    cburn=st.number_input("Average burn (L/h)",min_value=0.0,value=float(_pb or 0.0),step=10.0,key=f"cb_{aid}",disabled=_locked)
+                average=(ps==src_opts[0]); bench_on=(len(src_opts)>2 and ps==src_opts[2])
+                fuel=E.FuelConfig(price_source="average" if average else ("benchmark" if bench_on else "report"),burn_method=bm_opts[bm],custom_burn_l_h=cburn)
+                if average:
+                    fuel.price=_ap if (_ap and _ap>0) else None; fuel.currency=_apc
+                if bench_on:
+                    with st.container():
+                        st.markdown("**Regional market benchmark — annual planning assumption**")
+                        st.warning(E.BENCHMARK_DISCLAIMER)
+                        _rid=_bdf["region_id"].tolist(); _rname=dict(zip(_bdf["region_id"],_bdf["region"]))
+                        fuel.benchmark_region=st.selectbox("Main refuelling region",_rid,format_func=lambda x:_rname[x],key="fu_bm_region",disabled=_locked,
+                                                           help="Main refuelling region: the aircraft record does not determine all of its fuel purchases.")
+                        _br=_bdf[_bdf["region_id"]==fuel.benchmark_region].iloc[0]
+                        st.caption(f"Reference: weekly regional refinery reference · {_br['period_label']} ({_br['period_start']} to {_br['period_end']}) · "
+                                   f"{float(_br['price_us_cents_per_us_gallon']):.2f} US cents per US gallon = {float(_br['price_usd_per_l']):.3f} USD/L. "
+                                   "Weekly refinery reference: not a real-time feed, not an annual average, not a forecast, and not a delivered price.")
+                        _pu=st.number_input("Average fuel price used (USD/L)",min_value=0.0,value=round(float(_br["price_usd_per_l"]),3),step=0.01,format="%.3f",
+                                            key="fu_bm_price_"+fuel.benchmark_region,disabled=_locked,
+                                            help="Pre-filled with the benchmark of the selected region; you can edit it.")
+                        fuel.price=_pu if _pu>0 else None
+                        _bi,_be=E.benchmark_price_info(fuel)
+                        if _be: st.warning(_be)
+                        elif _bi["user_adjusted"]: st.caption(E.BENCHMARK_USER_ADJUSTED)
+                st.markdown("**Dated local fuel quote (optional)**")
                 st.caption("For a specific quote only (airport, supplier, taxes, fees, validity date). Not needed for the annual planning assumption. No real-time price is connected.")
                 _adv=st.checkbox("Use a detailed local quote instead of the fuel price source above",key="fu_adv_on",disabled=_locked)
                 if _adv:
                     fuel=E.FuelConfig(price_source="manual",burn_method=bm_opts[bm],custom_burn_l_h=cburn)
-                    if _locked: st.caption("Report reference ignores this entry (your values are kept). Switch to Custom simulation to adjust costs.")
                     fuel.airport_icao=st.text_input("Airport ICAO",key="fu_icao",max_chars=4,disabled=_locked).upper()
                     fuel.airport_iata=st.text_input("Airport IATA",key="fu_iata",max_chars=3,disabled=_locked).upper()
                     fuel.supplier=st.text_input("Supplier",key="fu_sup",disabled=_locked)
@@ -1319,61 +1646,65 @@ def main():
                         # the key contains the price/date signature: changing the price or the date resets the confirmation
                         if st.checkbox("I confirm: use this expired price as a HISTORICAL assumption",key="fu_conf_"+hashlib.md5(_tok.encode()).hexdigest()[:10],disabled=_locked):
                             fuel.expired_confirmation=_tok
+            with _bx_fuel:
+                if fuel.price_source=="average" and fuel.price is None and not _locked:
+                    st.warning(FUEL_PRICE_MISSING)
+                elif fuel.price_source!="average" and not _locked:
+                    st.caption("Another fuel price method is selected in Advanced settings: the field above is not used.")
 
-        st.markdown('<div class="section-header">💱 Currency</div>',unsafe_allow_html=True)
-        disp_ccy=st.radio("Display currency",["USD","EUR"],horizontal=True,key="disp_ccy",help="Source amounts are USD. EUR needs an explicit, dated exchange rate.")
-        with st.expander("Exchange rate USD → EUR (explicit, dated)",expanded=(disp_ccy=="EUR")):
-            _fxr=st.number_input("EUR for 1 USD",min_value=0.0,value=0.0,step=0.01,format="%.4f",key="fx_rate")
-            _fxd=st.text_input("Rate date (YYYY-MM-DD)",key="fx_date")
-            _fxs=st.text_input("Rate source (optional)",key="fx_src")
-        fx=E.Fx(disp_ccy,_fxr if _fxr>0 else None,_fxd.strip() or None,_fxs.strip())
-        disp=E.Display(fx)
-        if disp.eur_blocked: st.warning("EUR display needs a rate and a valid date (YYYY-MM-DD). Amounts stay in USD until then.")
-        st.caption(disp.note())
+        with _bx_ccy:
+            st.markdown('<div class="section-header">💱 Currency</div>',unsafe_allow_html=True)
+            disp_ccy=st.radio("Display currency",["USD","EUR"],horizontal=True,key="disp_ccy",help="Source amounts are USD. EUR needs an explicit, dated exchange rate.")
+            with st.expander("Currency conversion USD → EUR (rate and date)",expanded=False):
+                _fxr=st.number_input("EUR for 1 USD",min_value=0.0,value=0.0,step=0.01,format="%.4f",key="fx_rate")
+                _fxd=st.text_input("Rate date (YYYY-MM-DD)",key="fx_date")
+                _fxs=st.text_input("Rate source (optional)",key="fx_src")
+            fx=E.Fx(disp_ccy,_fxr if _fxr>0 else None,_fxd.strip() or None,_fxs.strip())
+            disp=E.Display(fx)
+            if disp.eur_blocked: st.warning("EUR display needs a rate and a valid date (YYYY-MM-DD): open “Currency conversion” below. Amounts stay in USD until then.")
+            st.caption(disp.note())
 
-        st.markdown('<div class="section-header">💰 Charter revenue — your assumption</div>',unsafe_allow_html=True)
-        st.caption("No charter price is pre-filled or assumed. Enter the revenue you expect per billed hour; until then costs are shown but no revenue, result or threshold.")
-        rc1,rc2=st.columns([2,1])
-        with rc1: rate_in=st.number_input("Expected charter revenue per billed hour",min_value=0.0,value=0.0,step=100.0,format="%.0f",key=f"rate_{aid}")
-        with rc2: rate_ccy=st.selectbox("Rate currency",["USD","EUR"],key=f"rateccy_{aid}",help="EUR is converted with the dated exchange rate entered in the Currency section.")
-        _rb=st.radio("This rate represents",["Operator revenue before commission (gross)","Revenue already net of commission"],index=None,key=f"rbasis_{aid}",
-                     help="Choose explicitly. Gross: the commission below is deducted once. Net: no commission is deducted. A public client price is not assumed to be revenue kept by the operator.")
-        rate_basis=None if _rb is None else ("net" if _rb.startswith("Revenue already") else "gross")
-        commission_pct=None
-        if rate_basis=="gross":
-            commission_pct=st.number_input("Commission (%) on gross revenue",min_value=0.0,max_value=100.0,value=None,step=1.0,format="%.1f",key=f"comm_{aid}",
-                                           placeholder="enter 0 if none",help="Required: an empty field is not treated as zero. Enter 0 explicitly if there is no commission.")
-        elif rate_basis=="net": st.caption("Rate already net: no commission is applied.")
-        fees_in=st.number_input(f"Other commercial fees / year ({disp.ccy}) — not already in the report",min_value=0.0,value=0.0,step=1000.0,format="%.0f")
-        with st.expander("Billed supplements (optional — kept separate from the hourly rate)",expanded=False):
-            st.caption("Taxes, airport fees, crew overnights, positioning or other items billed on top are NOT assumed to be revenue kept by the operator. "
-                       "Enter only what the operator actually retains, and the cost linked to it, separately. Empty = not entered (not zero).")
-            _sr=st.number_input(f"Annual supplements retained by the operator ({disp.ccy})",min_value=0.0,value=0.0,step=1000.0,format="%.0f",key="supp_rev")
-            _sc=st.number_input(f"Annual cost linked to those supplements ({disp.ccy})",min_value=0.0,value=0.0,step=1000.0,format="%.0f",key="supp_cost")
-            supp_rev=disp.to_usd(_sr) if _sr>0 else None; supp_cost=disp.to_usd(_sc) if _sc>0 else None
-        with st.expander("Economic ownership costs (optional)",expanded=False):
-            st.caption(E.OWNERSHIP_NOTE+" Empty = not entered (never zero); type 0 to state an explicit zero, e.g. no interest on an aircraft bought without a loan.")
-            od1,od2=st.columns([2,1])
-            with od1: _dep=st.number_input("Annual economic depreciation",min_value=0.0,value=None,step=10000.0,format="%.0f",key="own_dep",placeholder="not entered")
-            with od2: _depc=st.selectbox("Currency",["USD","EUR"],key="own_dep_ccy")
-            oi1,oi2=st.columns([2,1])
-            with oi1: _int=st.number_input("Annual loan interest and financing costs",min_value=0.0,value=None,step=10000.0,format="%.0f",key="own_int",placeholder="not entered")
-            with oi2: _intc=st.selectbox("Currency ",["USD","EUR"],key="own_int_ccy")
+        # defaults for fields that only exist in the charter simulation
+        rate_in=0.0; rate_ccy="USD"; rate_basis=None; commission_pct=None; fees_in=0.0; supp_rev=None; supp_cost=None
+        pos_ratio=None; _pm="Hours entered above (needs billed hours > 0)"
+        with _bx_charter:
+            if journey==J_B:
+                st.markdown('<div class="section-header">💰 Charter revenue — your assumption</div>',unsafe_allow_html=True)
+                st.caption("No charter price is pre-filled or assumed. Enter the revenue you expect per billed hour; until then costs are shown but no revenue, result or threshold.")
+                rc1,rc2=st.columns([2,1])
+                with rc1: rate_in=st.number_input("Expected charter revenue per billed hour",min_value=0.0,value=0.0,step=100.0,format="%.0f",key=f"rate_{aid}")
+                with rc2: rate_ccy=st.selectbox("Rate currency",["USD","EUR"],key=f"rateccy_{aid}",help="EUR is converted with the dated exchange rate entered under Currency conversion.")
+                _rb=st.radio("This rate represents",["Operator revenue before commission (gross)","Revenue already net of commission"],index=None,key=f"rbasis_{aid}",
+                             help="Choose explicitly. Gross: the commission below is deducted once. Net: no commission is deducted. A public client price is not assumed to be revenue kept by the operator.")
+                rate_basis=None if _rb is None else ("net" if _rb.startswith("Revenue already") else "gross")
+                if rate_basis=="gross":
+                    commission_pct=st.number_input("Commission (%) on gross revenue",min_value=0.0,max_value=100.0,value=None,step=1.0,format="%.1f",key=f"comm_{aid}",
+                                                   placeholder="enter 0 if none",help="Required: an empty field is not treated as zero. Enter 0 explicitly if there is no commission.")
+                elif rate_basis=="net": st.caption("Rate already net: no commission is applied.")
+                fees_in=st.number_input(f"Other commercial fees / year ({disp.ccy}) — not already in the report",min_value=0.0,value=0.0,step=1000.0,format="%.0f")
+                _pm=st.radio("Positioning assumption",["Hours entered above (needs billed hours > 0)","Ratio per billed hour"],key="pos_mode",
+                             help="Positioning = non-billed hours flown per billed hour (empty legs). For the threshold this ratio stays constant when billed hours vary.")
+                if _pm=="Ratio per billed hour":
+                    pos_ratio=st.number_input("Positioning hours per billed hour",min_value=0.0,value=None,step=0.05,format="%.2f",key="pos_ratio",placeholder="enter 0 if none")
+                    if pos_ratio is not None: posit=float(billed)*float(pos_ratio); st.caption(f"= {posit:g} positioning hours for {billed} billed hours.")
+                with st.expander("Billed supplements (optional — kept separate from the hourly rate)",expanded=False):
+                    st.caption("Taxes, airport fees, crew overnights, positioning or other items billed on top are NOT assumed to be revenue kept by the operator. "
+                               "Enter only what the operator actually retains, and the cost linked to it, separately. Empty = not entered (not zero).")
+                    _sr=st.number_input(f"Annual supplements retained by the operator ({disp.ccy})",min_value=0.0,value=0.0,step=1000.0,format="%.0f",key="supp_rev")
+                    _sc=st.number_input(f"Annual cost linked to those supplements ({disp.ccy})",min_value=0.0,value=0.0,step=1000.0,format="%.0f",key="supp_cost")
+                    supp_rev=disp.to_usd(_sr) if _sr>0 else None; supp_cost=disp.to_usd(_sc) if _sc>0 else None
 
-        st.markdown('<div class="section-header">🎯 Coverage threshold — assumptions</div>',unsafe_allow_html=True)
-        _pm=st.radio("Positioning assumption",["Hours entered above (needs billed hours > 0)","Ratio per billed hour"],key="pos_mode",
-                     help="Positioning = non-billed hours flown per billed hour (empty legs). For the threshold this ratio stays constant when billed hours vary.")
-        pos_ratio=None
-        if _pm=="Ratio per billed hour":
-            pos_ratio=st.number_input("Positioning hours per billed hour",min_value=0.0,value=None,step=0.05,format="%.2f",key="pos_ratio",placeholder="enter 0 if none")
-            if pos_ratio is not None: posit=float(billed)*float(pos_ratio); st.caption(f"= {posit:g} positioning hours for {billed} billed hours.")
-        _sig=hashlib.md5(repr((aid,rate_in,rate_ccy,rate_basis,commission_pct,billed,posit,pos_ratio,other,fees_in,supp_rev,supp_cost)).encode()).hexdigest()[:10]
-        st.caption("Private/owner/other hours and other commercial fees stay constant in the threshold. Zero values are allowed but must be confirmed:")
-        _ratio_txt=(f"{pos_ratio:g} h per billed hour" if pos_ratio is not None else f"{float(posit):g} h")
-        pos_ok=st.checkbox(f"I confirm the positioning assumption: {_ratio_txt} (zero included).",key="conf_p_"+_sig,disabled=(_pm=="Ratio per billed hour" and pos_ratio is None))
-        priv_ok=st.checkbox(f"I confirm the private/owner/other hours: {float(other):g} h per year (zero included).",key="conf_o_"+_sig)
-        fees_ok=st.checkbox(f"I confirm the other commercial fees: {disp.money(disp.to_usd(fees_in))} per year (zero included).",key="conf_f_"+_sig)
-        limits_ok=st.checkbox("I have reviewed the costs included and the limitations. This is not a validation that the data is complete.",key="conf_l_"+_sig)
+        _dep=None; _depc="USD"; _int=None; _intc="USD"
+        with _bx_own:
+            if journey!=J_C:
+                with st.expander("Economic ownership costs (optional)",expanded=False):
+                    st.caption(E.OWNERSHIP_NOTE+" Empty = not entered (never zero); type 0 to state an explicit zero, e.g. no interest on an aircraft bought without a loan.")
+                    od1,od2=st.columns([2,1])
+                    with od1: _dep=st.number_input("Annual economic depreciation",min_value=0.0,value=None,step=10000.0,format="%.0f",key="own_dep",placeholder="not entered")
+                    with od2: _depc=st.selectbox("Currency",["USD","EUR"],key="own_dep_ccy")
+                    oi1,oi2=st.columns([2,1])
+                    with oi1: _int=st.number_input("Annual loan interest and financing costs",min_value=0.0,value=None,step=10000.0,format="%.0f",key="own_int",placeholder="not entered")
+                    with oi2: _intc=st.selectbox("Currency ",["USD","EUR"],key="own_int_ccy")
 
     def _tab_label(base,required):
         if required is None: return base
@@ -1381,13 +1712,14 @@ def main():
         if unlocked: return base
         return f"{base}  🔒 {'15€/mo' if required=='essentiel' else '50€/mo'}"
 
-    tab1,tab2,tab3,tab4,tab5,tab6=st.tabs([
+    tab1,tab2,tab3,tab4,tab5,tab6,tab7=st.tabs([
         _tab_label("📊 Dashboard",None),
         _tab_label("📈 Profitability","essentiel"),
         _tab_label("🔍 Sensitivity","essentiel"),
         _tab_label("💼 Cost Master","pro"),
         _tab_label("✈️ Quotation","pro"),
         _tab_label("🌐 Market Search",None),
+        _tab_label("🗂 My scenarios","essentiel"),
     ])
 
     # ── Cost Master EDITORS (rendered first so every tab uses the same scenario) ─────
@@ -1462,19 +1794,50 @@ def main():
                         if cyc_cost is None or not cyc_avg: st.warning("Enter the additional cost per landing and the average flight duration, or untick the option.")
                 st.button("↺ Reset all edits",key="ov_reset",on_click=_bump_overrides,disabled=_dis)
 
+    # ── One recap + one button replace the four confirmations; any change of a concerned assumption makes it obsolete ─────
+    confirmed=False
+    if journey==J_B:
+        with _bx_conf:
+            st.markdown('<div class="section-header">✅ Assumptions to confirm</div>',unsafe_allow_html=True)
+            _gross_txt={"gross":"gross (before commission)","net":"already net of commission"}.get(rate_basis,"basis not chosen")
+            _rate_txt=(f"{rate_ccy} {rate_in:,.0f} per billed hour — {_gross_txt}" if rate_in>0 else "not entered")
+            _comm_txt=("not applicable (rate already net)" if rate_basis=="net" else (f"{commission_pct:g} % of gross revenue, deducted once" if commission_pct is not None else "not entered"))
+            _pos_txt=(f"{pos_ratio:g} h per billed hour" if pos_ratio is not None else (f"{float(posit):g} h per year" if _pm!="Ratio per billed hour" else "not entered"))
+            _scope_txt=("Reference costs of the selected model"+(" with your adjustments" if (ov_fixed or ov_var or extra_fixed_usd or extra_var_usd or any((v or {}).get("amount") for v in mgmt.values()) or cyc_status=="added") else "")
+                        +". Not a validation that the data is complete.")
+            _recap=[("Charter rate and basis",_rate_txt),("Commission",_comm_txt),("Positioning",_pos_txt),
+                    ("Private / owner / other hours",f"{float(other):g} h per year"),("Other commercial fees",f"{disp.money(disp.to_usd(fees_in))} per year"),("Cost scope",_scope_txt)]
+            for _l,_v in _recap: st.markdown(f"- **{_l}:** {_v}")
+            _complete=bool(rate_in>0 and rate_basis and (rate_basis=="net" or commission_pct is not None) and not (_pm=="Ratio per billed hour" and pos_ratio is None) and billed>0)
+            _sig=hashlib.md5(repr((aid,mode,rate_in,rate_ccy,rate_basis,commission_pct,billed,posit,pos_ratio,other,fees_in,supp_rev,supp_cost,
+                                   sorted(ov_fixed.items()),sorted(ov_var.items()),extra_fixed_usd,extra_var_usd,repr(mgmt),mg_cov,cyc_status,cyc_cost,cyc_ccy,cyc_avg,
+                                   repr(fuel),_dep,_depc,_int,_intc,disp.ccy)).encode()).hexdigest()
+            if st.button(CONFIRM_LABEL,key="conf_btn",disabled=not _complete,width="stretch"): st.session_state["_conf_sig"]=_sig
+            confirmed=(st.session_state.get("_conf_sig")==_sig) and _complete
+            if confirmed: st.caption("✓ Assumptions confirmed. Change any of them and the confirmation must be given again.")
+            elif not _complete: st.caption("Complete the rate, its basis"+(", the commission" if rate_basis=="gross" else "")+" and the billed hours to confirm.")
+            else: st.caption("Zero values (positioning, private hours, fees) count only once you confirm them here.")
+
     # ── The single scenario & the single result used by every tab and the PDF ─────
     scn=E.Scenario(aircraft_id=aid,mode=mode,billed_hours=float(billed),positioning_hours=float(posit),other_hours=float(other),
                    charter_rate=(rate_in if rate_in>0 else None),charter_rate_ccy=rate_ccy,commission_pct=(None if commission_pct is None else float(commission_pct)),rate_basis=rate_basis,
-                   supplements_retained_usd=supp_rev,supplements_cost_usd=supp_cost,positioning_ratio=pos_ratio,positioning_confirmed=bool(pos_ok),
-                   private_hours_confirmed=bool(priv_ok),other_fees_confirmed=bool(fees_ok),limits_reviewed=bool(limits_ok),
+                   supplements_retained_usd=supp_rev,supplements_cost_usd=supp_cost,positioning_ratio=pos_ratio,positioning_confirmed=confirmed,
+                   private_hours_confirmed=confirmed,other_fees_confirmed=confirmed,limits_reviewed=confirmed,
                    depreciation_annual=_dep,depreciation_ccy=_depc,interest_annual=_int,interest_ccy=_intc,
                    management=mgmt,management_covers_camo_dispatch=bool(mg_cov),cycle_status=cyc_status,cycle_cost=cyc_cost,cycle_cost_ccy=cyc_ccy,avg_flight_hours=cyc_avg,
                    other_commercial_fees=float(disp.to_usd(fees_in)),fuel=fuel,fixed_overrides=ov_fixed,var_overrides_h=ov_var,
                    extra_fixed=float(extra_fixed_usd),extra_var_h=float(extra_var_usd),fx=fx)
     res=E.compute(row,scn)
-    alerts=E.alerts_for(row,_checks,_conflicts,_convs)
+    alerts=E.alerts_for(row,_checks,_conflicts,_convs,admin=bool(st.session_state.get('auth_is_admin')))
+    alerts_client=E.alerts_for(row,_checks,_conflicts,_convs)
     perf=E.performance_summary(row)
     D=disp.money
+    if (is_essentiel or is_pro) and res["available"]: _track("first_simulation",{"plan":_plan_key(),"journey":{J_A:"A",J_B:"B",J_C:"C"}.get(journey)},once_key="first_sim")
+
+    if journey==J_C:
+        st.info("You selected an aircraft-specific budget: it is prepared manually by Menkor Aviation. The tabs below remain available for an indicative simulation.")
+        _render_budget_offer(row["model"],"offer_c")
+        st.markdown("<hr>",unsafe_allow_html=True)
 
     # TAB 1: DASHBOARD
     with tab1:
@@ -1487,7 +1850,7 @@ def main():
                 <div class="metric-sub">{row.get("manufacturer") if pd.notna(row.get("manufacturer")) else "Historical sheet"} · {"Menkor reference" if skind=="pdf_acc" else ("web estimate · partial" if skind=="web_estimate" else "to reconstruct")}</div></div>''',unsafe_allow_html=True)
         with k2:
             _fh=res["hours"]["flown"]; _fh=ref_h if _fh is None else _fh
-            _sub=(f"report reference hours" if mode=="reference" else f"{billed:g} billed · {posit:g} positioning · {other:g} other")
+            _sub=("report reference hours" if mode=="reference" else (f"{other:g} h flown in total · no charter revenue assumed" if journey==J_A else f"{billed:g} billed · {posit:g} positioning · {other:g} other"))
             st.markdown(f'''<div class="metric-card"><div class="metric-label">Flown Hours / Year</div>
                 <div class="metric-value">{_fh:,.0f} h</div><div class="metric-sub">{_sub}</div></div>''',unsafe_allow_html=True)
         with k3:
@@ -1511,9 +1874,18 @@ def main():
             st.caption(f"ℹ Range = {perf['range_definition']} {perf['conditions'] or ''}".strip())
         st.markdown("<hr>",unsafe_allow_html=True)
 
-        if not res["available"]:
-            _render_alerts(res,alerts)
-        elif is_essentiel or is_pro:
+        _fuel_missing=(not res["available"]) and fuel.price_source=="average" and fuel.price is None and mode=="simulation" and not hist
+        if not (is_essentiel or is_pro):
+            _render_free_demo(df,aid,row["model"])
+        elif not res["available"]:
+            if _fuel_missing:
+                st.warning(FUEL_PRICE_MISSING)
+                _fx_=E.num(row,"annual_fixed_cost_usd")
+                if _fx_ is not None:
+                    st.metric("🔒 Annual Fixed Costs (reference)",D(_fx_),help="Does not depend on the fuel price. Fuel-dependent results are shown once you enter your average annual fuel price.")
+            else:
+                _render_alerts(res,alerts)
+        else:
             st.caption(disp.note())
             m1,m2,m3,m4,m5=st.columns(5)
             v=res["variable"]
@@ -1528,15 +1900,15 @@ def main():
             if res.get("fuel"):
                 f=res["fuel"]
                 if f.get("burn_l_h") and f.get("price_usd_l"):
-                    st.caption(f"⛽ Method: {f['burn_label']} = {f['burn_l_h']:,.0f} L/h ({f['burn_l_h']/E.USG_TO_L:,.0f} US gal/h) × {f['price_usd_l']:.3f} USD/L — {f['price_label']}. "
-                               f"Annual fuel: {f['annual_litres']:,.0f} L ({f['annual_usg']:,.0f} US gal). {f['note']}")
-            if res.get("reconciliation") and mode=="simulation":
-                rc=res["reconciliation"]
-                if rc.get("adjustment_delta"):
-                    st.caption(f"Reconciliation: Menkor cost base {D(rc['published_budget'])} (= original published {D(rc['original_published_budget'])} + Menkor base adjustment {D(rc['adjustment_delta'])}) vs simulation recalculated at the report's own hours and fuel price (burn × price) {D(rc['simulated_at_report_conditions'])}: difference {D(rc['difference'])} ({rc['difference_pct']:+.2f}%). "
-                               "It comes from the rounding of the printed hourly burn and fuel price, not from the Menkor base adjustment; the source data are not altered.")
-                else:
-                    st.caption(f"Reconciliation: at the report's own hours and fuel price the formula gives {D(rc['simulated_at_report_conditions'])} vs published {D(rc['published_budget'])} ({rc['difference_pct']:+.2f}%). Printed hourly values are rounded; the source data are not altered.")
+                    st.caption(f"⛽ Fuel retained: {f['burn_l_h']:,.0f} L per flown hour ({f['burn_label']}) × {D(f['price_usd_l'],3)} per litre ({f['price_label']}) = "
+                               f"{D(v['fuel_per_h']) if v['fuel_per_h'] is not None else 'n/a'} per flown hour · annual fuel {f['annual_litres']:,.0f} L. {f['note']}")
+            _own_total,_own_missing=_ownership_total(scn)
+            if _own_total is not None:
+                e1_,e2_=st.columns(2)
+                e1_.metric("Ownership costs entered (depreciation + interest)",D(_own_total))
+                e2_.metric("Economic annual cost (operating budget + ownership costs)",D(res["budget_usd"]+_own_total),help="Economic view, not cash flow. Capital repayment is not included.")
+            elif _own_missing is not None and len(_own_missing)<2:
+                st.caption("Economic annual cost not shown: ownership costs are incomplete — missing "+" and ".join(_own_missing)+". Enter the amount or 0 to state an explicit zero.")
             _render_alerts(res,alerts)
             st.markdown("<hr>",unsafe_allow_html=True)
             g1,g2=st.columns(2)
@@ -1564,40 +1936,16 @@ def main():
                         st.caption(f"Total on the published basis: {D(_mb['published_budget_original'])} original budget {'+' if _mb['delta_total']>=0 else '−'} {D(abs(_mb['delta_total']))} = {D(_mb['published_budget_adjusted'])} (Menkor cost base).")
             else:
                 st.caption("Menkor cost base: no adjustment for this record (original published values).")
-            with st.expander("🔎 Data provenance — extracted / calculated / converted / missing"):
-                if _prov is None: _prov=get_prov()
-                st.dataframe(_prov_table(row,_prov),width="stretch",hide_index=True)
-                _d=res.get("dates") or {}
-                st.caption(f"Dates — economic reference date of the figures: {_d.get('economic_reference_date','unknown')} · consultation date (web page read): {_d.get('consultation_date') or 'n/a'} · database extraction date: {_d.get('extraction_date') or 'n/a'} (processing date, not a price-validity date). Empty means missing — never zero.")
-        else:
-            def _locked_metric(label):
-                return f'''<div class="metric-card" style="text-align:center">
-                    <div class="metric-label">{label}</div>
-                    <div style="font-size:1.6rem;font-weight:700;color:#4A5568;filter:blur(5px);user-select:none">$ 000,000</div>
-                    <div class="metric-sub" style="color:#F59E0B">🔒 Essentiel</div></div>'''
-            m1,m2,m3,m4,m5=st.columns(5)
-            m1.markdown(_locked_metric("🔒 Annual Fixed Costs"),unsafe_allow_html=True)
-            m2.markdown(_locked_metric("⛽ Fuel / hour"),unsafe_allow_html=True)
-            m3.markdown(_locked_metric("⚡ Other variable / hour"),unsafe_allow_html=True)
-            m4.markdown(_locked_metric("💶 Total Annual Budget"),unsafe_allow_html=True)
-            m5.markdown(_locked_metric("⌛ Cost / hour"),unsafe_allow_html=True)
-            st.markdown("<hr>",unsafe_allow_html=True)
-            g1,g2=st.columns(2)
-            for _g,_title in [(g1,"Annual Cost Breakdown"),(g2,"Cost per Flown Hour")]:
-                with _g:
-                    st.markdown(f'<div class="section-header">{_title}</div>',unsafe_allow_html=True)
-                    st.markdown('''<div style="height:260px;display:flex;flex-direction:column;align-items:center;
-                         justify-content:center;background:#13233F;border:1px dashed #1A3A6E;border-radius:6px">
-                        <div style="font-size:1.8rem">🔒</div>
-                        <div style="font-size:.78rem;color:#8496B0;margin-top:.4rem">Unlock with Essentiel — 15€/mo</div>
-                    </div>''',unsafe_allow_html=True)
-            st.markdown('<div style="text-align:center;margin-top:1rem">',unsafe_allow_html=True)
-            st.caption("See the exact cost breakdown for every aircraft with an Essentiel or Pro plan.")
-            if st.session_state.get("auth_email"): _plan_buttons(st.session_state["auth_email"],current_plan=st.session_state.get("auth_plan"))
-            st.markdown('</div>',unsafe_allow_html=True)
+            if st.session_state.get("auth_is_admin"):      # internal traceability only: never shown to clients
+                with st.expander("🔎 Data provenance — extracted / calculated / converted / missing"):
+                    if _prov is None: _prov=get_prov()
+                    st.dataframe(_prov_table(row,_prov),width="stretch",hide_index=True)
+                    _d=res.get("dates") or {}
+                    st.caption(f"Dates — economic reference date of the figures: {_d.get('economic_reference_date','unknown')} · consultation date (web page read): {_d.get('consultation_date') or 'n/a'} · database extraction date: {_d.get('extraction_date') or 'n/a'} (processing date, not a price-validity date). Empty means missing — never zero.")
         if res["available"] and (is_essentiel or is_pro): _render_costs_scope(row,res,scn,D,"scope_dash")
-        st.markdown("<hr>",unsafe_allow_html=True)
-        _render_budget_offer(res["model"],"offer")
+        if journey!=J_C:
+            st.markdown("<hr>",unsafe_allow_html=True)
+            _render_budget_offer(res["model"],"offer")
 
     # TAB 2: PROFITABILITY
     with tab2:
@@ -1606,8 +1954,10 @@ def main():
         else:
             st.markdown('<div class="section-header">Charter Profitability — Estimated Operating Result</div>',unsafe_allow_html=True)
             st.caption(disp.note())
-            if mode=="reference":
-                st.info("The report has no charter revenue, billed hours or positioning data. Switch to **Custom simulation** (sidebar) to estimate profitability.")
+            if journey!=J_B:
+                st.info("Charter profitability is available in the journey **Simulate charter operations** (sidebar). The operating cost estimate does not assume any charter revenue.")
+            elif mode=="reference":
+                st.info("The report has no charter revenue, billed hours or positioning data. Switch to **Custom simulation** in Advanced settings to estimate profitability.")
             elif not res["available"]:
                 _render_alerts(res,alerts)
             else:
@@ -1634,14 +1984,21 @@ def main():
                     r3.metric("⚡ Variable (all flown h)",D(pr["variable_cost_all_flown"]))
                     r4.metric("🔒 Fixed",D(pr["fixed_cost"]))
                     st.metric("📊 Estimated operating result",D(r_),delta=f"{cov:.1f}% coverage")
-                    st.caption("Estimated operating result = charter revenue − variable costs of ALL flown hours − fixed costs − commercial fees not already included. "
-                               "It excludes financing, depreciation and tax: it is not a net profit.")
+                    st.caption("Operating result (before depreciation, interest and tax) = charter revenue − variable costs of ALL flown hours − fixed costs − commercial fees not already included. It is not a net profit.")
+                    _ow=pr.get("ownership") or {}
+                    if pr.get("economic_result") is not None:
+                        st.metric("📉 Economic result after the ownership costs entered",D(pr["economic_result"]),
+                                  help="Operating result − economic depreciation − loan interest entered. Economic view, not cash flow: capital repayment is not an economic cost but is a cash outflow to plan separately.")
+                    elif _ow.get("missing") is not None and len(_ow["missing"])<2:
+                        st.caption("Economic result not complete — missing: "+" and ".join(_ow["missing"])+". Enter the amount, or 0 to state an explicit zero.")
+                    else:
+                        st.caption("Economic result not shown: no ownership costs entered (optional section in the sidebar).")
                     st.markdown("<hr>",unsafe_allow_html=True)
                     st.markdown("**Charter contribution vs owner's own flying** (kept separate; no internal owner-to-operator payment is modelled)")
                     o1,o2,o3=st.columns(3)
                     o1.metric("External charter contribution",D(pr["charter_external_contribution"]),help="Net charter revenue (+ retained supplements − their cost) − variable cost of billed and positioning hours.")
                     o2.metric("Owner private flying — variable",D(pr["owner_private_variable_cost"]),help="Variable cost of the private/other hours.")
-                    o3.metric("Remaining cost to the owner (negative = surplus)",D(pr["owner_remaining_cost"]),help="Fixed + private variable − external charter contribution (= −operating result).")
+                    o3.metric("Owner remaining balance after charter contribution (negative = surplus)",D(pr["owner_remaining_cost"]),help="Fixed + private variable − external charter contribution (= −operating result). Payments made by the owner to the operator for the owner's own flights are internal, not external charter revenue.")
                     if pr.get("supplements_retained") is not None or pr.get("supplements_cost") is not None:
                         st.caption(f"Billed supplements (separate): retained {D(pr['supplements_retained']) if pr.get('supplements_retained') is not None else 'not entered'} · "
                                    f"linked cost {D(pr['supplements_cost']) if pr.get('supplements_cost') is not None else 'not entered'}.")
@@ -1660,7 +2017,7 @@ def main():
             st.markdown('<div class="section-header">Sensitivity — Billed Hours vs Operating Result</div>',unsafe_allow_html=True)
             st.caption(disp.note())
             if mode=="reference":
-                st.info("Sensitivity uses the simulation engine. Switch to **Custom simulation** to explore hours and fuel price.")
+                st.info("Sensitivity uses the simulation engine. Switch to **Custom simulation** in Advanced settings to explore hours and fuel price.")
             elif not res["available"]:
                 _render_alerts(res,alerts)
             else:
@@ -1693,7 +2050,7 @@ def main():
                     fig_c.update_layout(paper_bgcolor="rgba(0,0,0,0)",plot_bgcolor="rgba(0,0,0,0)",font=dict(color="#D6E4F7"),height=350,
                                         margin=dict(t=10,b=80,l=10,r=10),xaxis=dict(tickangle=-30),yaxis=dict(gridcolor="#1A3A6E",tickformat=",.0f"))
                     st.plotly_chart(fig_c,width="stretch",config={"displayModeBar":False})
-                    if len(_web): st.caption("Web estimates (Guardian Jet scenario, 300 h) are listed in the table but kept out of the chart: they are not equivalent to the full Menkor reference records.")
+                    if len(_web): st.caption("Web estimates (300 h scenario) are listed in the table but kept out of the chart: they are not equivalent to the full Menkor reference records.")
                     _t=cs.assign(**{f"Annual budget ({disp.ccy})":[round(disp.conv(x)) for x in cs["budget_usd"]],
                                     f"Cost/h ({disp.ccy})":[(round(disp.conv(x)) if (x is not None and x==x) else None) for x in cs["cost_per_h_usd"]]})[["model","manufacturer","source_kind",f"Annual budget ({disp.ccy})",f"Cost/h ({disp.ccy})"]]
                     _t["source_kind"]=_t["source_kind"].map(E.source_label)
@@ -1752,7 +2109,7 @@ def main():
                         "% of budget":(round(c["share_pct"],1) if c.get("share_pct") is not None else None)} for c in res["components"]]
                 rows2.append({"Category":"TOTAL","Line":"Annual budget (fixed + variable)",f"Annual ({disp.ccy})":round(disp.conv(res["budget_usd"])),f"Per hour ({disp.ccy})":None,"% of budget":100.0})
                 st.dataframe(pd.DataFrame(rows2),width="stretch",hide_index=True)
-                st.caption("Components break down the totals — they are not added to them. ✎ = replaced by your edit. Rounding lines reconcile printed rounded values with the source totals.")
+                st.caption("Components break down the totals — they are not added to them. ✎ = replaced by your edit.")
 
                 # Fuel consumed vs purchased at a stopover
                 with st.expander("⛽ Stopover fuel: consumed vs purchased"):
@@ -1776,15 +2133,21 @@ def main():
                     if st.button("📄 Generate PDF Report",width="stretch",type="primary"):
                         with st.spinner("Building report..."):
                             try:
-                                st.session_state["pdf_report"]=dict(data=generate_pdf_report(res,disp,alerts),hash=res["config_hash"],aid=aid)
+                                _brk=_broker_for_pdf()
+                                st.session_state["pdf_report"]=dict(data=generate_pdf_report(res,disp,alerts_client,broker=_brk),hash=res["config_hash"],aid=aid,tpl=RPT.TEMPLATE_VERSION,brk=_broker_sig(_brk))
+                                _track("report_generated",{"plan":_plan_key()},once_key=f"report:{res['config_hash']}")
                                 st.success("✓ Report ready!")
                             except Exception as e: st.error(f"PDF error: {e}")
                     _p=st.session_state.get("pdf_report")
                     if isinstance(_p,dict):
-                        if _p["hash"]==res["config_hash"]:
+                        if _p["hash"]==res["config_hash"] and _p.get("tpl")==RPT.TEMPLATE_VERSION and _p.get("brk")!=_broker_sig(_broker_for_pdf()):
+                            st.warning("⚠ The report branding (broker name / logo) changed since the last PDF. Generate it again.")
+                        elif _p["hash"]==res["config_hash"] and _p.get("tpl")==RPT.TEMPLATE_VERSION:
                             st.download_button("⬇ Download PDF Report",data=_p["data"],file_name=f"Menkor_Cost_{res['model'].replace(' ','_')}_{res['config_hash']}.pdf",mime="application/pdf",width="stretch")
+                        elif _p["hash"]==res["config_hash"]:
+                            st.warning("⚠ The last PDF was built with an older report template and is obsolete. Generate it again.")
                         else:
-                            st.warning(f"⚠ The last PDF (config {_p['hash']}) is obsolete: assumptions changed (current config {res['config_hash']}). Generate it again.")
+                            st.warning(f"⚠ The last PDF (scenario {_p['hash']}) is obsolete: assumptions changed (current scenario {res['config_hash']}). Generate it again.")
                 with x2:
                     st.download_button("⬇ Download results (CSV)",data=_results_csv(res,disp),file_name=f"Menkor_Results_{res['aircraft_id']}_{res['config_hash']}.csv",mime="text/csv",width="stretch")
 
@@ -1828,7 +2191,7 @@ def main():
     # ── TAB 6 : MARKET SEARCH ───────────────────────────────────────────
     with tab6:
         st.markdown('<div class="main-title" style="font-size:1.4rem">🌐 Personalized Aircraft Market Search</div>',unsafe_allow_html=True)
-        st.markdown('<div class="sub-title">Every active listing for your chosen model, consolidated and verified by our team</div>',unsafe_allow_html=True)
+        st.markdown('<div class="sub-title">A manually prepared market search for your chosen model</div>',unsafe_allow_html=True)
 
         ms_cats=["All"]+sorted(df["Categorie"].dropna().unique().tolist())
         msc1,msc2=st.columns(2)
@@ -1842,18 +2205,18 @@ def main():
 
         if not _is_f7x:
             st.markdown("<hr>",unsafe_allow_html=True)
-            st.markdown(f'<div class="section-header">📋 Sample Report Preview — {ms_model_preview}</div>',unsafe_allow_html=True)
-            st.caption("Illustrative data only — not real listings. Your paid report replaces every row below with verified, current market listings for this exact model.")
+            st.markdown(f'<div class="section-header">📋 Sample deliverable (illustrative) — {ms_model_preview}</div>',unsafe_allow_html=True)
+            st.caption("Illustrative data only — not real listings and not a verified market state. Your report contains the listings identified for this exact model, with its own date.")
 
             _sample_listings=[
                 dict(year=2016,reg="N-XXXX",hours="1,850 h",price="$18.5M",location="USA · Teterboro",
-                     maint="JSSI Enrolled",maint_color="#4ADE80",broker="Atlantic Aviation Brokers"),
+                     maint="",maint_color="#4ADE80",broker="Seller contact"),
                 dict(year=2014,reg="VP-XXXX",hours="2,400 h",price="$15.9M",location="UK · London",
-                     maint="OEM Program",maint_color="#60A5FA",broker="EuroCharter Sales"),
+                     maint="",maint_color="#60A5FA",broker="Seller contact"),
                 dict(year=2018,reg="M-XXXX",hours="1,100 h",price="$21.2M",location="UAE · Dubai",
-                     maint="JSSI Enrolled",maint_color="#4ADE80",broker="Gulf Jet Partners"),
+                     maint="",maint_color="#4ADE80",broker="Seller contact"),
                 dict(year=2012,reg="HB-XXXX",hours="3,650 h",price="$12.4M",location="Switzerland · Geneva",
-                     maint="Not Enrolled",maint_color="#F87171",broker="Alpine Aircraft Sales"),
+                     maint="",maint_color="#F87171",broker="Seller contact"),
             ]
 
             for lst in _sample_listings:
@@ -1867,29 +2230,29 @@ def main():
                         <div style="font-size:.95rem;color:#D6E4F7;font-weight:600">{lst["hours"]}</div>
                     </div>
                     <div style="text-align:center;min-width:90px">
-                        <div class="metric-label" style="margin-bottom:.1rem">Price</div>
+                        <div class="metric-label" style="margin-bottom:.1rem">Asking price (example)</div>
                         <div style="font-size:.95rem;color:#D6E4F7;font-weight:600">{lst["price"]}</div>
                     </div>
                     <div style="text-align:center;min-width:120px">
-                        <span style="background:{lst["maint_color"]}22;color:{lst["maint_color"]};padding:3px 10px;border-radius:12px;font-size:.72rem;font-weight:700">{lst["maint"]}</span>
+                        <span style="color:#8496B0;font-size:.72rem">Technical status: documented in your report</span>
                     </div>
                     <div style="text-align:right;min-width:170px">
-                        <div style="font-size:.72rem;color:#8496B0">Seller broker</div>
+                        <div style="font-size:.72rem;color:#8496B0">Seller contact</div>
                         <div style="font-size:.82rem;color:#5A6B85;filter:blur(3px);user-select:none">{lst["broker"]}</div>
                     </div>
                 </div>''',unsafe_allow_html=True)
 
             st.markdown('''<div style="text-align:center;font-size:.78rem;color:#8496B0;margin:.4rem 0 1.2rem 0">
-                🔒 Broker names, direct contacts, and exact tail numbers are unlocked in your personalized report
+                Seller contacts, where available, and exact registrations are provided in your report
             </div>''',unsafe_allow_html=True)
 
         st.markdown("<hr>",unsafe_allow_html=True)
         _f7x_ctx=st.container() if _is_f7x else st.expander("📂 Real Example — Falcon 7X Full Market Dossier & Turnkey Program", expanded=False)
         with _f7x_ctx:
-            st.caption("A genuine, in-depth example of what the € 300 Market Search becomes once paired with Menkor's turnkey acquisition service — shown here for the Falcon 7X segment (24 aircraft tracked, 2007–2022).")
+            st.caption("Sample deliverable: an example of what a Menkor market search can look like when paired with the turnkey acquisition service — shown here for the Falcon 7X segment (24 aircraft, 2007–2022). Aircraft may no longer be available.")
 
             # ── Falcon 7X market ledger ──────────────────────────────────
-            st.markdown('<div class="section-header">Falcon 7X Market — 24 Aircraft Tracked</div>',unsafe_allow_html=True)
+            st.markdown('<div class="section-header">Falcon 7X — sample market overview (24 aircraft)</div>',unsafe_allow_html=True)
             _f7x_rows=[
                 ("SN 296","2022","VP-CMY","Melbourne, FL / Europe","$39,900,000",None,"1,082","268","ESP Platinum / MSP Gold","EASy II Cert 5 / Ka-Band Satcom","Fresh 48M c/w June 2026; Factory warranty baseline","Dassault Aviation"),
                 ("SN 288","2020","Pending","Brussels, Belgium",None,"$33.5M","1,797","820","ESP Platinum / MSP Gold","EASy II Cert 5 / Ka-Band High Speed","1C c/w; Next major 2028; EASA CAT compliant","Boutique European Broker"),
@@ -1916,28 +2279,25 @@ def main():
                 ("SN 034","2008","OE-reg","Vienna, Austria",None,"$14.8M","6,893","3,120","ESP Gold / MSP","EASy II / SwiftBroadband","Higher total time; 2C check done; 3C due 2032","Global Jet Concept"),
                 ("SN 005","2007","LX-reg","Luxembourg",None,"$13.5M","7,867","3,610","ESP Gold (Partial) / MSP","EASy II Baseline / Ku-Band WiFi","Early serial; 2C completed; High time discount; Paint 2024","Boutsen Aviation"),
             ]
-            _f7x_hdr=["Serial","Year","Reg.","Location","Price / Est. FMV","TTAF","Landings","Engine Program","Avionics","Inspection Status / Key Notes","Broker"]
-            _f7x_html='<div style="overflow-x:auto;border:1px solid #1A3A6E;border-radius:6px"><table style="border-collapse:collapse;width:100%;min-width:980px;font-size:.78rem">'
+            _f7x_hdr=["Serial","Year","Reg.","Location","Asking price / estimated value","TTAF","Landings"]
+            _f7x_html='<div style="overflow-x:auto;border:1px solid #1A3A6E;border-radius:6px"><table style="border-collapse:collapse;width:100%;min-width:640px;font-size:.78rem">'
             _f7x_html+='<tr>'+''.join(f'<th style="position:sticky;top:0;background:#13233F;color:#8496B0;text-align:left;padding:.5rem .6rem;border-bottom:1px solid #1A3A6E;white-space:nowrap;font-size:.68rem;letter-spacing:.04em;text-transform:uppercase">{h}</th>' for h in _f7x_hdr)+'</tr>'
             for sn,yr,reg,loc,adv,fmv,ttaf,land,eng,av,notes,brk in _f7x_rows:
-                price_html=f'<span style="color:#4ADE80;font-weight:700">{adv}</span>' if adv else f'<span style="color:#8496B0;font-style:italic">Make Offer</span><div style="font-size:.7rem;color:#8496B0;font-style:italic">Est. FMV {fmv}</div>'
+                price_html=f'<span style="color:#4ADE80;font-weight:700">Asking {adv}</span>' if adv else f'<span style="color:#8496B0;font-style:italic">No asking price shown</span><div style="font-size:.7rem;color:#8496B0;font-style:italic">Estimated value (Menkor) {fmv}</div>'
                 _f7x_html+=(f'<tr><td style="padding:.5rem .6rem;border-bottom:1px solid #1A3A6E;color:#D6E4F7;font-weight:600;white-space:nowrap">{sn}</td>'
                             f'<td style="padding:.5rem .6rem;border-bottom:1px solid #1A3A6E;color:#D6E4F7;white-space:nowrap">{yr}</td>'
                             f'<td style="padding:.5rem .6rem;border-bottom:1px solid #1A3A6E;color:#8496B0;white-space:nowrap">{reg}</td>'
                             f'<td style="padding:.5rem .6rem;border-bottom:1px solid #1A3A6E;color:#8496B0">{loc}</td>'
                             f'<td style="padding:.5rem .6rem;border-bottom:1px solid #1A3A6E;white-space:nowrap">{price_html}</td>'
                             f'<td style="padding:.5rem .6rem;border-bottom:1px solid #1A3A6E;color:#D6E4F7;white-space:nowrap">{ttaf}</td>'
-                            f'<td style="padding:.5rem .6rem;border-bottom:1px solid #1A3A6E;color:#D6E4F7;white-space:nowrap">{land}</td>'
-                            f'<td style="padding:.5rem .6rem;border-bottom:1px solid #1A3A6E;color:#8496B0;white-space:nowrap"><span style="border:1px solid #1A3A6E;border-radius:10px;padding:.1rem .5rem;font-size:.7rem">{eng}</span></td>'
-                            f'<td style="padding:.5rem .6rem;border-bottom:1px solid #1A3A6E;color:#8496B0;white-space:nowrap">{av}</td>'
-                            f'<td style="padding:.5rem .6rem;border-bottom:1px solid #1A3A6E;color:#8496B0;max-width:260px">{notes}</td>'
-                            f'<td style="padding:.5rem .6rem;border-bottom:1px solid #1A3A6E;color:#8496B0;white-space:nowrap">{brk}</td></tr>')
+                            f'<td style="padding:.5rem .6rem;border-bottom:1px solid #1A3A6E;color:#D6E4F7;white-space:nowrap">{land}</td></tr>')
             _f7x_html+='</table></div>'
             st.markdown(_f7x_html,unsafe_allow_html=True)
-            st.caption("Full dossiers, HD photos and direct broker introductions are provided by Menkor Aviation on request — this is the raw ledger behind every Market Search.")
+            st.caption("Sample deliverable: illustrative of the format of a Menkor market search. Aircraft may no longer be available and no verification date is shown here; your report carries its own date.")
 
             # ── Turnkey acquisition timeline ─────────────────────────────
-            st.markdown('<div class="section-header" style="margin-top:1.4rem">Turnkey Acquisition Timeline — Market → AOC</div>',unsafe_allow_html=True)
+            st.markdown('<div class="section-header" style="margin-top:1.4rem">Indicative acquisition timeline — Market → AOC</div>',unsafe_allow_html=True)
+            st.caption("Indicative timeline: durations and costs are order-of-magnitude figures, adapted to each project (aircraft, jurisdiction, financing, inspection findings).")
             _tl_steps=[
                 ("01","Market Search / Advisory — Taxes / AOC / Registration","Full market search and technical screening, run alongside early advisory on applicable taxes, AOC placement options and the target registration jurisdiction.","3–5 days","$300"),
                 ("02","Preselection / First Pre-Audit","Shortlist narrowed by our B1/B2 engineers and CAMO team; first pre-audit of maintenance records, engine program status and airframe history.","3–7 days",None),
@@ -1971,7 +2331,7 @@ def main():
 
             # ── B1/B2/CAMO technical preselection ─────────────────────────
             st.markdown('<div class="section-header" style="margin-top:1.4rem">Technical Preselection — B1/B2 &amp; CAMO</div>',unsafe_allow_html=True)
-            st.caption("No aircraft on the market is offered as-is: every listing is first run through an internal technical review before it ever reaches a client presentation.")
+            st.caption("Where relevant, listings are reviewed by our engineers before being presented to a client. The review depends on the documents available for each aircraft.")
             tpc1,tpc2=st.columns(2)
             with tpc1:
                 _roles=[("B1","Airframe / Powerplant Engineer","CAMP records, ESP/MSP engine program status, SMOH, AD/SB compliance, damage and structural-repair history."),
@@ -2005,20 +2365,20 @@ def main():
         f1,f2,f3=st.columns(3)
         with f1:
             st.markdown('''<div class="metric-card">
-                <div class="metric-label">✓ Full Listing Set</div>
-                <div class="metric-sub">Every active listing currently on and off market for your exact model, cross-checked against our broker network — not just public ads.</div>
+                <div class="metric-label">✓ Listings identified</div>
+                <div class="metric-sub">The listings we identify for your exact model, from public sources and our network. We do not guarantee that every listing on or off the market is covered.</div>
             </div>''',unsafe_allow_html=True)
         with f2:
             st.markdown('''<div class="metric-card">
-                <div class="metric-label">✓ Verified Seller Contacts</div>
-                <div class="metric-sub">Direct broker name, email and phone routing for each listing, so you skip the blind-inquiry queue.</div>
+                <div class="metric-label">✓ Seller contacts</div>
+                <div class="metric-sub">Seller or broker contact details where we have them, so you can approach the right people directly.</div>
             </div>''',unsafe_allow_html=True)
         with f3:
             st.markdown('''<div class="metric-card">
                 <div class="metric-label">✓ Market Positioning</div>
-                <div class="metric-sub">Where each asking price sits versus comparable trades, plus maintenance program status (enrolled programs noted, no third-party pricing disclosed).</div>
+                <div class="metric-sub">Where each asking price sits against comparable aircraft, with the information we hold on maintenance programmes. Asking prices and estimated values are shown separately.</div>
             </div>''',unsafe_allow_html=True)
-        st.caption("Flat fee ensures every request is a serious inquiry, not a time-waster or competitor fishing for free data. Delivered within 48 hours by our team, by email.")
+        st.caption("Flat fee: € 300, one price for every model. Delivery timeframe confirmed when your request is reviewed.")
 
         st.markdown("<hr>",unsafe_allow_html=True)
         st.markdown('<div class="section-header">Request Your Market Search</div>',unsafe_allow_html=True)
@@ -2047,7 +2407,12 @@ def main():
                 url = _market_search_checkout_url(ms_email, meta)
                 if url:
                     st.markdown(f'<div style="text-align:center;margin-top:.8rem"><a href="{url}" target="_blank" style="background:#C9A84C;color:#0B1629;padding:.6rem 1.5rem;border-radius:5px;font-weight:700;text-decoration:none">💳 Pay € 300 and Submit Request</a></div>', unsafe_allow_html=True)
-                    st.info("After payment, our team will prepare your personalized market report within 48 hours and send it to your email.")
+                    st.info("After payment, our team prepares your personalized market report. Delivery timeframe confirmed when your request is reviewed.")
+
+    # ── TAB 7 : MY SCENARIOS ───────────────────────────────────────────
+    with tab7:
+        if not (is_essentiel or is_pro): premium_gate("essentiel")
+        else: _render_my_scenarios(get_base(),aid,scn,res,disp,is_pro)
 
     st.markdown("<hr>",unsafe_allow_html=True)
     st.markdown('<div style="text-align:center;font-size:.72rem;color:#4A5568">MENKOR AVIATION — Figures for simulation purposes only</div>',unsafe_allow_html=True)

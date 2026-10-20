@@ -221,7 +221,9 @@ def public_text(t):
     if t is None or (isinstance(t, float) and t != t):
         return t
     import re as _r
-    return _r.sub(r"\bACC\b( public( web)?)?", lambda m: "Menkor reference database (public)" if m.group(1) else "Menkor", str(t))
+    out = _r.sub(r"\bACC\b( public( web)?)?", lambda m: "Menkor reference database (public)" if m.group(1) else "Menkor", str(t))
+    out = _r.sub(r";?\s*economic data from Guardian Jet\.?", "", out)            # third-party provider names are never shown to clients
+    return _r.sub(r"Guardian Jet", "a web estimate", out)
 
 
 def public_source(s):
@@ -401,7 +403,7 @@ class Display:
                     f"(rate dated {self.fx.rate_date}{', ' + self.fx.rate_source if self.fx.rate_source else ''})")
         if self.eur_blocked:
             return "EUR display requested but no valid dated exchange rate — amounts shown in USD (source currency)."
-        return "Source currency USD (from the report '$' symbol) · no conversion applied"
+        return "Source amounts in USD · no conversion applied"
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -740,9 +742,8 @@ def _compute_core(row, scn: Scenario, today: date | None = None) -> dict:
         url, acc = _web_source(row)
         res["web_source"] = dict(url=url, access_date=acc)
         _flag(fl, "warn", "web_source",
-              f"Source: Menkor reference database — partial web estimate (Guardian Jet economics + public technical summary), not a full reference record. "
-              f"Page consulted {acc or 'n/a'} (consultation date, not a validity date). Scenario: {ref_h:g} h/year, fuel 7.54 USD per US gallon "
-              f"(USD assumed from '$', US gallon assumed — to confirm). Fixed costs differ strongly from the full Menkor reference records: not equivalent, operator validation advised.")
+              f"Partial web estimate, not a full reference record. Scenario: {ref_h:g} h/year, fuel 7.54 USD per US gallon "
+              f"(USD and US gallon assumed — to confirm). Fixed costs differ strongly from the full Menkor reference records: not equivalent, operator validation advised.")
     need = {"reference_annual_hours": ref_h, "annual_fixed_cost_usd": fixed_src,
             "annual_variable_cost_usd": var_src, "annual_fuel_cost_usd": fuel_cost_src}
     miss = [k for k, v in need.items() if v is None]
@@ -773,9 +774,9 @@ def _compute_core(row, scn: Scenario, today: date | None = None) -> dict:
     if method == "custom" and scn.fuel.custom_burn_l_h and scn.fuel.custom_burn_l_h > 0:
         burn, burn_label = scn.fuel.custom_burn_l_h, "User-defined average burn (L/h)"
     elif method == "derived" and f_der is not None:
-        burn, burn_label = f_der, "Derived from annual fuel volume ÷ reference hours (fuel_burn_from_annual_l_per_h)"
+        burn, burn_label = f_der, "Derived from annual fuel volume ÷ reference hours"
     elif f_pub is not None and method in ("published", "custom", "derived"):
-        burn, burn_label = f_pub, "Published hourly burn (fuel_burn_l_per_h)"
+        burn, burn_label = f_pub, "Published hourly burn"
         if method != "published":
             _flag(fl, "warn", "burn_fallback", f"Requested burn method '{method}' unavailable — published burn used.")
     elif f_der is not None:
@@ -835,8 +836,8 @@ def _compute_core(row, scn: Scenario, today: date | None = None) -> dict:
                   vs["message"] + " Used as a HISTORICAL assumption after explicit user confirmation: not a current market price.")
     else:
         price_usd_l = ref_price
-        price_label = ("Web scenario price 7.54 USD per US gallon (Guardian Jet; US gallon assumed, to confirm) — not a current market price"
-                       if kind == "web_estimate" else "Report reference price (reference_fuel_price_usd_per_l) — not a current market price")
+        price_label = ("Web scenario price 7.54 USD per US gallon (US gallon assumed, to confirm) — not a current market price"
+                       if kind == "web_estimate" else "Report reference price — not a current market price")
         if price_usd_l is None:
             _flag(fl, "error", "no_ref_price", "Report fuel price missing — enter an average fuel price.")
             return res
@@ -997,7 +998,7 @@ def _compute_reference(row, scn, res, ref_h, fixed_src, var_src, fuel_cost_src, 
     if budget_src is None:
         _flag(fl, "warn", "no_budget", "Published annual budget missing — fixed + variable totals used.")
     elif abs(fixed_src + var_src - budget_src) > 1.0:
-        _flag(fl, "warn", "budget_sum", f"Published fixed + variable differs from published budget by {fixed_src + var_src - budget_src:,.0f} USD (tolerance 1 USD).")
+        _flag(fl, "warn", "budget_sum", f"The published fixed and variable totals differ from the published budget by {abs(fixed_src + var_src - budget_src):,.0f} USD.")
     res["fixed"] = dict(source_total=fixed_src, override_delta=0.0, extra=0.0, annual_total=fixed_src,
                         includes="crew expense, crew training, hangar, insurance, aircraft misc")
     res["variable"] = dict(nonfuel_per_h=(var_src - fuel_cost_src) / ref_h, fuel_per_h=fuel_cost_src / ref_h,
@@ -1038,7 +1039,7 @@ def _compute_reference(row, scn, res, ref_h, fixed_src, var_src, fuel_cost_src, 
     res["budget_usd"] = budget
     res["cost_per_h_usd"] = budget / ref_h
     res["available"] = True
-    _flag(fl, "info", "reference_mode", "Report reference: published totals at the report's own hours and fuel price, original published values only (the Menkor cost-base adjustment and every edit are not used). Switch to Custom simulation to adjust costs.")
+    _flag(fl, "info", "reference_mode", "Report reference: published totals at the report's own hours and fuel price, original published values only (the Menkor cost-base adjustment and every edit are not used). Switch to Custom simulation (Advanced settings) to adjust costs.")
     return res
 
 
@@ -1125,8 +1126,7 @@ THRESHOLD_LABEL = "Operating cost coverage threshold"
 THRESHOLD_LABEL_FR = "Seuil de couverture des coûts d'exploitation renseignés"
 THRESHOLD_ECON_LABEL = "Economic coverage threshold including the ownership costs entered"
 THRESHOLD_ECON_LABEL_FR = "Seuil intégrant les coûts économiques de possession renseignés"
-THRESHOLD_NOTE = ("Indicative threshold based on the costs and assumptions entered. Aircraft-specific maintenance events, programme exclusions and "
-                  "unbudgeted expenses may materially change the result.")
+THRESHOLD_NOTE = ("Estimate based on your assumptions. Aircraft-specific maintenance events and programme exclusions may materially change the result.")
 OWNERSHIP_NOTE = ("Economic ownership costs: economic depreciation (not tax amortisation) and loan INTEREST only (not capital repayment, not a full loan instalment). "
                   "Taxes are excluded. This is an economic result, not cash flow.")
 MANAGEMENT_ITEMS = {"management": "Management fee", "camo": "CAMO", "dispatch": "Dispatch / flight support"}
@@ -1415,52 +1415,65 @@ def provenance_for(prov: pd.DataFrame, row) -> pd.DataFrame:
     return p
 
 
-def alerts_for(row, checks: pd.DataFrame, conflicts: pd.DataFrame, conversions: pd.DataFrame) -> list:
-    """Alerts shown next to the results. Built from the base — nothing is hard-coded per aircraft."""
+STATUS_TEXT_CLIENT = {
+    "pdf_extracted_review_required": "Menkor reference record: average costs, to be reviewed for a specific aircraft.",
+    "source_values_review_required": "Some values of this record are invalid and left empty — review required.",
+    "model_name_and_source_values_review_required": "Some values of this record are invalid and left empty — review required.",
+    "model_name_review_required": "This record is under review.",
+    "web_estimate_partial_breakdown_review_required": "Partial web estimate: the cost breakdown differs from the full Menkor reference records.",
+    "source_conflict_review_required": "Two reference reports differ for this model — the primary one is used; verify before commercial use.",
+    LEGACY_STATUS: "Historical sheet — detailed fields still to be reconstructed.",
+}
+
+
+def alerts_for(row, checks: pd.DataFrame, conflicts: pd.DataFrame, conversions: pd.DataFrame, admin: bool = False) -> list:
+    """Alerts shown next to the results. Built from the base — nothing is hard-coded per aircraft.
+    Client wording by default (no field names, tolerances, file names, dates of extraction, providers); `admin=True` adds the internal traceability."""
     out = []
     status = str(row.get("record_status"))
-    out.append(dict(level="info", text=STATUS_TEXT.get(status, status)))
+    out.append(dict(level="info", text=(STATUS_TEXT if admin else STATUS_TEXT_CLIENT).get(status, status if admin else "This record is under review.")))
     if status == LEGACY_STATUS:
-        out.append(dict(level="warn", text="Currency of historical amounts is undocumented; the legacy charter rate is labelled EUR in the old base and is unverified."))
+        out.append(dict(level="warn", text="Currency of historical amounts is undocumented and unverified."))
         return out
     kind = source_kind(row)
     if kind == "web_estimate":
         url, acc = _web_source(row)
-        w = _web_cached(); w = w[w["aircraft_id"] == row["aircraft_id"]]
-        tech = w[w["field"] == "technical_source_url"]
-        out.append(dict(level="warn", text=f"Economic data: Guardian Jet web estimate ({url or 'URL n/a'}), consulted {acc or 'n/a'} — consultation date only, "
-                        "effective/validity date unknown. Different source and scope from the full Menkor reference records."))
-        out.append(dict(level="warn", text="Assumptions to confirm: USD from the '$' symbol; gallons read as US gallons (1 US gal = 3.785411784 L); 300 h/year and 7.54 USD/gal come from this single scenario and must not be mixed with the hours/prices of the full Menkor reference records."))
-        out.append(dict(level="warn", text="Crew rubric is aggregated: training is not isolated and its inclusion is unknown — left empty, no generic training added, never replaced by zero."))
-        out.append(dict(level="warn", text="Maintenance = 5-year average + engine program (APU coverage unspecified): the airframe / engine-APU / crew-misc split is left empty; only the combined maintenance line can be edited."))
+        if admin:
+            out.append(dict(level="warn", text=f"[internal] Economic data: Guardian Jet web estimate ({url or 'URL n/a'}), consulted {acc or 'n/a'} — consultation date only, effective/validity date unknown."))
+        out.append(dict(level="warn", text="Partial web estimate: its scope differs from the full Menkor reference records and no validity date is documented."))
+        out.append(dict(level="warn", text="Assumptions to confirm: amounts in USD; gallons read as US gallons (1 US gal = 3.785411784 L); 300 h/year and 7.54 USD per US gallon come from this single scenario and must not be mixed with the hours and prices of the full reference records."))
+        out.append(dict(level="warn", text="Crew costs are aggregated: training is not isolated and its inclusion is unknown — left empty, never replaced by zero."))
+        out.append(dict(level="warn", text="Maintenance is a 5-year average plus engine programme (APU coverage unspecified): only the combined maintenance line can be edited."))
         out.append(dict(level="warn", text="Fixed costs differ strongly from the full Menkor reference records: not declared equivalent — operator validation recommended."))
-        out.append(dict(level="info", text="Annual fuel cost and volume are derived (burn × price × 300 h), not printed annual amounts. Hourly fuel keeps the computed cents."))
-        out.append(dict(level="info", text="Technical data (ranges, cabin, ceiling, passengers) come from a public technical summary, with provenance separate from the Guardian Jet costs"
-                        + (f" ({public_source(tech['value'].iloc[0])})" if len(tech) else "") + ". Contradictory cruise speeds and missing weights stay unavailable."))
+        out.append(dict(level="info", text="Annual fuel cost and volume are derived (burn × price × 300 h), not printed annual amounts."))
+        out.append(dict(level="info", text="Technical data (ranges, cabin, ceiling, passengers) come from a separate public technical summary. Contradictory cruise speeds and missing weights stay unavailable."))
     else:
-        out.append(dict(level="info", text="Report date not provided: prices have no validity date. "
-                        f"extraction_date ({row.get('extraction_date')}) is the processing date, not a market date."))
-        out.append(dict(level="info", text="Amounts are USD from the report '$' symbol; the currency itself is not confirmed by the source."))
+        out.append(dict(level="info", text="Economic reference date not documented: the cost figures carry no validity date."))
+        out.append(dict(level="info", text="Source amounts are in USD; the currency is assumed, not confirmed."))
+        if admin:
+            out.append(dict(level="info", text=f"[internal] extraction_date ({row.get('extraction_date')}) is the processing date, not a market date."))
     aid, sf = row["aircraft_id"], row.get("source_file")
     ck = checks[(checks["aircraft_id"] == aid) & (checks["source_file"] == sf) & (checks["status"] != "OK")]
-    if len(ck):
+    if len(ck) and admin:
         names = "; ".join(f"{r['check']} (observed {r['observed']}, expected {r['expected']}, tol. {r['tolerance']})" for _, r in ck.head(6).iterrows())
-        out.append(dict(level="warn", text=f"{len(ck)} numeric check(s) to review: {names}" + (" …" if len(ck) > 6 else "")))
+        out.append(dict(level="warn", text=f"[internal] {len(ck)} numeric check(s) to review: {names}" + (" …" if len(ck) > 6 else "")))
     if status in ("source_values_review_required", "model_name_and_source_values_review_required"):
         inv = ck[ck["check"].str.startswith("positive_")] if len(ck) else ck
         if len(inv):
-            out.append(dict(level="error", text="Printed value(s) invalid (0): " + ", ".join(inv["check"].str.replace("positive_physical_value_", "").str.replace("positive_source_value_", "")) + " — left empty, not replaced."))
+            out.append(dict(level="error", text="Some printed values of this record are invalid (0): they are left empty, not replaced."
+                            + (" " + ", ".join(inv["check"].str.replace("positive_physical_value_", "").str.replace("positive_source_value_", "")) if admin else "")))
     if status == "source_conflict_review_required":
         c = conflicts[conflicts["aircraft_id"] == aid]
-        out.append(dict(level="warn", text=f"Source conflict: {len(c)} field(s) differ between the two reports (primary: {sf}). Verify currency and date with the source before commercial use."))
+        out.append(dict(level="warn", text=f"Source conflict: {len(c)} value(s) differ between two reference reports. Verify the currency and the date with Menkor before commercial use."
+                        + (f" [internal] primary: {sf}" if admin else "")))
     cv = conversions[conversions["aircraft_id"] == aid]
     if len(cv):
-        out.append(dict(level="info", text="Imperial report converted to SI (1 US gal = 3.785411784 L; GAL assumed US gallon — to confirm with the source). Originals kept in the conversions table."))
+        out.append(dict(level="info", text="Imperial values converted to SI (1 US gal = 3.785411784 L; US gallon assumed — to confirm)."))
     miss = [f for f in KEY_FIELDS if num(row, f) is None]
     if miss:
-        out.append(dict(level="warn", text="Missing / empty fields (not replaced by zero): " + ", ".join(miss)))
+        out.append(dict(level="warn", text="Some key data are missing for this model (not replaced by zero)." + (" [internal] " + ", ".join(miss) if admin else "")))
     if num(row, "annual_insurance_fixed_usd") == 0:
-        out.append(dict(level="warn", text="Insurance printed as 0 in the source — kept as published, to verify."))
+        out.append(dict(level="warn", text="Insurance is recorded as 0 for this model — kept as published, to verify."))
     return out
 
 
