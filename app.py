@@ -10,6 +10,8 @@ import base64
 import hashlib
 import re as _re
 import html as _html
+import datetime as _datetime
+import menkor_accounts as ACC
 import warnings
 warnings.filterwarnings("ignore")
 
@@ -368,6 +370,11 @@ def cm_bar(res,disp,category,title):
 # Public address of the app: the SAME address already used for the Stripe return URLs in this file. An APP_PUBLIC_URL secret overrides it.
 APP_PUBLIC_URL="https://aviation-cost-estimator.onrender.com"
 
+def _public_url():
+    try: base=str(st.secrets.get("APP_PUBLIC_URL") or APP_PUBLIC_URL)
+    except Exception: base=APP_PUBLIC_URL
+    return base.rstrip("/")
+
 def _study_url():
     """Configured destination of the aircraft-specific budget request (opens the journey 'Request an aircraft-specific budget'). Never invented."""
     try: base=str(st.secrets.get("APP_PUBLIC_URL") or APP_PUBLIC_URL)
@@ -498,7 +505,7 @@ def generate_quotation_pdf(qr, aircraft_row):
     doc.build(story,onFirstPage=hf,onLaterPages=hf); buf.seek(0); return buf.getvalue()
 
 # ─── AUTH (Supabase-backed persistent user store) ────────────────────────────
-def _hash(pw): return hashlib.sha256(pw.encode()).hexdigest()
+def _hash(pw): return ACC.hash_password(pw)      # salted scrypt; legacy SHA-256 hashes are upgraded at the next successful login
 
 def _sb_base():
     url=st.secrets.get("SUPABASE_URL","").rstrip("/")
@@ -599,23 +606,18 @@ def _track(event,props=None,once_key=None):
 def _plan_key():
     return "pro" if st.session_state.get("auth_plan")=="pro" else ("essentiel" if st.session_state.get("auth_plan")=="essentiel" else "free")
 
+def _mail_post(*a,**k):
+    import requests
+    return requests.post(*a,**k)
+
+def _mail_secrets():
+    try: return {k:st.secrets.get(k) for k in ("RESEND_API_KEY","EMAIL_FROM","SIGNUP_NOTIFY_TO","ADMIN_EMAIL")}
+    except Exception: return {}
+
 def _notify_admin_new_signup(email):
-    """Best-effort: registration must never fail because of this. Returns (ok, detail) for diagnostics."""
-    try:
-        import requests
-        key=st.secrets.get("RESEND_API_KEY"); admin=st.secrets.get("ADMIN_EMAIL")
-        if not key: return False,"RESEND_API_KEY is missing/empty in this app's secrets."
-        if not admin: return False,"ADMIN_EMAIL is missing/empty in this app's secrets."
-        r=requests.post("https://api.resend.com/emails",
-            headers={"Authorization":f"Bearer {key}","Content-Type":"application/json"},
-            json={"from":"Aviation Cost Estimator <onboarding@resend.dev>","to":[admin],
-                  "subject":"✈ New user registered — Aviation Cost Estimator",
-                  "html":f"<p>A new account was just created:</p><p style='font-size:1.1rem;font-weight:700'>{email}</p>"},
-            timeout=6)
-        if r.status_code in (200,201): return True,""
-        return False,f"HTTP {r.status_code}: {r.text[:300]}"
-    except Exception as e:
-        return False,f"{type(e).__name__}: {e}"
+    """Owner notification (diagnostic button + signup). Best-effort: returns (ok, detail)."""
+    sec=_mail_secrets(); s_,h_=ACC.admin_signup_email(email,_datetime.datetime.now(_datetime.timezone.utc))
+    return ACC.send_email(_mail_post,sec.get("RESEND_API_KEY"),sec.get("EMAIL_FROM") or ACC.TEST_SENDER,sec.get("SIGNUP_NOTIFY_TO") or sec.get("ADMIN_EMAIL"),s_,h_)
 
 def _register(email,pwd):
     email=email.strip().lower()
@@ -625,80 +627,22 @@ def _register(email,pwd):
     ok,detail=_sb_insert_user(email,_hash(pwd))
     if not ok:
         return False,f"Could not create account — {detail}"
-    _notify_admin_new_signup(email)
+    r=ACC.notify_signup(_mail_post,_mail_secrets(),email,_public_url(),_datetime.datetime.now(_datetime.timezone.utc))      # confirmation to the user + notification to the owner, independent and best-effort
     _track("signup",{"plan":"free"},once_key="signup")
+    if r["welcome"][0]: return True,f"Account created! A confirmation email was sent to {email}."
     return True,"Account created!"
 
 def _login(email,pwd):
     email=email.strip().lower(); rec=_sb_get_user(email)
-    if not rec or rec.get("pwd_hash")!=_hash(pwd): return False,"Incorrect email or password."
-    return True,rec
+    now=_datetime.datetime.now(_datetime.timezone.utc)
+    ok,msg,fields,new_hash=ACC.authenticate(rec,pwd,now)
+    if rec:
+        if new_hash: _sb_update_user(email,{"pwd_hash":new_hash})                  # silent upgrade of an old SHA-256 hash
+        if fields: _sb_update_user(email,fields)                                    # attempt counter / lockout (needs the lot-D columns; harmless without them)
+    return (True,rec) if ok else (False,msg)
 
 PLAN_PRICE_KEYS = {"essentiel":"STRIPE_PRICE_ESSENTIEL", "pro":"STRIPE_PRICE_PRO"}
 PLAN_LABELS = {"essentiel":"Essentiel — €15/month", "pro":"Pro — €50/month"}
-DAY_PASS_PRICES_CENTS = {"essentiel":1000, "pro":5000}  # 10€ / 50€
-DAY_PASS_HOURS = 48
-DAY_PASS_LABELS = {"essentiel":"Day Pass Essentiel — €10 (48h)", "pro":"Day Pass Pro — €50 (48h)"}
-
-def _get_active_day_pass(email):
-    """Returns the active one-time day-pass tier ('essentiel'/'pro') for this user, or None if expired/absent.
-    Reads the already-fetched Supabase user record — no extra Stripe call, cheap to call on every rerun."""
-    try:
-        import datetime
-        rec=_sb_get_user(email) or {}
-        tier=rec.get("pass_tier"); exp_raw=rec.get("pass_expires_at")
-        if not tier or not exp_raw: return None
-        exp=datetime.datetime.fromisoformat(str(exp_raw).replace("Z","+00:00"))
-        now=datetime.datetime.now(exp.tzinfo) if exp.tzinfo else datetime.datetime.utcnow()
-        return tier if exp>now else None
-    except Exception: return None
-
-def _day_pass_checkout_url(email,tier):
-    """One-time Stripe payment for a 48h all-access pass at the given tier. Returns (url, error)."""
-    try:
-        import stripe
-    except ImportError:
-        return None,"The 'stripe' package isn't installed on the server (check requirements.txt)."
-    try:
-        key=st.secrets.get("STRIPE_SECRET_KEY")
-        if not key: return None,"STRIPE_SECRET_KEY is missing/empty in this app's secrets."
-        amount=DAY_PASS_PRICES_CENTS.get(tier)
-        if not amount: return None,f"Unknown day pass tier: {tier}"
-        stripe.api_key=key
-        s=stripe.checkout.Session.create(
-            mode="payment", customer_email=email,
-            line_items=[{"price_data":{"currency":"eur","unit_amount":amount,
-                "product_data":{"name":f"Aviation Cost Estimator — {DAY_PASS_LABELS.get(tier,tier)}"}},"quantity":1}],
-            metadata={"type":"day_pass","tier":tier,"email":email},
-            success_url="https://aviation-cost-estimator.onrender.com/?pass_session={CHECKOUT_SESSION_ID}",
-            cancel_url="https://aviation-cost-estimator.onrender.com/?cancelled=1")
-        return s.url,None
-    except Exception as e:
-        return None,f"{type(e).__name__}: {e}"
-
-def _process_day_pass_return():
-    """Call once near the top of main(): if the URL carries ?pass_session=... from a completed Stripe
-    Checkout redirect, verify the payment server-side and grant the 48h pass. Never trusts the URL alone."""
-    try:
-        sess_id=st.query_params.get("pass_session")
-        if not sess_id: return
-        import stripe,datetime
-        stripe.api_key=st.secrets.get("STRIPE_SECRET_KEY","")
-        s=stripe.checkout.Session.retrieve(sess_id)
-        if s.get("payment_status")=="paid":
-            meta=s.get("metadata",{}) or {}
-            tier=meta.get("tier")
-            email=((s.get("customer_details") or {}).get("email") or meta.get("email") or "").strip().lower()
-            if email and tier in ("essentiel","pro"):
-                expires=(datetime.datetime.utcnow()+datetime.timedelta(hours=DAY_PASS_HOURS)).isoformat()+"Z"
-                _sb_update_user(email,{"pass_tier":tier,"pass_expires_at":expires})
-                st.session_state["_day_pass_toast"]=(tier,DAY_PASS_HOURS)
-                if st.session_state.get("auth_email","").strip().lower()==email:
-                    st.session_state["auth_pass_tier"]=tier
-        st.query_params.clear()
-    except Exception:
-        pass
-
 def _check_sub(email):
     """Returns 'pro', 'essentiel', or None based on any active Stripe subscription for this email.
     IMPORTANT: Stripe Checkout creates a brand-new Customer object every time it's given customer_email
@@ -770,9 +714,8 @@ def _market_search_checkout_url(email, meta):
         if st.session_state.get("auth_is_admin"): st.caption(f"Admin detail: {type(e).__name__}: {e}")
         return None
 
-def _plan_buttons(email,current_plan=None,show_day_pass=True):
-    """Renders a subscribe button for every plan tier above the user's current one, plus (optionally)
-    one-time 48h day-pass options for occasional users who don't want a monthly commitment.
+def _plan_buttons(email,current_plan=None):
+    """Renders a subscribe button for every plan tier above the user's current one (monthly subscriptions only).
     On failure, the customer only ever sees a gentle message — the real Stripe error is shown to admins only."""
     is_admin=st.session_state.get("auth_is_admin",False)
     def _fail(label,err):
@@ -787,15 +730,6 @@ def _plan_buttons(email,current_plan=None,show_day_pass=True):
         url,err=_checkout_url(email,"pro")
         if url: st.markdown(f'<div style="text-align:center;margin-top:.5rem"><a href="{url}" target="_blank" style="display:block;background:#C9A84C;color:#0B1629;padding:.5rem 1.2rem;border-radius:5px;font-weight:700;text-decoration:none">⭐ {"Upgrade to Pro" if current_plan=="essentiel" else "Pro"} — 50€/month</a></div>', unsafe_allow_html=True)
         else: _fail("Pro",err)
-    if show_day_pass and current_plan!="pro":
-        st.markdown('<div style="font-size:.74rem;color:#8496B0;text-align:center;margin:.8rem 0 .2rem 0;letter-spacing:.06em;text-transform:uppercase">Or, for a single one-off deal</div>',unsafe_allow_html=True)
-        st.markdown('<div style="font-size:.72rem;color:#8496B0;text-align:center;margin-bottom:.3rem">No commitment — full access for 48h, then it locks again.</div>',unsafe_allow_html=True)
-        url,err=_day_pass_checkout_url(email,"essentiel")
-        if url: st.markdown(f'<div style="text-align:center;margin-top:.3rem"><a href="{url}" target="_blank" style="display:block;background:transparent;color:#D6E4F7;border:1px dashed #8496B0;padding:.45rem 1.2rem;border-radius:5px;font-weight:600;text-decoration:none">{DAY_PASS_LABELS["essentiel"]}</a></div>', unsafe_allow_html=True)
-        else: _fail("Day Pass Essentiel",err)
-        url,err=_day_pass_checkout_url(email,"pro")
-        if url: st.markdown(f'<div style="text-align:center;margin-top:.4rem"><a href="{url}" target="_blank" style="display:block;background:transparent;color:#E8C46A;border:1px dashed #C9A84C;padding:.45rem 1.2rem;border-radius:5px;font-weight:600;text-decoration:none">{DAY_PASS_LABELS["pro"]}</a></div>', unsafe_allow_html=True)
-        else: _fail("Day Pass Pro",err)
 
 def render_auth():
     for k,v in [("auth_email",None),("auth_plan",None),("auth_is_admin",False)]:
@@ -832,6 +766,8 @@ def render_auth():
                 with st.expander("🩺 Email notification diagnostics"):
                     _rk=st.secrets.get("RESEND_API_KEY",""); _ae=st.secrets.get("ADMIN_EMAIL","")
                     st.caption(f"RESEND_API_KEY: {'✓ set (' + str(len(_rk)) + ' chars)' if _rk else '✗ missing'}")
+                    _ef=st.secrets.get("EMAIL_FROM","")
+                    st.caption(f"EMAIL_FROM (verified-domain sender, required to write to users): {'✓ ' + _ef if _ef else '✗ missing — users will NOT receive their confirmation email'}")
                     st.caption(f"ADMIN_EMAIL (recipient): {_ae if _ae else '✗ missing'}")
                     if st.button("Send test email",key="resend_test",width="stretch"):
                         ok,detail=_notify_admin_new_signup("diagnostic-test@menkor-aviation.test")
@@ -863,11 +799,9 @@ def render_auth():
                     _plan_buttons(email,current_plan=None)
                 if st.button("🔄 Check subscription",key="chk_sub",width="stretch"):
                     st.session_state["auth_plan"]=_check_sub(email); st.rerun()
-                _ap=st.session_state.get("auth_pass_tier")
-                if _ap: st.caption(f"⏱ {_ap.capitalize()} day pass active")
             if st.button("🚪 Log out",key="logout",width="stretch"):
                 st.session_state["auth_email"]=None; st.session_state["auth_plan"]=None
-                st.session_state["auth_is_admin"]=False; st.session_state["auth_pass_tier"]=None; st.rerun()
+                st.session_state["auth_is_admin"]=False; st.rerun()
         else:
             st.markdown('<div class="section-header">🔐 Account</div>', unsafe_allow_html=True)
             view=st.radio("Account",["Login","Register"],horizontal=True,key="auth_view",label_visibility="collapsed")
@@ -876,9 +810,9 @@ def render_auth():
                 pw=st.text_input("Password",key="li_pw",type="password")
                 if st.button("Login",key="btn_login",width="stretch"):
                     if em and pw:
-                        try: ae=st.secrets.get("ADMIN_EMAIL",""); ap=st.secrets.get("ADMIN_PASSWORD","")
-                        except: ae=ap=""
-                        if em.strip().lower()==ae.lower() and pw==ap:
+                        try: ae=st.secrets.get("ADMIN_EMAIL","") or ""; _asec={k:st.secrets.get(k,"") for k in ("ADMIN_PASSWORD","ADMIN_PASSWORD_HASH")}
+                        except Exception: ae=""; _asec={}
+                        if ae and em.strip().lower()==ae.lower() and ACC.admin_password_ok(pw,_asec):
                             st.session_state["auth_email"]=em.strip().lower()
                             st.session_state["auth_plan"]="pro"; st.session_state["auth_is_admin"]=True; st.rerun()
                         else:
@@ -887,7 +821,6 @@ def render_auth():
                                 _em=em.strip().lower()
                                 st.session_state["auth_email"]=_em
                                 st.session_state["auth_plan"]=_check_sub(_em)
-                                st.session_state["auth_pass_tier"]=_get_active_day_pass(_em)
                                 st.session_state["auth_is_admin"]=False; st.rerun()
                             else: st.error(res)
                     else: st.warning("Fill in all fields.")
@@ -1558,7 +1491,7 @@ def _render_cmp_saved(df):
 
 def main():
     for k,v in [("database",None),("cost_master",None),("pdf_report",None),
-                ("auth_email",None),("auth_plan",None),("auth_is_admin",False),("auth_pass_tier",None),
+                ("auth_email",None),("auth_plan",None),("auth_is_admin",False),
                 ("q_legs",[{"from":"","to":"","dep_time":"08:00"}]),
                 ("q_result",None),("q_pdf",None)]:
         if k not in st.session_state: st.session_state[k]=v
@@ -1570,18 +1503,8 @@ def main():
     for _k in _JOURNEY_KEYS_G+tuple(x.format(a=_a0) for x in _JOURNEY_KEYS):
         if _k in st.session_state: st.session_state[_k]=st.session_state[_k]
 
-    _process_day_pass_return()
-    if st.session_state.get("_day_pass_toast"):
-        _tier,_hrs=st.session_state.pop("_day_pass_toast")
-        st.success(f"✓ {_tier.capitalize()} day pass activated — full access for the next {_hrs}h.")
-
     is_essentiel,is_pro=render_auth()
     _track("visit",{"plan":_plan_key()},once_key="visit")
-    # A day pass unlocks the same tiers as a subscription, just temporarily — merge both into the
-    # effective access level without any extra Stripe/Supabase calls (expiry check is local/cheap).
-    _active_pass=st.session_state.get("auth_pass_tier")
-    if _active_pass=="pro": is_pro=True; is_essentiel=True
-    elif _active_pass=="essentiel": is_essentiel=True
 
     # Header
     c1,c2=st.columns([1,6])
@@ -2446,7 +2369,7 @@ def main():
             st.markdown('<div class="section-header" style="margin-top:1.4rem">Indicative acquisition timeline — Market → AOC</div>',unsafe_allow_html=True)
             st.caption("Indicative timeline: durations and costs are order-of-magnitude figures, adapted to each project (aircraft, jurisdiction, financing, inspection findings).")
             _tl_steps=[
-                ("01","Market Search / Advisory — Taxes / AOC / Registration","Full market search and technical screening, run alongside early advisory on applicable taxes, AOC placement options and the target registration jurisdiction.","3–5 days","$300"),
+                ("01","Market Search / Advisory — Taxes / AOC / Registration","Full market search and technical screening, run alongside early advisory on applicable taxes, AOC placement options and the target registration jurisdiction.","3–5 days","€ 300"),
                 ("02","Preselection / First Pre-Audit","Shortlist narrowed by our B1/B2 engineers and CAMO team; first pre-audit of maintenance records, engine program status and airframe history.","3–7 days",None),
                 ("03","LOI / Deposit Escrow / Pre-Inspection","Letter of Intent negotiated and signed; deposit placed in escrow; informal pre-inspection to confirm the aircraft warrants a full PPI.","5–10 days","$1,500–$3,000"),
                 ("04","APA / PPI","Aircraft Purchase Agreement finalized alongside the Pre-Purchase Inspection: full technical inspection, discrepancy list, closing conditions drafted.","7–14 days","$15,000–$35,000"),
