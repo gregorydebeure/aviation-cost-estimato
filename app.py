@@ -19,27 +19,45 @@ import os
 from pathlib import Path
 import streamlit.components.v1 as components
 
+_BRIDGE_KEYS = ["STRIPE_SECRET_KEY", "STRIPE_PRICE_ESSENTIEL", "STRIPE_PRICE_PRO", "ADMIN_EMAIL", "ADMIN_PASSWORD",
+                "SUPABASE_URL", "SUPABASE_SERVICE_KEY", "RESEND_API_KEY", "BUDGET_REQUEST_TO"]
+_BRIDGE_OPTIONAL = ["EMAIL_FROM", "SIGNUP_NOTIFY_TO", "ADMIN_PASSWORD_HASH", "APP_PUBLIC_URL", "EVENTS_ENABLED"]
+
 try:
     # Platforms like Render have no native st.secrets support, only plain env vars — bridge them into
-    # a secrets.toml on every startup. NOTE: we deliberately never touch st.secrets here (not even
-    # st.secrets.get(...)) — accessing it before any secrets.toml exists raises
-    # StreamlitSecretNotFoundError, which the except below would swallow, silently skipping the write
-    # entirely and leaving every later st.secrets[...] call in the app broken. Render restarts the
-    # container fresh on every deploy, so unconditionally rewriting the file on each boot is safe and
-    # also keeps it in sync if env vars change. On Streamlit Community Cloud, writing is skipped because
-    # ADMIN_EMAIL won't be present as a plain env var there (it's native st.secrets-only), and that
-    # filesystem is read-only anyway.
-    if os.environ.get("ADMIN_EMAIL"):
+    # a secrets.toml. NOTE: we deliberately never touch st.secrets here (not even st.secrets.get(...)) —
+    # accessing it before any secrets.toml exists raises StreamlitSecretNotFoundError.
+    # v20.4: the file is only rewritten when its content changes (and replaced atomically), so a second
+    # browser session can never read a half-written file; it no longer depends on ADMIN_EMAIL alone;
+    # and the new optional keys (EMAIL_FROM, SIGNUP_NOTIFY_TO, ...) are bridged too.
+    # On Streamlit Community Cloud none of these are plain env vars, so nothing is written there.
+    if any(os.environ.get(k) for k in _BRIDGE_KEYS):
         _secrets_path = Path(".streamlit/secrets.toml")
         _secrets_path.parent.mkdir(exist_ok=True)
-        _keys = ["STRIPE_SECRET_KEY", "STRIPE_PRICE_ESSENTIEL", "STRIPE_PRICE_PRO", "ADMIN_EMAIL", "ADMIN_PASSWORD",
-                 "SUPABASE_URL", "SUPABASE_SERVICE_KEY", "RESEND_API_KEY", "BUDGET_REQUEST_TO"]
-        with open(_secrets_path, "w") as f:
-            for k in _keys:
-                v = os.environ.get(k, "")
-                f.write(f'{k} = {v!r}\n')
+        _lines = [f'{k} = {os.environ.get(k, "")!r}\n' for k in _BRIDGE_KEYS]
+        _lines += [f'{k} = {os.environ[k]!r}\n' for k in _BRIDGE_OPTIONAL if os.environ.get(k)]
+        _content = "".join(_lines)
+        try: _same = _secrets_path.read_text() == _content
+        except Exception: _same = False
+        if not _same:
+            _tmp = _secrets_path.with_suffix(".tmp")
+            _tmp.write_text(_content)
+            os.replace(_tmp, _secrets_path)
 except Exception:
     pass  # never let this bootstrap crash the app on any platform
+
+def _secret(name, default=""):
+    """Secret by name: st.secrets first, then the plain environment variable (Render). Never raises."""
+    try:
+        v = st.secrets.get(name)
+        if v not in (None, ""): return v
+    except Exception:
+        pass
+    v = os.environ.get(name)
+    return v if v not in (None, "") else default
+
+class _SecretsView:
+    def get(self, k, d=None): return _secret(k, d)
 
 # ─── PAGE CONFIG & CSS ───────────────────────────────────────────────────────
 st.set_page_config(page_title="Aviation Cost Estimator", page_icon="✈",
@@ -371,13 +389,13 @@ def cm_bar(res,disp,category,title):
 APP_PUBLIC_URL="https://aviation-cost-estimator.onrender.com"
 
 def _public_url():
-    try: base=str(st.secrets.get("APP_PUBLIC_URL") or APP_PUBLIC_URL)
+    try: base=str(_secret("APP_PUBLIC_URL") or APP_PUBLIC_URL)
     except Exception: base=APP_PUBLIC_URL
     return base.rstrip("/")
 
 def _study_url():
     """Configured destination of the aircraft-specific budget request (opens the journey 'Request an aircraft-specific budget'). Never invented."""
-    try: base=str(st.secrets.get("APP_PUBLIC_URL") or APP_PUBLIC_URL)
+    try: base=str(_secret("APP_PUBLIC_URL") or APP_PUBLIC_URL)
     except Exception: base=APP_PUBLIC_URL
     return base.rstrip("/")+"/?journey=budget"
 
@@ -508,8 +526,8 @@ def generate_quotation_pdf(qr, aircraft_row):
 def _hash(pw): return ACC.hash_password(pw)      # salted scrypt; legacy SHA-256 hashes are upgraded at the next successful login
 
 def _sb_base():
-    url=st.secrets.get("SUPABASE_URL","").rstrip("/")
-    key=st.secrets.get("SUPABASE_SERVICE_KEY","")
+    url=_secret("SUPABASE_URL","").rstrip("/")
+    key=_secret("SUPABASE_SERVICE_KEY","")
     return url,key
 
 def _sb_headers():
@@ -598,7 +616,7 @@ def _track(event,props=None,once_key=None):
     """Anonymous product event (whitelisted: no e-mail / name / free text / MSN / folder content — see menkor_store.EVENTS & ALLOWED_PROPS).
     No-op when storage is not configured or EVENTS_ENABLED=0; never raises; deduplicated across Streamlit reruns by `once_key`."""
     try:
-        if str(st.secrets.get("EVENTS_ENABLED","1"))=="0" or not _storage_configured(): return False
+        if str(_secret("EVENTS_ENABLED","1"))=="0" or not _storage_configured(): return False
         return STORE.track(_sb_rest,st.session_state,event,props,once_key)
     except Exception:
         return False
@@ -611,7 +629,7 @@ def _mail_post(*a,**k):
     return requests.post(*a,**k)
 
 def _mail_secrets():
-    try: return {k:st.secrets.get(k) for k in ("RESEND_API_KEY","EMAIL_FROM","SIGNUP_NOTIFY_TO","ADMIN_EMAIL")}
+    try: return {k:_secret(k) for k in ("RESEND_API_KEY","EMAIL_FROM","SIGNUP_NOTIFY_TO","ADMIN_EMAIL")}
     except Exception: return {}
 
 def _notify_admin_new_signup(email):
@@ -651,8 +669,8 @@ def _check_sub(email):
     them, not just the first one ever seen/cached, or a subscription paid under a newer customer
     object is silently missed forever even though the payment went through."""
     try:
-        import stripe; stripe.api_key=st.secrets["STRIPE_SECRET_KEY"]
-        pro_price=st.secrets.get("STRIPE_PRICE_PRO",""); ess_price=st.secrets.get("STRIPE_PRICE_ESSENTIEL","")
+        import stripe; stripe.api_key=_secret("STRIPE_SECRET_KEY")
+        pro_price=_secret("STRIPE_PRICE_PRO",""); ess_price=_secret("STRIPE_PRICE_ESSENTIEL","")
         custs=stripe.Customer.list(email=email,limit=25)
         if not custs.data: return None
         plan=None; active_cid=None
@@ -680,10 +698,10 @@ def _checkout_url(email,plan="pro"):
     except ImportError:
         return None,"The 'stripe' package isn't installed on the server (check requirements.txt)."
     try:
-        key=st.secrets.get("STRIPE_SECRET_KEY")
+        key=_secret("STRIPE_SECRET_KEY")
         if not key: return None,"STRIPE_SECRET_KEY is missing/empty in this app's secrets."
         price_key=PLAN_PRICE_KEYS.get(plan)
-        price=st.secrets.get(price_key) if price_key else None
+        price=_secret(price_key) if price_key else None
         if not price: return None,f"{price_key} is missing/empty in this app's secrets."
         stripe.api_key=key
         # No payment_method_types here: newer Stripe accounts manage accepted payment methods from the
@@ -698,7 +716,7 @@ def _checkout_url(email,plan="pro"):
 
 def _market_search_checkout_url(email, meta):
     try:
-        import stripe; stripe.api_key=st.secrets["STRIPE_SECRET_KEY"]
+        import stripe; stripe.api_key=_secret("STRIPE_SECRET_KEY")
         # No payment_method_types here: newer Stripe accounts manage accepted payment methods from the
         # Dashboard (Settings → Payment methods) and reject this parameter on Checkout Session creation.
         s=stripe.checkout.Session.create(
@@ -764,9 +782,9 @@ def render_auth():
                             st.success("✓ Supabase accepted a test write. Storage is working.")
                         else: st.error(detail)
                 with st.expander("🩺 Email notification diagnostics"):
-                    _rk=st.secrets.get("RESEND_API_KEY",""); _ae=st.secrets.get("ADMIN_EMAIL","")
+                    _rk=_secret("RESEND_API_KEY",""); _ae=_secret("ADMIN_EMAIL","")
                     st.caption(f"RESEND_API_KEY: {'✓ set (' + str(len(_rk)) + ' chars)' if _rk else '✗ missing'}")
-                    _ef=st.secrets.get("EMAIL_FROM","")
+                    _ef=_secret("EMAIL_FROM","")
                     st.caption(f"EMAIL_FROM (verified-domain sender, required to write to users): {'✓ ' + _ef if _ef else '✗ missing — users will NOT receive their confirmation email'}")
                     st.caption(f"ADMIN_EMAIL (recipient): {_ae if _ae else '✗ missing'}")
                     if st.button("Send test email",key="resend_test",width="stretch"):
@@ -774,7 +792,7 @@ def render_auth():
                         if ok: st.success(f"✓ Email sent to {_ae}. Check your inbox (and spam folder).")
                         else: st.error(detail)
                 with st.expander("🩺 Stripe checkout diagnostics"):
-                    _sk=st.secrets.get("STRIPE_SECRET_KEY",""); _pe=st.secrets.get("STRIPE_PRICE_ESSENTIEL",""); _pp=st.secrets.get("STRIPE_PRICE_PRO","")
+                    _sk=_secret("STRIPE_SECRET_KEY",""); _pe=_secret("STRIPE_PRICE_ESSENTIEL",""); _pp=_secret("STRIPE_PRICE_PRO","")
                     st.caption(f"STRIPE_SECRET_KEY: {'✓ set (' + str(len(_sk)) + ' chars)' if _sk else '✗ missing'}")
                     st.caption(f"STRIPE_PRICE_ESSENTIEL: {'✓ ' + _pe if _pe else '✗ missing'}")
                     st.caption(f"STRIPE_PRICE_PRO: {'✓ ' + _pp if _pp else '✗ missing'}")
@@ -810,7 +828,7 @@ def render_auth():
                 pw=st.text_input("Password",key="li_pw",type="password")
                 if st.button("Login",key="btn_login",width="stretch"):
                     if em and pw:
-                        try: ae=st.secrets.get("ADMIN_EMAIL","") or ""; _asec={k:st.secrets.get(k,"") for k in ("ADMIN_PASSWORD","ADMIN_PASSWORD_HASH")}
+                        try: ae=_secret("ADMIN_EMAIL","") or ""; _asec={k:_secret(k,"") for k in ("ADMIN_PASSWORD","ADMIN_PASSWORD_HASH")}
                         except Exception: ae=""; _asec={}
                         if ae and em.strip().lower()==ae.lower() and ACC.admin_password_ok(pw,_asec):
                             st.session_state["auth_email"]=em.strip().lower()
@@ -990,7 +1008,7 @@ def _send_budget_request(data,secrets=None,post=None):
     ok is True ONLY after a successful transmission; a missing configuration or any failure returns False (never 'sent')."""
     import html as _html
     try:
-        sec=secrets if secrets is not None else st.secrets
+        sec=secrets if secrets is not None else _SecretsView()
         key=sec.get("RESEND_API_KEY"); to=sec.get("BUDGET_REQUEST_TO") or sec.get("ADMIN_EMAIL")
     except Exception:
         key=to=None
@@ -2527,4 +2545,3 @@ def main():
 
 if __name__=="__main__":
     main()
-
