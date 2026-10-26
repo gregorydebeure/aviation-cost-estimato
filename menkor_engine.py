@@ -1427,6 +1427,117 @@ def fleet_comparison(base: pd.DataFrame, scn: Scenario) -> pd.DataFrame:
 
 
 # ═════════════════════════════════════════════════════════════════════════════
+# "Compare with similar aircraft" (Sensitivity tab): automatic, deterministic, same-category comparison
+# ═════════════════════════════════════════════════════════════════════════════
+# The base "Categorie" column is the MANUFACTURER, not a size class: the size class is an explicit internal mapping by aircraft_id.
+# It is a comparison grouping only (no economic value is derived from it). An aircraft absent from this mapping has "no category".
+SIMILAR_CATEGORIES = {
+    "Very light jets": ["cirrus_vision_sf50", "eclipse_500", "eclipse_550", "embraer_phenom_100", "embraer_phenom_100ev", "cessna_citation_mustang",
+                        "honda_hondajet", "flaris_lar01"],
+    "Light jets": ["cessna_citation_jet", "cessna_citation_cj1", "cessna_citation_cj2", "cessna_citation_cj2_plus", "cessna_citation_cj3",
+                   "cessna_citation_cj3_plus", "cessna_citation_cj4", "cessna_citation_i_isp", "cessna_citation_bravo", "cessna_citation_encore",
+                   "cessna_citation_v_ultra", "embraer_phenom_300", "beechcraft_beechjet_400", "beechcraft_beechjet_400a", "beechcraft_premier_i",
+                   "beechcraft_premier_ia", "hawker_400xp", "hawker_400xpr", "nextant_400xt", "nextant_400xti", "mitsubishi_diamond_1a",
+                   "pilatus_pc_24", "dassault_falcon_10", "learjet_31", "learjet_31a", "learjet_31aer", "learjet_35a", "learjet_36a", "learjet_40",
+                   "learjet_40xr", "learjet_45", "learjet_45xr", "learjet_70", "learjet_75"],
+    "Midsize jets": ["cessna_citation_excel", "cessna_citation_xls", "cessna_citation_xls_plus", "cessna_citation_iii", "cessna_citation_latitude",
+                     "learjet_55", "learjet_55c", "learjet_60", "learjet_60xr", "hawker_700", "hawker_750", "hawker_800a", "hawker_800sp",
+                     "hawker_800xp", "hawker_800xpi", "hawker_850xp", "hawker_900xp", "hawker_1000", "dassault_falcon_20c", "dassault_falcon_20c_5",
+                     "dassault_falcon_20f", "dassault_falcon_20f_5", "dassault_falcon_200", "iai_astra_sp", "iai_westwind_1", "iai_westwind_2",
+                     "iai_1123_commodore_jet", "gulfstream_g100", "gulfstream_g150", "sabreliner_sabre_65", "embraer_legacy_450",
+                     "embraer_legacy_500", "embraer_praetor_500"],
+    "Super midsize jets": ["cessna_citation_sovereign", "cessna_citation_x", "challenger_300", "challenger_350", "gulfstream_g200", "gulfstream_g280",
+                           "hawker_4000", "embraer_praetor_600"],
+    "Large-cabin jets": ["challenger_600", "challenger_601_3a", "challenger_604", "challenger_605", "challenger_650", "dassault_falcon_50",
+                         "dassault_falcon_50_40", "dassault_falcon_50ex", "dassault_falcon_900", "dassault_falcon_900b", "dassault_falcon_900c",
+                         "dassault_falcon_900dx", "dassault_falcon_900ex", "dassault_falcon_900ex_easy", "dassault_falcon_900lx",
+                         "dassault_falcon_2000", "dassault_falcon_2000dx", "dassault_falcon_2000ex_easy", "dassault_falcon_2000lx",
+                         "dassault_falcon_2000lxs", "dassault_falcon_2000s", "gulfstream_g300", "gulfstream_g350", "gulfstream_g400",
+                         "gulfstream_g450", "gulfstream_ii", "gulfstream_ii_b", "gulfstream_ii_b_hushkit", "gulfstream_ii_hushkit",
+                         "gulfstream_ii_sp", "gulfstream_ii_sp_hushkit", "gulfstream_iii", "gulfstream_iv", "gulfstream_ivsp",
+                         "embraer_legacy_600", "embraer_legacy_650", "lockheed_jetstar_ii_731"],
+    "Ultra-long-range jets": ["bombardier_global_5000", "bombardier_global_6000", "bombardier_global_7500", "bombardier_global_express",
+                              "bombardier_global_express_xrs", "dassault_falcon_7x", "dassault_falcon_8x", "gulfstream_g500",
+                              "gulfstream_g500_2003_2012_model", "gulfstream_g550", "gulfstream_g650", "gulfstream_g650er", "gulfstream_v"],
+    "VIP airliners": ["boeing_bbj", "boeing_bbj2", "boeing_bbj3", "embraer_lineage_1000", "embraer_lineage_1000e", "embraer_erj_170lr", "fokker_100er"],
+    "Regional jets / shuttles": ["embraer_erj_145er", "challenger_850", "challenger_850_cs", "challenger_870c", "dornier_328", "dornier_328_business"],
+}
+SIMILAR_MAX_ALTERNATIVES = 3
+_SIMILAR_CAT_OF = {aid: cat for cat, ids in SIMILAR_CATEGORIES.items() for aid in ids}
+
+
+def similar_category(aircraft_id):
+    return _SIMILAR_CAT_OF.get(str(aircraft_id))
+
+
+def _similar_rank(selected_id, cand_id):
+    """Stable pseudo-random rank: depends only on the selected aircraft, the candidate and the base version — never on any cost or on the scenario."""
+    return hashlib.sha256(f"{selected_id}|{cand_id}|{DB_VERSION}".encode()).hexdigest()
+
+
+def similar_alternatives(base: pd.DataFrame, selected_id):
+    """Up to 3 same-category alternatives (reference records with a detailed cost base only). Deterministic, cost-blind, no duplicate, never the
+    selected aircraft, never another category. Pass 1 takes one model per manufacturer (the selected aircraft's manufacturer last);
+    pass 2 only completes with remaining models of the same category. Returns (category|None, [aircraft_id])."""
+    cat = similar_category(selected_id)
+    if cat is None:
+        return None, []
+    sel = base[base["aircraft_id"] == selected_id]
+    sel_mf = str(sel.iloc[0]["manufacturer"]) if len(sel) else ""
+    pool = base[base["has_detail"] & (base["source_kind"] == "pdf_acc") & (base["aircraft_id"] != selected_id)
+                & base["aircraft_id"].isin(SIMILAR_CATEGORIES[cat])].drop_duplicates("aircraft_id")
+    cands = sorted(((_similar_rank(selected_id, r["aircraft_id"]), r["aircraft_id"], str(r["manufacturer"])) for _, r in pool.iterrows()))
+    chosen, used_mf = [], set()
+    rules = (lambda mf: mf not in used_mf and mf != sel_mf,       # A: a new manufacturer, different from the selected one
+             lambda mf: mf not in used_mf,                        # B: a new manufacturer (the selected one's included)
+             lambda mf: True)                                     # C: complete with any remaining model of the category
+    for ok in rules:
+        for rk, a, mf in cands:
+            if len(chosen) >= SIMILAR_MAX_ALTERNATIVES: break
+            if a not in chosen and ok(mf):
+                chosen.append(a); used_mf.add(mf)
+    return cat, chosen
+
+
+def similar_comparison(base: pd.DataFrame, scn: Scenario, res: dict) -> dict:
+    """Selected aircraft + up to 3 same-category models, ALL computed by compute() with the same clean scenario:
+    the active scenario's total flown hours, its EFFECTIVE fuel price (USD/L, as a plain average price) and its dated FX; each aircraft keeps its own
+    burn and average costs. No Cost Master edit, extra cost, charter assumption or ownership cost of the active scenario is carried over.
+    status: 'ok' | 'no_category' | 'no_detail' | 'no_fuel' | 'unavailable'. Nothing missing is replaced by a default or a zero."""
+    aid = scn.aircraft_id
+    out = dict(status="ok", category=None, rows=[], hours=None, fuel_price_usd_l=None, messages=[])
+    sel = base[base["aircraft_id"] == aid]
+    if not len(sel):
+        out["status"] = "unavailable"; out["messages"].append("Aircraft not found in the base."); return out
+    srow = sel.iloc[0]
+    if not bool(srow["has_detail"]) or str(srow["source_kind"]) != "pdf_acc":
+        out["status"] = "no_detail"
+        out["messages"].append("This comparison is available for aircraft with a detailed Menkor reference record only."); return out
+    cat, alts = similar_alternatives(base, aid)
+    out["category"] = cat
+    if cat is None:
+        out["status"] = "no_category"; out["messages"].append("The category of this aircraft is not defined: no comparison is proposed."); return out
+    price = (res.get("fuel") or {}).get("price_usd_l") if res.get("available") else None
+    if price is None or price != price or price <= 0:
+        out["status"] = "no_fuel"; out["messages"].append("Enter an average fuel price (Advanced settings) to compare aircraft."); return out
+    hours = float(scn.flown_hours)
+    out["hours"] = hours; out["fuel_price_usd_l"] = float(price)
+    for i, a in enumerate([aid] + alts):
+        r = base[base["aircraft_id"] == a].iloc[0]
+        s = Scenario(aircraft_id=a, mode="simulation", other_hours=hours, fx=scn.fx,
+                     fuel=FuelConfig(price_source="average", price=float(price), currency="USD"))
+        c = compute(r, s)
+        if not c.get("available") or c.get("budget_usd") is None:
+            if i == 0:
+                out["status"] = "unavailable"; out["messages"].append("The selected aircraft cannot be computed with these inputs."); out["rows"] = []; return out
+            continue                                    # an alternative without usable data is dropped, never shown as 0
+        out["rows"].append(dict(aircraft_id=a, model=str(r["model"]), manufacturer=str(r["manufacturer"]), selected=(i == 0),
+                                budget_usd=c["budget_usd"], cost_per_h_usd=c["cost_per_h_usd"],
+                                fixed_usd=c["fixed"]["annual_total"], variable_usd=c["variable"]["annual"]))
+    return out
+
+
+# ═════════════════════════════════════════════════════════════════════════════
 # Alerts, provenance, performance
 # ═════════════════════════════════════════════════════════════════════════════
 KEY_FIELDS = ["reference_annual_hours", "reference_fuel_price_usd_per_l", "annual_budget_usd", "annual_fixed_cost_usd",

@@ -1142,6 +1142,59 @@ def _render_budget_offer(model_name,where="offer"):
     st.caption(BUDGET_DISCLAIMER)
     _budget_form(model_name,where)
 
+def _open_compare_aircraft():
+    """Button callback of 'Choose your own comparison': only sets the navigation targets (widget keys of My scenarios) and asks for the tab switch.
+    It never touches the saved scenarios nor any input of the active scenario."""
+    st.session_state["cmp_mode"]="Indicative model comparison"
+    st.session_state["ms_section"]="Compare aircraft"
+    st.session_state["_goto_tab"]="My scenarios"
+
+def _goto_tab_script(label):
+    """Streamlit cannot select a tab from Python: after the callback, click the tab with this label in the parent page (best effort, no effect if blocked)."""
+    components.html("""<script>(function(){var n=0,t=setInterval(function(){try{var tabs=window.parent.document.querySelectorAll('[role="tab"]');
+    for(var i=0;i<tabs.length;i++){if((tabs[i].innerText||'').indexOf(%r)>=0){tabs[i].click();clearInterval(t);return;}}}catch(e){}
+    if(++n>25)clearInterval(t);},100);})();</script>"""%label,height=0,width=0)
+
+def chart_similar(rows,disp,hours):
+    """<=4 bars: the selected aircraft first (gold, 'Selected aircraft'), alternatives in a neutral colour; annual budget above each bar."""
+    import textwrap
+    labels=[]
+    for r in rows:
+        name="<br>".join(textwrap.wrap(r["model"],14)) or r["model"]
+        labels.append(name+("<br><b>Selected aircraft</b>" if r["selected"] else ""))
+    ys=[disp.conv(r["budget_usd"]) for r in rows]
+    def _h(r):
+        ph=disp.money(r["cost_per_h_usd"]) if r["cost_per_h_usd"] is not None else "n/a"
+        return (f"<b>{r['model']}</b>{' (selected)' if r['selected'] else ''}<br>Annual hours: {hours:g} h<br>Annual budget: {disp.money(r['budget_usd'])}"
+                f"<br>Cost per hour: {ph}<br>Fixed: {disp.money(r['fixed_usd'])} · Variable: {disp.money(r['variable_usd'])}")
+    fig=go.Figure(go.Bar(x=labels,y=ys,marker_color=[C["crew"] if r["selected"] else C["private"] for r in rows],
+                         text=[disp.money(r["budget_usd"]) for r in rows],textposition="outside",cliponaxis=False,textfont=dict(size=11,color="#D6E4F7"),
+                         hovertext=[_h(r) for r in rows],hoverinfo="text"))
+    fig.update_layout(**BG,height=360,margin=dict(t=30,b=10,l=10,r=10),showlegend=False,
+                      yaxis=dict(title=f"Annual operating budget ({disp.ccy})",gridcolor="#1A3A6E",tickformat=",.0f",rangemode="tozero"),
+                      xaxis=dict(gridcolor="rgba(0,0,0,0)",tickfont=dict(size=11)))
+    return fig
+
+def _render_similar_comparison(df,scn,res,disp,is_pro):
+    st.markdown('<div class="section-header">Compare with similar aircraft</div>',unsafe_allow_html=True)
+    cmp_=E.similar_comparison(df,scn,res)
+    if cmp_["status"]!="ok" or not cmp_["rows"]:
+        st.info(" ".join(cmp_["messages"]) or "Comparison unavailable with the current inputs.")
+        return
+    rows=cmp_["rows"]; n_alt=len(rows)-1
+    if n_alt<1:
+        st.info("No similar aircraft with a detailed cost base is available in this category.")
+    st.caption(f"Common assumptions: {cmp_['hours']:g} flown hours per year · average fuel price {disp.sym} {disp.conv(cmp_['fuel_price_usd_l']):.2f} per litre · amounts in {disp.ccy}. {disp.note()}")
+    st.plotly_chart(chart_similar(rows,disp,cmp_["hours"]),width="stretch",config={"displayModeBar":False})
+    if n_alt>=1:
+        word={1:"One",2:"Two",3:"Three"}[n_alt]
+        st.caption(f"{word} automatically selected aircraft from the same category, shown for illustration. Capabilities may differ. Choose your own aircraft in My scenarios → Compare aircraft.")
+    st.caption("Model average operating costs only. Your Cost Master adjustments and ownership costs are not included.")
+    if is_pro:
+        st.button("Choose your own comparison",key="sim_cmp_btn",on_click=_open_compare_aircraft)
+    else:
+        st.caption("Comparing aircraft of your choice is part of the Pro plan (50€/mo).")
+
 # ─── MAIN ────────────────────────────────────────────────────────────────────
 
 
@@ -2201,29 +2254,7 @@ def main():
                     _bp=res["fuel"]["price_usd_l"]
                     _prices=[round(_bp*x,4) for x in (0.6,0.7,0.8,0.9,1.0,1.1,1.2,1.3,1.4,1.5,1.75,2.0)]
                     st.plotly_chart(chart_fuel_sens(E.sensitivity_fuel_price(row,scn,_prices),disp,_bp),width="stretch",config={"displayModeBar":False})
-                st.markdown('<div class="section-header">Fleet Comparison</div>',unsafe_allow_html=True)
-                st.caption("Same hours and fuel assumptions applied to every PDF-documented aircraft, each with its own report data. Historical sheets are excluded (no fuel split).")
-                comp=E.fleet_comparison(df,scn)
-                if len(comp):
-                    _m=df.set_index("aircraft_id")["Categorie"]
-                    _sel=st.multiselect("Manufacturers",sorted(comp["manufacturer"].dropna().unique()),default=[row.get("manufacturer")] if row.get("manufacturer") in set(comp["manufacturer"]) else [],key="fleet_mf")
-                    cs=comp[comp["manufacturer"].isin(_sel)] if _sel else comp
-                    cs=cs.sort_values("budget_usd")
-                    _web=cs[cs["source_kind"]=="web_estimate"]; cs_chart=cs[cs["source_kind"]=="pdf_acc"]
-                    fig_c=px.bar(x=cs_chart["model"],y=[disp.conv(x) for x in cs_chart["budget_usd"]],color=[(disp.conv(x) if x is not None else None) for x in cs_chart["cost_per_h_usd"]],
-                                 color_continuous_scale=["#1A3A6E","#4A90D9","#C9A84C","#E8C46A"],template="plotly_dark",
-                                 labels={"x":"Model","y":f"Annual budget ({disp.ccy})","color":f"Cost/h ({disp.ccy})"})
-                    fig_c.update_layout(paper_bgcolor="rgba(0,0,0,0)",plot_bgcolor="rgba(0,0,0,0)",font=dict(color="#D6E4F7"),height=350,
-                                        margin=dict(t=10,b=80,l=10,r=10),xaxis=dict(tickangle=-30),yaxis=dict(gridcolor="#1A3A6E",tickformat=",.0f"))
-                    st.plotly_chart(fig_c,width="stretch",config={"displayModeBar":False})
-                    if len(_web): st.caption("Web estimates (300 h scenario) are listed in the table but kept out of the chart: they are not equivalent to the full Menkor reference records.")
-                    _t=cs.assign(**{f"Annual budget ({disp.ccy})":[round(disp.conv(x)) for x in cs["budget_usd"]],
-                                    f"Cost/h ({disp.ccy})":[(round(disp.conv(x)) if (x is not None and x==x) else None) for x in cs["cost_per_h_usd"]]})[["model","manufacturer","source_kind",f"Annual budget ({disp.ccy})",f"Cost/h ({disp.ccy})"]]
-                    _t["source_kind"]=_t["source_kind"].map(E.source_label)
-                    _t=_t.rename(columns={"model":"Model","manufacturer":"Manufacturer","source_kind":"Source"})
-                    st.dataframe(_t,width="stretch",hide_index=True)
-                else:
-                    st.info("Fleet comparison unavailable with the current fuel inputs (e.g. an average fuel price must be entered).")
+                _render_similar_comparison(df,scn,res,disp,is_pro)
 
     # TAB 4: COST MASTER — results (editors were rendered above)
     with tab4:
@@ -2618,6 +2649,8 @@ def main():
         if not (is_essentiel or is_pro): premium_gate("essentiel")
         else: _render_my_scenarios(get_base(),aid,scn,res,disp,is_pro)
 
+    _goto=st.session_state.pop("_goto_tab",None)
+    if _goto: _goto_tab_script(_goto)
     st.markdown("<hr>",unsafe_allow_html=True)
     st.markdown('<div style="text-align:center;font-size:.72rem;color:#4A5568">MENKOR AVIATION — Figures for simulation purposes only</div>',unsafe_allow_html=True)
 
