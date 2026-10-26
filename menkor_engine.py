@@ -513,7 +513,7 @@ class Scenario:
     mode: str = "simulation"            # 'reference' | 'simulation'
     billed_hours: float = 0.0           # charter hours invoiced to the client
     positioning_hours: float = 0.0      # empty / positioning legs (flown, not billed)
-    other_hours: float = 0.0            # owner / private / other non-billed hours
+    other_hours: float = 0.0            # owner flight hours (not billed)
     charter_rate: float | None = None   # per billed hour
     charter_rate_ccy: str = "USD"
     commission_pct: float | None = 0.0  # broker commission on gross charter revenue (None = not entered; ignored when the rate is net)
@@ -631,11 +631,24 @@ def benchmark_price_info(fc: "FuelConfig"):
                 publisher=r["source_publisher"], licence_note=r["licence_note"], currency="USD", unit="USD per litre"), None
 
 
+FUEL_PRICE_MAX_PER_L = 10.0     # sanity bound per litre (entered currency): jet fuel is never near it — above it the entry is almost surely a decimal-separator slip
+
+
+def fuel_price_implausible(price) -> str | None:
+    """Message when a per-litre price is absurdly high (e.g. 1038 typed for 1.038). Never corrected silently: the calculation is not performed."""
+    if price is not None and price > FUEL_PRICE_MAX_PER_L:
+        return (f"The fuel price entered ({price:,.3f} per litre) is not plausible (above {FUEL_PRICE_MAX_PER_L:g} per litre). "
+                "Check the decimal separator — for example 1.038, not 1038 — then enter it again.")
+    return None
+
+
 def average_price_usd_per_l(fc: FuelConfig, fx: Fx):
     """Average planning price: ONE price per litre + its currency. Returns (usd_per_litre or None, error or None).
     No airport, supplier, separate taxes, per-uplift fees or validity date take part in it. EUR needs an explicit dated rate (same rule as everywhere)."""
     if fc.price is None or fc.price <= 0:
         return None, "Average fuel price not entered."
+    if fuel_price_implausible(fc.price):
+        return None, fuel_price_implausible(fc.price)
     if fc.currency == "USD":
         return float(fc.price), None
     if fc.currency == "EUR":
@@ -654,6 +667,8 @@ def manual_price_usd_per_l(fc: FuelConfig, fx: Fx):
         p = p / USG_TO_L
     elif fc.unit != "L":
         return None, f"Unknown fuel unit '{fc.unit}'."
+    if fuel_price_implausible(p):
+        return None, fuel_price_implausible(p)
     if fc.currency == "EUR":
         if not fx.is_valid():
             return None, "Manual fuel price is in EUR: enter a dated EUR/USD rate to convert it."
@@ -1178,7 +1193,7 @@ def amount_to_usd(amount, ccy, fx):
     return None, f"Unknown currency '{ccy}'."
 NO_RATE_MESSAGE = "Enter your expected charter revenue per billed hour to run this simulation."
 NO_THRESHOLD = "No attainable threshold under these assumptions."
-CONFIRM_MESSAGE = ("Confirm your assumptions (positioning, private hours, other commercial fees — zero values included only when you choose them) and that you "
+CONFIRM_MESSAGE = ("Confirm your assumptions (positioning, owner flight hours, other commercial fees — zero values included only when you choose them) and that you "
                    "reviewed the costs included and the limitations to display the threshold. This is not a validation that the data is complete.")
 THRESHOLD_FORMULA = "H = (F + V × Hp + A) / (Rnet − V × (1 + p)), Rnet = R × (1 − c)"
 
@@ -1193,10 +1208,28 @@ def _solve_threshold(label, label_fr, fixed_like, u, rho, O, extra_note=""):
     whole = int(math.ceil(exact - 1e-9))                # rounded UP when shown in whole hours
     flown = whole * (1 + rho) + O
     th.update(billed_hours_exact=exact, billed_hours=whole, flown_hours=flown, positioning_flown=whole * rho, private_hours=O,
-              message=f"{label}: {whole:,d} billed hours ({flown:,.0f} flown hours in total, of which {whole * rho:,.0f} positioning and {O:g} private/other).")
+              message=f"{label}: {whole:,d} billed hours ({flown:,.0f} flown hours in total, of which {whole * rho:,.0f} positioning and {O:g} owner flight).")
     if flown > HOURS_IN_YEAR:
         th.update(status="exceeds_year", message=th["message"] + " This exceeds the 8,760 hours of a year: not achievable.")
     return th
+
+
+OWNER_FLIGHT_NOTE = "Estimated operating cost remaining after charter contribution. Excludes depreciation, financing and taxes."
+
+
+def owner_flight_indicator(balance_usd: float, owner_hours: float) -> dict:
+    """Owner's remaining operating cost after the charter contribution, computed ONCE here (Profitability and Quotation only display it).
+    balance = annual operating costs + commercial fees − net charter revenue − other net revenue already in the engine (= −operating result, commission
+    deducted once, positioning costs included). Per owner flight hour = remaining ÷ OWNER hours only — never total or billed hours.
+    status: 'remaining' (balance > 0) | 'covered' (balance = 0 to the cent) | 'surplus' (revenue above costs: remaining 0, surplus shown apart, no negative hourly cost)."""
+    bal = round(float(balance_usd), 2)
+    h = float(owner_hours or 0.0)
+    out = dict(owner_hours=h, balance_usd=bal, remaining_usd=0.0, surplus_usd=0.0, per_hour_usd=None, status="covered", note=OWNER_FLIGHT_NOTE)
+    if bal > 0:
+        out.update(status="remaining", remaining_usd=bal, per_hour_usd=(bal / h if h > 0 else None))
+    elif bal < 0:
+        out.update(status="surplus", surplus_usd=-bal)
+    return out
 
 
 def _profit(scn: Scenario, res: dict, fixed_total: float, var_h: float, H: float) -> dict:
@@ -1204,7 +1237,7 @@ def _profit(scn: Scenario, res: dict, fixed_total: float, var_h: float, H: float
     Without a valid user-entered rate NOTHING that depends on revenue is produced. Taxes are excluded.
 
     Thresholds (linear model):  H = (F + V·Hp + A) / (Rnet − V·(1 + p))
-      F fixed annual operating costs (management/CAMO/dispatch included when added) · V variable cost per flown hour · Hp private/other annual hours (constant) ·
+      F fixed annual operating costs (management/CAMO/dispatch included when added) · V variable cost per flown hour · Hp owner flight hours per year (constant) ·
       A other annual amounts (fees + supplement costs − retained supplements) · Rnet = R·(1 − c) revenue per billed hour after commission (c = 0 when the rate is
       already net) · p positioning hours per billed hour (constant when billed hours vary).
     Threshold A = operating costs entered.  Threshold B = A + the economic ownership costs entered (depreciation + loan interest), shown only when complete."""
@@ -1259,6 +1292,7 @@ def _profit(scn: Scenario, res: dict, fixed_total: float, var_h: float, H: float
                coverage_pct=((net_rev + s_rev) / cost_base * 100) if cost_base > 0 else None,
                charter_external_contribution=charter_contrib, owner_private_variable_cost=owner_private,
                owner_remaining_cost=fixed_total + owner_private - charter_contrib,
+               owner_flight=owner_flight_indicator(fixed_total + owner_private - charter_contrib, O),
                economic_result=(result - own_total) if own["complete"] else None, ownership_costs_total=own_total if own["complete"] else None)
     # positioning: explicit ratio, or hours entered with strictly positive billed hours
     if scn.positioning_ratio is not None:
@@ -1269,7 +1303,7 @@ def _profit(scn: Scenario, res: dict, fixed_total: float, var_h: float, H: float
         rho = None; rho_src = ""
     u = rate * (1 - c) - var_h * (1 + (rho or 0.0))     # contribution per billed hour after variable costs of billed + positioning hours and commission
     out.update(positioning_ratio=rho, contribution_per_billed_hour=u)
-    missing_conf = [lab for ok, lab in ((scn.positioning_confirmed, "positioning"), (scn.private_hours_confirmed, "private/owner hours"),
+    missing_conf = [lab for ok, lab in ((scn.positioning_confirmed, "positioning"), (scn.private_hours_confirmed, "owner flight hours"),
                                         (scn.other_fees_confirmed, "other commercial fees"), (scn.limits_reviewed, "review of the costs included and limitations")) if not ok]
     base_th = dict(label=THRESHOLD_LABEL, label_fr=THRESHOLD_LABEL_FR, note=THRESHOLD_NOTE, formula=THRESHOLD_FORMULA, billed_hours=None, billed_hours_exact=None, flown_hours=None)
     if missing_conf:
@@ -1285,7 +1319,7 @@ def _profit(scn: Scenario, res: dict, fixed_total: float, var_h: float, H: float
         return out
     assumptions = (f"Rate {rate:,.2f} USD per billed hour, {'already net of commission' if basis == 'net' else f'before commission ({scn.commission_pct:g}% deducted once)'}; "
                    f"positioning {rho:.2f} non-billed hour per billed hour ({rho_src}), kept constant when billed hours vary; "
-                   f"private/other hours {O:g} h per year, constant; other annual amounts A = {A:,.0f} USD; fixed operating costs F = {fixed_total:,.0f} USD "
+                   f"owner flight hours {O:g} h per year, constant; other annual amounts A = {A:,.0f} USD; fixed operating costs F = {fixed_total:,.0f} USD "
                    f"(fixed costs are not turned into variable costs when hours change); variable cost V = {var_h:,.2f} USD per flown hour.")
     numer = fixed_total + var_h * O + A
     th = _solve_threshold(THRESHOLD_LABEL, THRESHOLD_LABEL_FR, numer, u, rho, O)

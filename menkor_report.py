@@ -369,7 +369,7 @@ def build_report_pdf(res: dict, disp, alerts: list, logo_bytes: bytes | None = N
             if te_.get("assumptions"): supp.append(P("Economic coverage threshold assumptions: " + te_["assumptions"], sSm))
             C2 = [["External charter vs owner's own flying (kept separate)", "Amount"],
                   ["External charter contribution (net revenue + retained supplements − their cost − variable cost of billed and positioning hours)", M(pr["charter_external_contribution"])],
-                  ["Owner private flying — variable cost of private/other hours", M(-pr["owner_private_variable_cost"])],
+                  ["Owner private flying — variable cost of owner flight hours", M(-pr["owner_private_variable_cost"])],
                   ["Fixed costs", M(-pr["fixed_cost"])],
                   ["Owner remaining balance after charter contribution (negative = surplus)", M(pr["owner_remaining_cost"])]]
             supp += [Spacer(1, 2 * mm), grid(C2, [128 * mm, 46 * mm], bold_rows=(4,)),
@@ -428,7 +428,7 @@ def build_report_pdf(res: dict, disp, alerts: list, logo_bytes: bytes | None = N
             A.append(["Charter revenue per billed hour", "not entered — no revenue, result or threshold calculated"])
         A.append(["Commission / other commercial fees", ("not applied (rate already net)" if sc.get("rate_basis") == "net" else ("not entered" if sc.get("commission_pct") is None else f"{sc['commission_pct']:g}% of revenue"))
                   + f" / {M(sc['other_commercial_fees'])} per year"])
-        A.append(["Hours assumptions", f"billed {sc['billed_hours']:g} h · positioning {sc['positioning_hours']:g} h · private/other {sc['other_hours']:g} h · "
+        A.append(["Hours assumptions", f"billed {sc['billed_hours']:g} h · positioning {sc['positioning_hours']:g} h · owner flight {sc['other_hours']:g} h · "
                   f"positioning ratio {('%g' % sc['positioning_ratio']) if sc.get('positioning_ratio') is not None else 'from hours entered'} · confirmed by the user: positioning {'yes' if sc.get('positioning_confirmed') else 'no'}, "
                   f"private hours {'yes' if sc.get('private_hours_confirmed') else 'no'}, other fees {'yes' if sc.get('other_fees_confirmed') else 'no'} · costs-included review: {'yes' if sc.get('limits_reviewed') else 'no'} (not a validation of data completeness)"])
         mgs = res.get("management") or {}

@@ -996,8 +996,8 @@ def _render_threshold(pr,D):
     _render_one_threshold(th,E.THRESHOLD_LABEL,E.THRESHOLD_LABEL_FR)
     st.caption(E.THRESHOLD_NOTE)
     with st.expander("How the thresholds are calculated",expanded=False):
-        st.markdown(f"`{E.THRESHOLD_FORMULA}` — F = fixed costs, V = variable cost per flown hour, Hp = private/other hours, A = other fees net of supplements, "
-                    "R = charter rate per billed hour, c = commission, p = positioning hours per billed hour. Positioning keeps the same ratio per billed hour, private hours stay constant, "
+        st.markdown(f"`{E.THRESHOLD_FORMULA}` — F = fixed costs, V = variable cost per flown hour, Hp = owner flight hours, A = other fees net of supplements, "
+                    "R = charter rate per billed hour, c = commission, p = positioning hours per billed hour. Positioning keeps the same ratio per billed hour, owner flight hours stay constant, "
                     "fixed costs stay fixed; the result is rounded up to the next whole billed hour. If the contribution per billed hour is zero or negative, no threshold is attainable.")
     if th.get("status") in ("awaiting_confirmation","ratio_undefined"): return
     st.markdown("<hr>",unsafe_allow_html=True)
@@ -1141,6 +1141,24 @@ def _render_budget_offer(model_name,where="offer"):
     for t in BUDGET_DELIVERABLES: st.markdown("• "+t)
     st.caption(BUDGET_DISCLAIMER)
     _budget_form(model_name,where)
+
+def _render_owner_flight(pr,D):
+    """Same box in Profitability and Quotation: everything comes from the engine result (pr["owner_flight"]); nothing is recomputed here."""
+    of=pr.get("owner_flight")
+    if not of: return
+    st.markdown('<div class="section-header">Your flying cost after charter contribution</div>',unsafe_allow_html=True)
+    if of["status"]=="remaining":
+        c1,c2,c3=st.columns(3)
+        c1.metric("Remaining cost per owner flight hour",(f"{D(of['per_hour_usd'])} / h" if of["per_hour_usd"] is not None else "n/a — enter owner flight hours"))
+        c2.metric("Annual amount remaining",D(of["remaining_usd"]))
+        c3.metric("Owner flight hours",f"{of['owner_hours']:g} h")
+    else:
+        st.success("Operating costs fully covered")
+        c1,c2,c3=st.columns(3)
+        c1.metric("Annual amount remaining",D(0.0))
+        c2.metric("Owner flight hours",f"{of['owner_hours']:g} h")
+        if of["status"]=="surplus": c3.metric("Estimated operating surplus",D(of["surplus_usd"]))
+    st.caption(of["note"])
 
 def _open_compare_aircraft():
     """Button callback of 'Choose your own comparison': only sets the navigation targets (widget keys of My scenarios) and asks for the tab switch.
@@ -1323,7 +1341,7 @@ def _results_csv(res,disp):
         elif te.get("status")=="unattainable": rows+=[("economic_coverage_threshold_message",te["message"])]
         elif te.get("status")=="incomplete": rows+=[("economic_coverage_threshold_missing",", ".join(te.get("missing",[]))),("economic_coverage_threshold_message",te["message"])]
         rows+=[("positioning_ratio_used",pr.get("positioning_ratio") if pr.get("positioning_ratio") is not None else "undefined"),
-               ("confirmations","positioning, private hours, other fees and costs-included review confirmed" if (pr.get("threshold") or {}).get("status") not in ("awaiting_confirmation",) else "not all confirmed")]
+               ("confirmations","positioning, owner flight hours, other fees and costs-included review confirmed" if (pr.get("threshold") or {}).get("status") not in ("awaiting_confirmation",) else "not all confirmed")]
     elif pr is not None:
         rows+=[("charter_result_status"," ".join(pr.get("messages",[])))]
     _sc=res.get("scope")
@@ -1736,9 +1754,9 @@ def main():
                 else:
                     billed=st.slider("Billed charter hours / year",0,1500,min(ref_i,1500),step=10,key=f"bh_{aid}",disabled=_locked)
                     posit=st.slider("Positioning hours (flown, not billed)",0,600,0,step=10,key=f"ph_{aid}",disabled=_locked)
-                    other=st.slider("Owner / private / other hours (not billed)",0,1500,0,step=10,key=f"oh_{aid}",disabled=_locked)
+                    other=st.slider("Owner flight hours / year",0,1500,0,step=10,key=f"oh_{aid}",disabled=_locked)
                     if st.session_state.get(f"th_{aid}") and not _locked:
-                        st.caption("The total flown hours of the cost estimate are not converted into charter hours: enter billed, positioning and private hours here.")
+                        st.caption("The total flown hours of the cost estimate are not converted into charter hours: enter billed, positioning and owner flight hours here.")
                 if not _locked:
                     st.caption(f"Total flown hours: **{billed+posit+other} h**" + (" — variable costs apply to every flown hour; only billed hours earn revenue." if journey==J_B else ""))
                     if billed+posit+other>E.HOURS_IN_YEAR: st.warning("More than 8,760 hours in a year is not possible.")
@@ -2023,7 +2041,7 @@ def main():
             _scope_txt=("Reference costs of the selected model"+(" with your adjustments" if (ov_fixed or ov_var or extra_fixed_usd or extra_var_usd or any((v or {}).get("amount") for v in mgmt.values()) or cyc_status=="added" or omp_usd or any(((v or {}).get("count") or 0)*((v or {}).get("salary") or 0) for v in crew_add.values())) else "")
                         +". Not a validation that the data is complete.")
             _recap=[("Charter rate and basis",_rate_txt),("Commission",_comm_txt),("Positioning",_pos_txt),
-                    ("Private / owner / other hours",f"{float(other):g} h per year"),("Other commercial fees",f"{disp.money(disp.to_usd(fees_in))} per year"),("Cost scope",_scope_txt)]
+                    ("Owner flight hours",f"{float(other):g} h per year"),("Other commercial fees",f"{disp.money(disp.to_usd(fees_in))} per year"),("Cost scope",_scope_txt)]
             for _l,_v in _recap: st.markdown(f"- **{_l}:** {_v}")
             _complete=bool(rate_in>0 and rate_basis and (rate_basis=="net" or commission_pct is not None) and not (_pm=="Ratio per billed hour" and pos_ratio is None) and billed>0)
             _sig=hashlib.md5(repr((aid,mode,rate_in,rate_ccy,rate_basis,commission_pct,billed,posit,pos_ratio,other,fees_in,supp_rev,supp_cost,
@@ -2033,7 +2051,7 @@ def main():
             confirmed=(st.session_state.get("_conf_sig")==_sig) and _complete
             if confirmed: st.caption("✓ Assumptions confirmed. Change any of them and the confirmation must be given again.")
             elif not _complete: st.caption("Complete the rate, its basis"+(", the commission" if rate_basis=="gross" else "")+" and the billed hours to confirm.")
-            else: st.caption("Zero values (positioning, private hours, fees) count only once you confirm them here.")
+            else: st.caption("Zero values (positioning, owner flight hours, fees) count only once you confirm them here.")
 
     # ── The single scenario & the single result used by every tab and the PDF ─────
     scn=E.Scenario(aircraft_id=aid,mode=mode,billed_hours=float(billed),positioning_hours=float(posit),other_hours=float(other),
@@ -2204,6 +2222,7 @@ def main():
                     r4.metric("🔒 Fixed",D(pr["fixed_cost"]))
                     st.metric("📊 Estimated operating result",D(r_),delta=f"{cov:.1f}% coverage")
                     st.caption("Operating result (before depreciation, interest and tax) = charter revenue − variable costs of ALL flown hours − fixed costs − commercial fees not already included. It is not a net profit.")
+                    _render_owner_flight(pr,D)
                     _ow=pr.get("ownership") or {}
                     if pr.get("economic_result") is not None:
                         st.metric("📉 Economic result after the ownership costs entered",D(pr["economic_result"]),
@@ -2216,7 +2235,7 @@ def main():
                     st.markdown("**Charter contribution vs owner's own flying** (kept separate; no internal owner-to-operator payment is modelled)")
                     o1,o2,o3=st.columns(3)
                     o1.metric("External charter contribution",D(pr["charter_external_contribution"]),help="Net charter revenue (+ retained supplements − their cost) − variable cost of billed and positioning hours.")
-                    o2.metric("Owner private flying — variable",D(pr["owner_private_variable_cost"]),help="Variable cost of the private/other hours.")
+                    o2.metric("Owner private flying — variable",D(pr["owner_private_variable_cost"]),help="Variable cost of the owner flight hours.")
                     o3.metric("Owner remaining balance after charter contribution (negative = surplus)",D(pr["owner_remaining_cost"]),help="Fixed + private variable − external charter contribution (= −operating result). Payments made by the owner to the operator for the owner's own flights are internal, not external charter revenue.")
                     if pr.get("supplements_retained") is not None or pr.get("supplements_cost") is not None:
                         st.caption(f"Billed supplements (separate): retained {D(pr['supplements_retained']) if pr.get('supplements_retained') is not None else 'not entered'} · "
@@ -2368,8 +2387,9 @@ def main():
                 q1.metric("Cost per flown hour",D(res["cost_per_h_usd"]))
                 q2.metric("Rate covering the entered costs (0% margin) / billed hour",D(E.required_rate(pr,0)) if E.required_rate(pr,0) else "n/a")
                 q3.metric(f"Rate for {_mg}% margin / billed hour",D(_rq) if _rq else "not attainable")
-                st.caption(f"Based on {pr['billed_hours']:g} billed h, {pr['positioning_hours']:g} h positioning, {pr['other_hours']:g} h other, commission {pr['commission_pct']:g}%. "
+                st.caption(f"Based on {pr['billed_hours']:g} billed h, {pr['positioning_hours']:g} h positioning, {pr['other_hours']:g} h owner flight, commission {pr['commission_pct']:g}%. "
                            "Rate = (variable costs of all flown hours + fixed costs + fees) ÷ (billed hours × (1 − commission − margin)). Operating result, before financing, depreciation and tax.")
+                _render_owner_flight(pr,D)
             _render_alerts(res,alerts,title="Quotation data notes")
             st.markdown("""
             <div style="background:linear-gradient(135deg,#112244 0%,#1A3A6E 100%);
