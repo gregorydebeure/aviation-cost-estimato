@@ -17,6 +17,8 @@ SCRYPT_N = 2 ** 15; SCRYPT_R = 8; SCRYPT_P = 3; DKLEN = 32; MAXMEM = 128 * 1024 
 PREFIX = "scrypt$"
 MAX_FAILED = 5
 LOCK_MINUTES = 15
+RESET_TTL_MIN = 60
+MIN_PASSWORD = 6
 TEST_SENDER = "Aviation Cost Estimator <onboarding@resend.dev>"        # provider test sender: delivers to the provider account owner only
 
 
@@ -118,6 +120,88 @@ def authenticate(rec: dict | None, pw: str, now: _dt.datetime):
     if not ok:
         return False, "Incorrect email or password.", failure_fields(rec, now), None
     return True, "", success_fields(rec), (hash_password(pw) if upgrade else None)
+
+
+# ───────────────────────────── password reset (v20.5) ─────────────────────────────
+# Stateless signed link — NO database change: token = base64(e-mail).expiry.HMAC. The HMAC also covers a fingerprint of the account's CURRENT password hash,
+# so a link stops working as soon as the password changes (single use) or after RESET_TTL_MIN minutes. Nothing about the token is stored.
+def reset_key(secrets) -> bytes:
+    """Signing key: RESET_SECRET if configured, otherwise derived from the server-side service key. Empty when neither exists (reset disabled)."""
+    base = str((secrets.get("RESET_SECRET", "") if secrets else "") or "") or str((secrets.get("SUPABASE_SERVICE_KEY", "") if secrets else "") or "")
+    return hashlib.sha256(("menkor-reset|" + base).encode("utf-8")).digest() if base else b""
+
+
+def _pw_fp(pwd_hash) -> str:
+    return hashlib.sha256(("fp|" + str(pwd_hash or "")).encode("utf-8")).hexdigest()[:32]
+
+
+def _sig(key: bytes, email: str, exp: int, pwd_hash) -> str:
+    return hmac.new(key, f"reset|{email}|{exp}|{_pw_fp(pwd_hash)}".encode("utf-8"), hashlib.sha256).hexdigest()
+
+
+def make_reset_token(email: str, pwd_hash, key: bytes, now: _dt.datetime):
+    if not key or not email:
+        return None
+    email = email.strip().lower()
+    exp = int((now + _dt.timedelta(minutes=RESET_TTL_MIN)).timestamp())
+    return f"{base64.urlsafe_b64encode(email.encode('utf-8')).decode('ascii').rstrip('=')}.{exp}.{_sig(key, email, exp, pwd_hash)}"
+
+
+def token_email(token):
+    """E-mail written in the token (NOT yet trusted: the signature must be verified against the account)."""
+    try:
+        part = str(token).split(".")[0]
+        return base64.urlsafe_b64decode(part + "=" * (-len(part) % 4)).decode("utf-8").strip().lower() or None
+    except Exception:
+        return None
+
+
+def verify_reset_token(token, rec: dict | None, key: bytes, now: _dt.datetime) -> tuple[bool, str]:
+    """(ok, reason). Reasons: 'ok', 'invalid', 'expired'. Invalid for an unknown account, a wrong signature or an already-changed password."""
+    try:
+        em_part, exp_s, sig = str(token).split(".")
+        exp = int(exp_s)
+    except Exception:
+        return False, "invalid"
+    email = token_email(token)
+    if not key or not rec or not email or str(rec.get("email", "")).strip().lower() != email:
+        return False, "invalid"
+    if not hmac.compare_digest(_sig(key, email, exp, rec.get("pwd_hash")), sig):
+        return False, "invalid"
+    if now.timestamp() > exp:
+        return False, "expired"
+    return True, "ok"
+
+
+def password_problem(pw: str, confirm: str) -> str:
+    """Empty string when the new password is acceptable."""
+    if len(pw or "") < MIN_PASSWORD:
+        return f"Password must be at least {MIN_PASSWORD} characters."
+    if pw != confirm:
+        return "The two passwords do not match."
+    return ""
+
+
+def reset_email(link: str):
+    body = (f"<p>We received a request to reset the password of your Aviation Cost Estimator account.</p>"
+            f"<p><a href='{_e(link)}' style='background:#C9A84C;color:#0B1629;padding:8px 16px;border-radius:4px;text-decoration:none;font-weight:700'>Choose a new password</a></p>"
+            f"<p style='font-size:13px'>This link is valid for {RESET_TTL_MIN} minutes and can be used once. If the button does not work, copy this address into your browser:<br>"
+            f"<span style='word-break:break-all'>{_e(link)}</span></p>"
+            f"<p style='font-size:13px'>If you did not ask for this, ignore this message: your password stays unchanged.</p>")
+    return "Reset your password — Aviation Cost Estimator", _wrap("Password reset", body)
+
+
+def request_reset(post, secrets, rec: dict | None, app_url: str, key: bytes, now: _dt.datetime | None = None):
+    """Sends the reset link when the account exists. Returns (sent, detail). The caller must show the SAME message whether or not the account exists."""
+    now = now or _dt.datetime.now(_dt.timezone.utc)
+    if not rec:
+        return False, "no account"
+    tok = make_reset_token(rec.get("email", ""), rec.get("pwd_hash"), key, now)
+    if not tok:
+        return False, "reset key missing"
+    link = f"{str(app_url).rstrip('/')}/?reset={tok}"
+    subject, html_body = reset_email(link)
+    return send_email(post, secrets.get("RESEND_API_KEY"), secrets.get("EMAIL_FROM"), rec.get("email"), subject, html_body)
 
 
 # ───────────────────────────── e-mails ─────────────────────────────

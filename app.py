@@ -21,7 +21,7 @@ import streamlit.components.v1 as components
 
 _BRIDGE_KEYS = ["STRIPE_SECRET_KEY", "STRIPE_PRICE_ESSENTIEL", "STRIPE_PRICE_PRO", "ADMIN_EMAIL", "ADMIN_PASSWORD",
                 "SUPABASE_URL", "SUPABASE_SERVICE_KEY", "RESEND_API_KEY", "BUDGET_REQUEST_TO"]
-_BRIDGE_OPTIONAL = ["EMAIL_FROM", "SIGNUP_NOTIFY_TO", "ADMIN_PASSWORD_HASH", "APP_PUBLIC_URL", "EVENTS_ENABLED"]
+_BRIDGE_OPTIONAL = ["RESET_SECRET", "EMAIL_FROM", "SIGNUP_NOTIFY_TO", "ADMIN_PASSWORD_HASH", "APP_PUBLIC_URL", "EVENTS_ENABLED"]
 
 try:
     # Platforms like Render have no native st.secrets support, only plain env vars — bridge them into
@@ -650,6 +650,75 @@ def _register(email,pwd):
     if r["welcome"][0]: return True,f"Account created! A confirmation email was sent to {email}."
     return True,"Account created!"
 
+RESET_REQUEST_MSG="If an account exists for this address, a reset link has been sent. It is valid for 1 hour and can be used once — check your spam folder too."
+
+def _reset_key():
+    return ACC.reset_key({"RESET_SECRET":_secret("RESET_SECRET",""),"SUPABASE_SERVICE_KEY":_secret("SUPABASE_SERVICE_KEY","")})
+
+def _request_password_reset(email):
+    """Returns (kind, message), kind in ok / warn / err. The message is the SAME whether or not the account exists (no account enumeration)."""
+    email=(email or "").strip().lower()
+    if not _re.match(r"[^@]+@[^@]+\.[^@]+",email): return "warn","Enter a valid e-mail address."
+    sec=_mail_secrets()
+    if not _reset_key() or not sec.get("RESEND_API_KEY") or not sec.get("EMAIL_FROM"):
+        return "err","Password reset by e-mail is not configured yet. Please contact us."
+    n=int(st.session_state.get("_reset_requests",0))
+    if n>=3: return "warn","Too many requests. Please try again later."
+    st.session_state["_reset_requests"]=n+1
+    rec=_sb_get_user(email)
+    if rec: ACC.request_reset(_mail_post,sec,rec,_public_url(),_reset_key(),_datetime.datetime.now(_datetime.timezone.utc))
+    return "ok",RESET_REQUEST_MSG
+
+def _check_reset_link(token):
+    """(ok, email, message) for the link opened by the user."""
+    email=ACC.token_email(token); rec=_sb_get_user(email) if email else None
+    ok,why=ACC.verify_reset_token(token,rec,_reset_key(),_datetime.datetime.now(_datetime.timezone.utc))
+    if ok: return True,email,""
+    if why=="expired": return False,email,"This link has expired. Request a new one from 'Forgot your password?' in the sidebar."
+    return False,email,"This link is invalid or has already been used. Request a new one from 'Forgot your password?' in the sidebar."
+
+def _apply_password_reset(token,new,confirm):
+    ok,email,msg=_check_reset_link(token)
+    if not ok: return False,msg
+    problem=ACC.password_problem(new,confirm)
+    if problem: return False,problem
+    if not _sb_update_user(email,{"pwd_hash":ACC.hash_password(new)}): return False,"Could not save the new password. Please try again."
+    _sb_update_user(email,{"failed_attempts":0,"locked_until":None})                       # also lifts a lockout (best effort: needs the lot-D columns)
+    return True,"Password updated. You can now log in with your new password from the sidebar."
+
+def _reset_token_from_url():
+    try: tok=st.query_params.get("reset")
+    except Exception: tok=None
+    if isinstance(tok,(list,tuple)): tok=tok[0] if tok else None
+    return tok or None
+
+def _clear_reset_url():
+    try: st.query_params.clear()
+    except Exception: pass
+
+def _render_password_reset():
+    """Page opened from the e-mail link (?reset=...). Returns True when it took over the page."""
+    tok=_reset_token_from_url()
+    if not tok: return False
+    st.markdown('<div class="section-header">Reset your password</div>',unsafe_allow_html=True)
+    if st.session_state.get("_reset_done"):
+        st.success("Password updated. You can now log in with your new password from the sidebar.")
+        st.session_state["_reset_done"]=False; return True
+    ok,email,msg=_check_reset_link(tok)
+    if not ok:
+        st.error(msg)
+        if st.button("Back to the app",key="rs_back"): _clear_reset_url(); st.rerun()
+        return True
+    st.caption(f"Choose a new password for {email}.")
+    new=st.text_input("New password",type="password",key="rs_pw")
+    conf=st.text_input("Confirm new password",type="password",key="rs_pw2")
+    if st.button("Set new password",key="rs_btn"):
+        done,msg2=_apply_password_reset(tok,new,conf)
+        if done:
+            st.session_state["_reset_done"]=True; _clear_reset_url(); st.rerun()
+        else: st.error(msg2)
+    return True
+
 def _login(email,pwd):
     email=email.strip().lower(); rec=_sb_get_user(email)
     now=_datetime.datetime.now(_datetime.timezone.utc)
@@ -842,6 +911,13 @@ def render_auth():
                                 st.session_state["auth_is_admin"]=False; st.rerun()
                             else: st.error(res)
                     else: st.warning("Fill in all fields.")
+                with st.expander("Forgot your password?"):
+                    fp_em=st.text_input("Email",key="fp_em",placeholder="your@email.com")
+                    if st.button("Send reset link",key="btn_fp",width="stretch"):
+                        kind,msg=_request_password_reset(fp_em)
+                        if kind=="ok": st.success(msg)
+                        elif kind=="warn": st.warning(msg)
+                        else: st.error(msg)
             else:
                 em=st.text_input("Email",key="rg_em",placeholder="your@email.com")
                 pw=st.text_input("Password (min 6)",key="rg_pw",type="password",
@@ -1530,6 +1606,8 @@ def main():
     with c2:
         st.markdown('<div class="main-title">Aviation Cost Estimator</div>',unsafe_allow_html=True)
         st.markdown('<div class="sub-title">Operating Cost Simulation — Business Aviation</div>',unsafe_allow_html=True)
+
+    if _render_password_reset(): st.stop()
 
     _plan_name = "Pro" if is_pro else ("Essentiel" if is_essentiel else "Free")
     _plan_color = "#4ADE80" if is_pro else ("#60A5FA" if is_essentiel else "#8496B0")
@@ -2545,3 +2623,4 @@ def main():
 
 if __name__=="__main__":
     main()
+
