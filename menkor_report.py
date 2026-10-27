@@ -452,3 +452,317 @@ def build_report_pdf(res: dict, disp, alerts: list, logo_bytes: bytes | None = N
     doc.build(story, onFirstPage=hf, onLaterPages=hf, canvasmaker=NumberedCanvas)
     buf.seek(0)
     return buf.getvalue()
+
+
+# ─────────────────────────────── scenario comparison report ───────────────────────────────
+CMP_TEMPLATE_VERSION = "1.0"   # bump when the layout/content of the comparison report changes (the app invalidates a PDF built with another version)
+
+
+def _nice_ticks(lo, hi, n=5):
+    import math
+    if hi == lo:
+        hi = lo + 1.0
+    span = hi - lo
+    raw = span / n
+    mag = 10 ** math.floor(math.log10(raw))
+    step = next(m * mag for m in (1, 2, 2.5, 5, 10) if m * mag >= raw)
+    start = math.floor(lo / step) * step
+    ticks, v = [], start
+    while v <= hi + step * 0.5 and len(ticks) < 20:
+        ticks.append(round(v, 6)); v += step
+    return ticks
+
+
+def _compact(v, sym):
+    a = abs(v)
+    s = f"{a / 1e6:,.2f}M" if a >= 1e6 else (f"{a / 1e3:,.0f}K" if a >= 1e3 else f"{a:,.0f}")
+    if a == 0:
+        s = "0"
+    return f"{'−' if v < 0 else ''}{sym} {s}" if a else "0"
+
+
+def build_comparison_pdf(rows: list, disp, table: list, charts: dict, names: list, ref: str, notes: dict, logo_bytes: bytes | None = None,
+                         generated_on=None, broker: dict | None = None) -> bytes:
+    """Comparison PDF. `table` = store.comparison_table(rows, disp) and `charts` = store.comparison_chart_data(rows, disp): the SAME objects as the screen and the CSV —
+    nothing is recomputed here, only drawn. notes = {'intro': ..., 'note': ...}."""
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.units import mm
+    from reportlab.lib.colors import HexColor
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable, PageBreak, KeepTogether
+    from reportlab.lib.styles import ParagraphStyle
+    from reportlab.lib.enums import TA_CENTER, TA_RIGHT
+    from reportlab.lib.utils import ImageReader
+    from reportlab.pdfgen import canvas as _canvas
+    from reportlab.graphics.shapes import Drawing, Rect, String, Line
+    from reportlab.pdfbase.pdfmetrics import stringWidth
+
+    FR, FB, FI = _register_fonts()
+    NAVY, GOLD, SLATE, LIGHT = HexColor("#112244"), HexColor("#C9A84C"), HexColor("#4A5A75"), HexColor("#F4F6FA")
+    GRID, GREEN, RED = HexColor("#D9DEE8"), HexColor("#15803D"), HexColor("#B91C1C")
+    page_w, page_h = A4
+    gen = generated_on or current_date()
+    gen_txt = gen.strftime("%d %B %Y")
+    buf = BytesIO()
+    broker = broker or {}
+    broker_name = (broker.get("name") or "").strip()
+    broker_logo = broker.get("logo")
+    n = len(rows)
+    CW = page_w - 36 * mm                       # content width
+    sym = disp.sym
+
+    class NumberedCanvas(_canvas.Canvas):
+        def __init__(self, *a, **k):
+            k["initialFontName"] = FR; k["initialFontSize"] = 8
+            super().__init__(*a, **k); self._saved = []
+
+        def showPage(self):
+            self._saved.append(dict(self.__dict__)); self._startPage()
+
+        def save(self):
+            total = len(self._saved)
+            for st_ in self._saved:
+                self.__dict__.update(st_)
+                self.setFont(FR, 7.5); self.setFillColor(SLATE)
+                self.drawRightString(page_w - 18 * mm, 9 * mm, f"Page {self._pageNumber} / {total}")
+                super().showPage()
+            super().save()
+
+    def hf(canvas, doc):
+        canvas.saveState()
+        if broker_logo:
+            try:
+                canvas.drawImage(ImageReader(BytesIO(broker_logo)), page_w - 18 * mm - 40 * mm, page_h - 22 * mm, width=40 * mm, height=18 * mm, preserveAspectRatio=True, anchor="se", mask="auto")
+            except Exception:
+                pass
+        if logo_bytes:
+            try:
+                canvas.drawImage(ImageReader(BytesIO(logo_bytes)), 18 * mm, page_h - 22 * mm, width=40 * mm, height=18 * mm, preserveAspectRatio=True, anchor="sw", mask="auto")
+            except Exception:
+                pass
+        canvas.setStrokeColor(GOLD); canvas.setLineWidth(0.8)
+        canvas.line(18 * mm, page_h - 23 * mm, page_w - 18 * mm, page_h - 23 * mm)
+        canvas.line(18 * mm, 14 * mm, page_w - 18 * mm, 14 * mm)
+        canvas.setFont(FR, 7.5); canvas.setFillColor(SLATE)
+        canvas.drawString(18 * mm, 9 * mm, f"Menkor Aviation GBL — Confidential · Comparison ref. {ref} · Generated {gen_txt}")
+        canvas.restoreState()
+
+    doc = SimpleDocTemplate(buf, pagesize=A4, topMargin=28 * mm, bottomMargin=20 * mm, leftMargin=18 * mm, rightMargin=18 * mm,
+                            title="Scenario comparison report", author="Menkor Aviation GBL")
+    sT = ParagraphStyle("T", fontName=FB, fontSize=21, leading=25, textColor=NAVY, alignment=TA_CENTER, spaceAfter=2)
+    sA = ParagraphStyle("A", fontName=FB, fontSize=12.5, leading=16, textColor=GOLD, alignment=TA_CENTER, spaceAfter=1)
+    sS = ParagraphStyle("S", fontName=FR, fontSize=9, leading=12, textColor=SLATE, alignment=TA_CENTER, spaceAfter=1)
+    sH = ParagraphStyle("H", fontName=FB, fontSize=11.5, leading=15, textColor=NAVY, spaceBefore=8, spaceAfter=5, keepWithNext=1)
+    sB = ParagraphStyle("B", fontName=FR, fontSize=8.4, leading=10.8, textColor=NAVY)
+    sBr = ParagraphStyle("Br", parent=sB, alignment=TA_RIGHT)
+    sSm = ParagraphStyle("Sm", fontName=FR, fontSize=7.8, leading=10.2, textColor=SLATE)
+    sWh = ParagraphStyle("Wh", parent=sB, textColor=HexColor("#FFFFFF"), fontName=FB)
+    sWhr = ParagraphStyle("Whr", parent=sWh, alignment=TA_RIGHT)
+
+    def P(t, st=sB): return Paragraph(escape(str(t)), st)
+
+    label_w = 50 * mm
+    col_w = (CW - label_w) / max(n, 1)
+
+    def table_block(sec_rows, header_first="", bold=()):
+        """Rows = indicators, columns = scenarios (A, B, C). Every cell wraps: nothing is cut."""
+        data = [[Paragraph(f"<b>{escape(header_first)}</b>", sWh)] + [Paragraph(f"<b>{escape(nm)}</b>", sWhr) for nm in names]]
+        for r in sec_rows:
+            b = r["label"] in bold
+            data.append([Paragraph(("<b>%s</b>" if b else "%s") % escape(r["label"]), sB)] + [Paragraph(("<b>%s</b>" if b else "%s") % escape(str(v)), sBr) for v in r["values"]])
+        t = Table(data, colWidths=[label_w] + [col_w] * n, repeatRows=1)
+        st = [("BACKGROUND", (0, 0), (-1, 0), NAVY), ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+              ("GRID", (0, 0), (-1, -1), 0.3, GRID), ("TOPPADDING", (0, 0), (-1, -1), 3), ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+              ("LEFTPADDING", (0, 0), (-1, -1), 4), ("RIGHTPADDING", (0, 0), (-1, -1), 4)]
+        for i in range(1, len(data)):
+            if i % 2 == 0:
+                st.append(("BACKGROUND", (0, i), (-1, i), LIGHT))
+        t.setStyle(TableStyle(st))
+        return t
+
+    def sec(name): return [r for r in table if r["section"] == name]
+    sec_names = []
+    for r in table:
+        if r["section"] not in sec_names:
+            sec_names.append(r["section"])
+    main_sec = sec_names[0]
+    res_sec = next(s for s in sec_names if s == "Results")
+    econ_secs = [s for s in sec_names if s.startswith("Ownership")]
+
+    # ── drawing helpers (all numbers come from `charts`) ──
+    DW = CW
+    DH = 68 * mm
+    Y0 = 17 * mm
+
+    def wrap_name(nm, maxw, size=7.6):
+        words, lines, cur = nm.split(), [], ""
+        for w in words:
+            t = (cur + " " + w).strip()
+            if stringWidth(t, FR, size) <= maxw:
+                cur = t
+            else:
+                if cur: lines.append(cur)
+                cur = w
+        if cur: lines.append(cur)
+        return lines[:3] or [nm]
+
+    def frame(title, unit, lo, hi, plot_h=DH - 17 * mm - 15 * mm, left=17 * mm, right=4 * mm, top=14 * mm):
+        d = Drawing(DW, DH)
+        d.add(String(0, DH - 8, title, fontName=FB, fontSize=10, fillColor=NAVY))
+        d.add(String(0, DH - 19, unit, fontName=FI, fontSize=7.5, fillColor=SLATE))
+        ticks = _nice_ticks(lo, hi)
+        lo_t, hi_t = ticks[0], ticks[-1]
+        x0, x1 = left, DW - right
+        y0 = Y0
+        def Y(v): return y0 + (v - lo_t) / (hi_t - lo_t) * plot_h
+        for t in ticks:
+            d.add(Line(x0, Y(t), x1, Y(t), strokeColor=GRID, strokeWidth=0.5))
+            d.add(String(x0 - 3, Y(t) - 2.5, _compact(t, sym), fontName=FR, fontSize=7.2, fillColor=SLATE, textAnchor="end"))
+        zero = Y(0)
+        d.add(Line(x0, zero, x1, zero, strokeColor=NAVY, strokeWidth=1.1))
+        return d, x0, x1, Y, zero
+
+    def x_labels(d, x0, x1, colors):
+        slot = (x1 - x0) / n
+        for i, nm in enumerate(names):
+            cx = x0 + slot * (i + 0.5)
+            d.add(Rect(cx - slot * 0.46, Y0 - 3 - 9.5, 6, 6, fillColor=HexColor(colors[i]), strokeColor=None))
+            for j, ln in enumerate(wrap_name(nm, slot * 0.86)):
+                d.add(String(cx - slot * 0.46 + 9 if j == 0 else cx - slot * 0.46, Y0 - 9 - 9.2 * j, ln, fontName=FR, fontSize=7.6, fillColor=NAVY))
+        return slot
+
+    def legend(d, items, y):
+        x = 0
+        for lab, colr in items:
+            d.add(Rect(x, y, 7, 7, fillColor=HexColor(colr), strokeColor=None))
+            d.add(String(x + 10, y + 0.5, lab, fontName=FR, fontSize=7.6, fillColor=NAVY))
+            x += 10 + stringWidth(lab, FR, 7.6) + 14
+
+    def chart_stack():
+        c = charts["stack"]
+        tot = [t for t in c["totals"] if t is not None]
+        d, x0, x1, Y, zero = frame("1 · Annual operating budget", f"Amounts per year, {disp.ccy} — fixed, fuel, maintenance and other variable costs add up to the total", 0, max(tot) * 1.1 if tot else 1)
+        slot = (x1 - x0) / n
+        bw = slot * 0.46
+        for i in range(n):
+            cx = x0 + slot * (i + 0.5)
+            if c["totals"][i] is None:
+                d.add(String(cx, zero + 6, "n/a", fontName=FB, fontSize=9, fillColor=SLATE, textAnchor="middle")); continue
+            acc = 0.0
+            for lab, colr, vals in c["series"]:
+                v = vals[i] or 0.0
+                if v > 0:
+                    d.add(Rect(cx - bw / 2, Y(acc), bw, Y(acc + v) - Y(acc), fillColor=HexColor(colr), strokeColor=HexColor("#FFFFFF"), strokeWidth=0.6))
+                acc += v
+            d.add(String(cx, Y(acc) + 4, _compact(c["totals"][i], sym), fontName=FB, fontSize=8.4, fillColor=NAVY, textAnchor="middle"))
+        x_labels(d, x0, x1, c["colors"])
+        legend(d, [(lab, colr) for lab, colr, _ in c["series"]], 0.5 * mm)
+        return d
+
+    def chart_revenue():
+        c = charts["revenue"]
+        vals = [v for _, _, vs in c["series"] for v in vs if v is not None]
+        d, x0, x1, Y, zero = frame("2 · Net charter revenue and annual operating costs", f"Amounts per year, {disp.ccy} — revenue after commission, side by side with the operating budget", 0, max(vals) * 1.12 if vals else 1)
+        slot = (x1 - x0) / n
+        bw = slot * 0.3
+        for i in range(n):
+            cx = x0 + slot * (i + 0.5)
+            for k, (lab, colr, vs) in enumerate(c["series"]):
+                bx = cx - bw - 1 if k == 0 else cx + 1
+                v = vs[i]
+                if v is None:
+                    d.add(String(bx + bw / 2, zero + 6, "n/a", fontName=FB, fontSize=8.5, fillColor=SLATE, textAnchor="middle")); continue
+                d.add(Rect(bx, Y(0), bw, Y(v) - Y(0), fillColor=HexColor(colr), strokeColor=None))
+                d.add(String(bx + bw / 2, Y(v) + 3.5, _compact(v, sym), fontName=FB, fontSize=7.8, fillColor=NAVY, textAnchor="middle"))
+        x_labels(d, x0, x1, charts["stack"]["colors"])
+        legend(d, [(lab, colr) for lab, colr, _ in c["series"]], 0.5 * mm)
+        return d
+
+    def chart_result():
+        c = charts["result"]
+        vs = [v for v in c["values"] if v is not None]
+        lo = min(vs + [0.0]); hi = max(vs + [0.0])
+        pad = (hi - lo) * 0.18 or 1.0
+        d, x0, x1, Y, zero = frame("3 · Estimated operating result", f"Per year, {disp.ccy} — net charter revenue minus annual operating costs; positive above the zero line, negative below",
+                                   lo - (pad if lo < 0 else 0), hi + (pad if hi > 0 else 0))
+        slot = (x1 - x0) / n
+        bw = slot * 0.46
+        for i in range(n):
+            cx = x0 + slot * (i + 0.5)
+            v = c["values"][i]
+            if v is None:
+                d.add(String(cx, zero + 6, "n/a", fontName=FB, fontSize=9, fillColor=SLATE, textAnchor="middle")); continue
+            neg = v < 0
+            d.add(Rect(cx - bw / 2, min(Y(0), Y(v)), bw, abs(Y(v) - Y(0)), fillColor=HexColor(c["colors"][i]), strokeColor=RED if neg else GREEN, strokeWidth=1.8))
+            ly = Y(v) - 11 if neg else Y(v) + 4
+            d.add(String(cx, ly, _compact(v, sym) + ("  (deficit)" if neg else "  (surplus)"), fontName=FB, fontSize=8, fillColor=RED if neg else GREEN, textAnchor="middle"))
+        x_labels(d, x0, x1, c["colors"])
+        legend(d, [("Green outline = positive result", "#15803D"), ("Red outline = negative result", "#B91C1C")], 0.5 * mm)
+        return d
+
+    def chart_owner():
+        c = charts["owner"]
+        vs = [v for v in c["values"] if v is not None]
+        d, x0, x1, Y, zero = frame("4 · Remaining cost per owner flight hour after charter contribution", f"{disp.ccy} per owner flight hour — never negative; 0 = operating costs fully covered; n/a = no owner flight hours",
+                                   0, max(vs + [1.0]) * 1.18)
+        slot = (x1 - x0) / n
+        bw = slot * 0.46
+        for i in range(n):
+            cx = x0 + slot * (i + 0.5)
+            v = c["values"][i]; lab = c["labels"][i]
+            if v is None:
+                d.add(String(cx, zero + 6, lab if len(lab) < 14 else "n/a", fontName=FB, fontSize=9, fillColor=SLATE, textAnchor="middle"))
+                if len(lab) >= 14:
+                    d.add(String(cx, zero + 16, "(no owner hours)", fontName=FR, fontSize=7.2, fillColor=SLATE, textAnchor="middle"))
+                continue
+            if v > 0:
+                d.add(Rect(cx - bw / 2, Y(0), bw, Y(v) - Y(0), fillColor=HexColor(c["colors"][i]), strokeColor=None))
+                d.add(String(cx, Y(v) + 4, lab, fontName=FB, fontSize=8.2, fillColor=NAVY, textAnchor="middle"))
+            else:
+                d.add(String(cx, zero + 7, "0 — fully covered", fontName=FB, fontSize=8.2, fillColor=GREEN, textAnchor="middle"))
+                if "surplus" in lab:
+                    d.add(String(cx, zero + 18, lab.split("·", 1)[1].strip(), fontName=FR, fontSize=7.4, fillColor=SLATE, textAnchor="middle"))
+        x_labels(d, x0, x1, c["colors"])
+        return d
+
+    # ── story ──
+    story = [Spacer(1, 4 * mm), Paragraph("SCENARIO COMPARISON REPORT", sT)]
+    for nm, r in zip(names, rows):
+        mdl = r.get("model") or ""
+        story.append(Paragraph(escape(nm if (not mdl or mdl in nm) else f"{nm} — {mdl}"), sA))
+    if broker_name:
+        story.append(Paragraph(escape(f"Prepared by {broker_name} · calculated with the Menkor Aviation Cost Estimator"), sS))
+    story += [Paragraph(escape(f"Comparison ref. {ref} · Generated {gen_txt} · All amounts in {disp.ccy}"), sS), Spacer(1, 2 * mm),
+              HRFlowable(width="100%", thickness=1, color=GOLD, spaceAfter=4)]
+    story.append(Paragraph(escape(notes["intro"]), sB)); story.append(Spacer(1, 3 * mm))
+    story.append(Paragraph("Key results", sH))
+    key_labels = ["Annual operating budget", "Cost / total flown hour", "Net charter revenue (after commission)", "Estimated operating result",
+                  "Annual amount remaining to the owner", "Remaining cost per owner flight hour"]
+    story.append(table_block([r for r in sec(res_sec) if r["label"] in key_labels], "Indicator", bold=("Estimated operating result",)))
+    story.append(Spacer(1, 3 * mm))
+    story.append(Paragraph(escape(disp.note()), sSm))
+    story.append(Spacer(1, 2 * mm))
+    story.append(Paragraph(escape(notes["note"]), sSm))
+    story.append(PageBreak())
+    story.append(Paragraph("Comparison charts", sH))
+    story.append(chart_stack()); story.append(Spacer(1, 5 * mm)); story.append(chart_revenue())
+    story.append(PageBreak())
+    story.append(chart_result()); story.append(Spacer(1, 5 * mm)); story.append(chart_owner())
+    story.append(Spacer(1, 3 * mm)); story.append(Paragraph(escape(notes["note"]), sSm))
+    story.append(PageBreak())
+    story.append(Paragraph("Essential assumptions per scenario", sH))
+    story.append(table_block(sec(main_sec), "Assumption"))
+    story.append(Spacer(1, 4 * mm))
+    story.append(Paragraph("All results", sH))
+    story.append(table_block(sec(res_sec), "Indicator"))
+    for es in econ_secs:
+        story.append(Spacer(1, 4 * mm)); story.append(Paragraph(escape(es), sH)); story.append(table_block(sec(es), "Indicator"))
+    story.append(Spacer(1, 4 * mm))
+    story.append(Paragraph("Exclusions", sH))
+    for i, r in enumerate(rows):
+        ne = r.get("not_entered") or []
+        txt = (f"Not entered, therefore not included (never treated as zero): {', '.join(ne)}." if ne else "No optional cost line left empty.") if r.get("available") else "Costs could not be calculated for this scenario."
+        story.append(Paragraph(escape(f"{names[i]} — {txt}"), sSm))
+    story.append(Spacer(1, 2 * mm))
+    story.append(Paragraph("Indicative figures for simulation purposes; not an offer or a guarantee.", sSm))
+    doc.build(story, onFirstPage=hf, onLaterPages=hf, canvasmaker=NumberedCanvas)
+    return buf.getvalue()

@@ -1614,9 +1614,53 @@ def _render_cmp_indicative(df):
         st.info("Enter the rate and its date to compute with a EUR price."); return
     _render_cmp_results(out,E.Display(E.Fx()),False,"Indicative model comparison")
 
+_CMP_OLD_COMMON_KEYS=("cmp_harm","cmp_s_hours","cmp_s_price","cmp_s_ccy","cmp_s_disp","cmp_s_rate","cmp_s_rdate")
+
+def _cmp_fig_base(fig,ccy,h=360,yt=None):
+    fig.update_layout(**BG,height=h,margin=dict(t=30,b=10,l=10,r=10),yaxis=dict(title=yt or ccy,gridcolor="#1A3A6E",tickformat=",.0f",zeroline=True,zerolinecolor="#E8C46A",zerolinewidth=2),
+                      xaxis=dict(gridcolor="rgba(0,0,0,0)"),legend=dict(orientation="h",yanchor="bottom",y=-0.3,bgcolor="rgba(0,0,0,0)"))
+    return fig
+
+def _cmp_money_txt(v,sym):
+    if v is None: return ""
+    a=abs(v); s=f"{a/1e6:,.2f}M" if a>=1e6 else (f"{a/1e3:,.0f}K" if a>=1e3 else f"{a:,.0f}")
+    return f"{'−' if v<0 else ''}{sym} {s}"
+
+def chart_cmp_stack(cd):
+    c=cd["stack"]; sym=cd["symbol"]; fig=go.Figure()
+    for lab,col,vals in c["series"]:
+        fig.add_trace(go.Bar(name=lab,x=c["names"],y=vals,marker_color=col,hovertemplate=f"{lab}: {sym} %{{y:,.0f}}<extra>%{{x}}</extra>"))
+    fig.add_trace(go.Scatter(x=c["names"],y=[t for t in c["totals"]],mode="text",text=[_cmp_money_txt(t,sym) if t is not None else "n/a" for t in c["totals"]],textposition="top center",showlegend=False,hoverinfo="skip",textfont=dict(color="#E8C46A",size=12)))
+    fig.update_layout(barmode="stack"); return _cmp_fig_base(fig,cd["currency"],yt=f"{cd['currency']} per year")
+
+def chart_cmp_revenue(cd):
+    c=cd["revenue"]; sym=cd["symbol"]; fig=go.Figure()
+    for lab,col,vals in c["series"]:
+        fig.add_trace(go.Bar(name=lab,x=c["names"],y=vals,marker_color=col,text=[_cmp_money_txt(v,sym) if v is not None else "n/a" for v in vals],textposition="outside",textfont=dict(color="#D6E4F7",size=11),
+                             hovertemplate=f"{lab}: {sym} %{{y:,.0f}}<extra>%{{x}}</extra>"))
+    fig.update_layout(barmode="group"); return _cmp_fig_base(fig,cd["currency"],yt=f"{cd['currency']} per year")
+
+def chart_cmp_result(cd):
+    c=cd["result"]; sym=cd["symbol"]; v=c["values"]
+    fig=go.Figure(go.Bar(x=c["names"],y=v,marker_color=c["colors"],marker_line_color=[("#F87171" if (x is not None and x<0) else "#4ADE80") for x in v],marker_line_width=3,
+                         text=[(_cmp_money_txt(x,sym)+(" · deficit" if x<0 else " · surplus" if x>0 else "")) if x is not None else "n/a" for x in v],textposition="outside",textfont=dict(color="#D6E4F7",size=11),
+                         hovertemplate=f"Operating result: {sym} %{{y:,.0f}}<extra>%{{x}}</extra>"))
+    fig.update_layout(showlegend=False); return _cmp_fig_base(fig,cd["currency"],yt=f"{cd['currency']} per year · green outline = positive, red outline = negative")
+
+def chart_cmp_owner(cd):
+    c=cd["owner"]
+    fig=go.Figure(go.Bar(x=c["names"],y=c["values"],marker_color=c["colors"],text=c["labels"],textposition="outside",textfont=dict(color="#D6E4F7",size=11),
+                         hovertemplate=f"Remaining cost: {cd['symbol']} %{{y:,.0f}} / owner flight hour<extra>%{{x}}</extra>"))
+    fig.update_layout(showlegend=False,yaxis_rangemode="tozero"); return _cmp_fig_base(fig,cd["currency"],yt=f"{cd['currency']} per owner flight hour")
+
+def generate_comparison_pdf(rows,disp,table,cd,names,ref,broker=None):
+    logo=_get_logo()
+    return RPT.build_comparison_pdf(rows,disp,table,cd,names,ref,dict(intro=STORE.CMP_SAVED_INTRO,note=STORE.CMP_SAVED_NOTE),base64.b64decode(logo) if logo else None,broker=broker)
+
 def _render_cmp_saved(df):
     owner=st.session_state.get("auth_email")
     if not owner: st.info("Log in to compare your saved scenarios."); return
+    for k in _CMP_OLD_COMMON_KEYS: st.session_state.pop(k,None)      # no hidden common value from an older version of this screen can reach the results
     items=[x for x in STORE.list_scenarios(_sb_rest,owner) if not x.get("deleted_at")]
     if len(items)<2: st.info("Save at least two scenarios from Cost Master (“Save scenario”) to compare them here."); return
     lab={}
@@ -1625,43 +1669,78 @@ def _render_cmp_saved(df):
         lab[it["id"]]=f"{it['name']} — {sn.get('model') or it['aircraft_id']}"+(f" · {ms}" if ms else "")+f" · {_fmt_date(it.get('created_at'))}"
     if "cmp_saved_pick" in st.session_state: st.session_state["cmp_saved_pick"]=[i for i in st.session_state["cmp_saved_pick"] if i in lab][:3]   # never a stale id
     pick=st.multiselect("Saved scenarios (2 or 3)",list(lab),format_func=lambda x:lab[x],key="cmp_saved_pick",max_selections=3)
-    st.caption("Each scenario keeps its own aircraft and its own assumptions: nothing entered for one aircraft is applied to another. Same calculation engine as Cost Master.")
-    harm=st.radio("Assumptions",["Use each scenario’s assumptions","Apply common assumptions"],key="cmp_harm",horizontal=True)
-    common={}; disp=E.Display(E.Fx())
-    if harm=="Apply common assumptions":
-        st.caption("The comparison is recalculated on a COPY; your saved scenarios are not modified. "+STORE.CMP_HARMONISE_HOURS_NOTE)
-        h1,h2,h3=st.columns(3)
-        with h1: ch=st.number_input("Common annual flown hours",min_value=0.0,value=None,step=10.0,placeholder="keep each scenario’s hours",key="cmp_s_hours")
-        with h2: cp=st.number_input("Common fuel price (per litre)",min_value=None,value=None,step=0.05,placeholder="keep each scenario’s fuel",key="cmp_s_price")
-        with h3: cc=st.selectbox("Fuel price currency",["USD","EUR"],key="cmp_s_ccy")
-        dcy=st.selectbox("Display currency",["USD","EUR"],key="cmp_s_disp")
-        rate=None; rd=None
-        if cc=="EUR" or dcy=="EUR":
-            r1,r2=st.columns(2)
-            with r1: rate=st.number_input("EUR for 1 USD",min_value=0.0,value=None,step=0.01,key="cmp_s_rate")
-            with r2: rd=st.text_input("Rate date (YYYY-MM-DD)",key="cmp_s_rdate")
-        fxc=E.Fx(dcy,rate if rate else None,rd or None,"")
-        if (cc=="EUR" and cp is not None) and not fxc.is_valid():
-            st.warning("A EUR fuel price needs a dated EUR/USD rate: enter it to compute."); return
-        common=dict(flown_hours=ch,fuel_price=(cp if cp is None or cc=="USD" else cp/fxc.usd_to_eur),fuel_ccy="USD")
-        if cp is not None and cc=="EUR": common["fuel_ccy"]="USD"
-        disp=E.Display(fxc)
-        if dcy=="EUR" and disp.eur_blocked: st.warning("EUR display needs a dated rate: amounts stay in USD until it is entered.")
+    st.caption(STORE.CMP_SAVED_INTRO)
+    c1,c2,c3=st.columns(3)
+    with c1: dcy=st.selectbox("Comparison currency",["USD","EUR"],key="cmp_sv_ccy")
+    rate=None; rd=None
+    if dcy=="EUR":
+        with c2: rate=st.number_input("EUR for 1 USD",min_value=0.0,value=None,step=0.01,placeholder="rate",key="cmp_sv_rate")
+        with c3: rd=st.text_input("Rate date (YYYY-MM-DD)",key="cmp_sv_rdate")
+    disp=E.Display(E.Fx(dcy,rate if rate else None,rd or None,""))
+    if dcy=="EUR" and disp.eur_blocked: st.warning("EUR needs a dated EUR/USD rate: every amount stays in USD (one currency only) until it is entered.")
     if len(pick)<2: st.info("Select 2 or 3 saved scenarios."); return
     chosen=STORE.get_scenarios_for_compare(_sb_rest,owner,pick)
     if len(chosen)<2: st.warning("Some selected scenarios are no longer available."); return
-    rows,errs=STORE.compare_saved(df,chosen,common)
+    ok=st.session_state.setdefault("cmp_recalc_ok",set())
+    rows,errs=STORE.compare_saved(df,chosen,None,recalc_ok=ok)
     for e in errs: st.error(e)
     if errs: return
+    stale=[o for o in rows if o.get("needs_recalc")]
+    if stale:
+        for o in stale:
+            st.warning(f"“{o['label']}” was saved with another base or calculation version, so its saved results cannot be compared with the others as they are (saved annual budget: {disp.money(o.get('saved_budget_usd'))}).")
+        def _ok_recalc(keys=[o["recalc_key"] for o in stale]):
+            st.session_state["cmp_recalc_ok"]=set(st.session_state.get("cmp_recalc_ok",set()))|set(keys)
+        st.button("Recalculate for this comparison",key="cmp_recalc_btn",on_click=_ok_recalc,help="Recalculates a copy with the current base and calculation version. Your saved scenarios are not modified.")
+        return
     for o in rows:
         if (o.get("version") or {}).get("changed"):
-            st.warning(f"“{o['label']}” was saved with another base or calculation version: it is recalculated with the current ones; its saved budget is shown in the notes.")
-    extra=[]
+            st.caption(f"“{o['label']}”: recalculated for this comparison with the current base and calculation version (saved scenario unchanged; saved budget {disp.money(o.get('saved_budget_usd'))}).")
     for o in rows:
-        for k,(old,new) in (o.get("replaced") or {}).items():
-            if k=="flown_hours": extra.append(f"{o['label']}: hours {old:,.0f} → {new:,.0f} (replaced)")
-            else: extra.append(f"{o['label']}: fuel price method/price replaced by the common price")
-    _render_cmp_results(rows,disp,True,"Saved scenarios — "+harm,notes_extra=extra)
+        if not o.get("available"):
+            why=(o.get("errors") or [])+(["missing: "+", ".join(o["missing"])] if o.get("missing") else [])
+            st.warning(f"“{o.get('label')}”: costs could not be calculated"+(f" ({'; '.join(why)})" if why else "")+" — shown as n/a.")
+        elif not o.get("charter_available"):
+            st.caption(f"“{o.get('label')}”: charter results not available (n/a) — cost comparison kept."+(" "+" ".join(o.get("charter_messages") or []) if o.get("charter_messages") else ""))
+    names=STORE.cmp_names(rows); table=STORE.comparison_table(rows,disp); cd=STORE.comparison_chart_data(rows,disp); sig=STORE.comparison_signature(rows,disp)
+    st.markdown(f'<div class="section-header">Comparison in {disp.ccy}</div>',unsafe_allow_html=True)
+    secs=list(dict.fromkeys(t["section"] for t in table))
+    for sname in secs:
+        st.markdown(f"**{sname}**")
+        st.dataframe(pd.DataFrame([dict({"Indicator":t["label"]},**dict(zip(names,t["values"]))) for t in table if t["section"]==sname]),width="stretch",hide_index=True)
+        if sname.startswith("Ownership"): st.caption(E.OWNERSHIP_NOTE)
+    st.caption(disp.note()); st.caption(STORE.CMP_SAVED_NOTE)
+    g1,g2=st.columns(2)
+    with g1:
+        st.markdown('<div class="section-header">Annual operating budget</div>',unsafe_allow_html=True); st.plotly_chart(chart_cmp_stack(cd),width="stretch",config={"displayModeBar":False})
+    with g2:
+        st.markdown('<div class="section-header">Net charter revenue vs operating costs</div>',unsafe_allow_html=True); st.plotly_chart(chart_cmp_revenue(cd),width="stretch",config={"displayModeBar":False})
+    g3,g4=st.columns(2)
+    with g3:
+        st.markdown('<div class="section-header">Estimated operating result</div>',unsafe_allow_html=True); st.plotly_chart(chart_cmp_result(cd),width="stretch",config={"displayModeBar":False})
+    with g4:
+        st.markdown('<div class="section-header">Remaining cost per owner flight hour</div>',unsafe_allow_html=True); st.plotly_chart(chart_cmp_owner(cd),width="stretch",config={"displayModeBar":False})
+    meta=[("Comparison","Saved scenarios — each with its own assumptions"),("Comparison reference",sig),("Generated",E.current_date().isoformat()),("Currency",disp.ccy),("Conversion",disp.note()),
+          ("Base version",E.DB_VERSION),("Calculation version",E.ENGINE_VERSION),("Note",STORE.CMP_SAVED_NOTE)]
+    x1,x2=st.columns(2)
+    with x1:
+        if st.button("Generate comparison report (PDF)",key="cmp_pdf_btn",width="stretch",type="primary"):
+            with st.spinner("Building report..."):
+                try:
+                    _brk=_broker_for_pdf()
+                    st.session_state["cmp_pdf"]=dict(data=generate_comparison_pdf(rows,disp,table,cd,names,sig,broker=_brk),sig=sig,tpl=RPT.CMP_TEMPLATE_VERSION,brk=_broker_sig(_brk))
+                    st.success("✓ Report ready!")
+                except Exception as e: st.error(f"PDF error: {e}")
+        _p=st.session_state.get("cmp_pdf")
+        if isinstance(_p,dict):
+            if _p["sig"]!=sig or _p.get("tpl")!=RPT.CMP_TEMPLATE_VERSION:
+                st.warning("⚠ The last comparison PDF is obsolete (selection, assumptions, currency or results changed). Generate it again.")
+            elif _p.get("brk")!=_broker_sig(_broker_for_pdf()):
+                st.warning("⚠ The report branding (broker name / logo) changed since the last PDF. Generate it again.")
+            else:
+                st.download_button("⬇ Download comparison report (PDF)",data=_p["data"],file_name=f"Menkor_comparison_{sig}.pdf",mime="application/pdf",key=f"cmp_pdf_dl_{sig}",width="stretch")
+    with x2:
+        st.download_button("⬇ Download comparison (CSV)",STORE.comparison_csv(rows,disp,meta),file_name=f"Menkor_comparison_{sig}.csv",mime="text/csv",key=f"cmp_csv_{sig}",width="stretch")
 
 def main():
     for k,v in [("database",None),("cost_master",None),("pdf_report",None),
