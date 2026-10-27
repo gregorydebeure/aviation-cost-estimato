@@ -258,6 +258,7 @@ def _get_logo():
 import menkor_engine as E
 import menkor_report as RPT
 import menkor_store as STORE
+import menkor_analytics as GA
 
 
 @st.cache_data(show_spinner=False)
@@ -1160,6 +1161,14 @@ def _render_owner_flight(pr,D):
         if of["status"]=="surplus": c3.metric("Estimated operating surplus",D(of["surplus_usd"]))
     st.caption(of["note"])
 
+def _inject_ga():
+    """GA4 (consent first, one page view per page load). Off with GA_ENABLED=0; the ID can be overridden with GA_MEASUREMENT_ID. Never raises."""
+    try:
+        mid=GA.measurement_id(_secret)
+        if mid: components.html(GA.ga_html(mid),height=0,width=0)
+    except Exception:
+        pass
+
 def _open_compare_aircraft():
     """Button callback of 'Choose your own comparison': only sets the navigation targets (widget keys of My scenarios) and asks for the tab switch.
     It never touches the saved scenarios nor any input of the active scenario."""
@@ -1671,6 +1680,7 @@ def main():
     is_essentiel,is_pro=render_auth()
     _track("visit",{"plan":_plan_key()},once_key="visit")
 
+    _inject_ga()
     # Header
     c1,c2=st.columns([1,6])
     with c1: st.markdown("<div style='font-size:3rem;text-align:center;margin-top:.3rem'>✈</div>",unsafe_allow_html=True)
