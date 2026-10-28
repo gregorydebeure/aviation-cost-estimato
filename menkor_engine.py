@@ -27,8 +27,8 @@ from pathlib import Path
 import pandas as pd
 
 ENGINE_VERSION = "2.3"
-DB_VERSION = "v17-167-models-adj15"
-BASE_FILE = "menkor_base_couts_ajustes_15pct.csv"   # Menkor cost base: selected costs already +15 % (see menkor_* metadata), originals kept in original__* columns
+DB_VERSION = "v17-167-models-published"
+BASE_FILE = "menkor_base_couts_ajustes_15pct.csv"   # file name kept for deployment compatibility. Its +15 % columns are NOT used any more: load_base() reads the original__* published values
 _HERE = Path(__file__).resolve().parent
 # Data files live in data/. If they were uploaded flat next to app.py (GitHub web upload can flatten folders), fall back to that folder.
 DATA_DIR = _HERE / "data" if (_HERE / "data" / BASE_FILE).exists() else (_HERE if (_HERE / BASE_FILE).exists() else _HERE / "data")
@@ -83,9 +83,47 @@ def _read(name: str, **kw) -> pd.DataFrame:
 
 def load_base() -> pd.DataFrame:
     """167 aircraft (144 PDF-documented + 2 web scenarios + 21 historical). aircraft_id is the stable key.
-    Selected cost fields hold the Menkor-adjusted values; the original published values stay in the original__* columns (see original_view)."""
+    The original published values are used as they are (no mark-up)."""
     df = _read(BASE_FILE, dtype={"aircraft_id": "string", "report_contact_phone": "string"}).copy()
     df["aircraft_id"] = df["aircraft_id"].astype(str)
+    # No +15 % mark-up: every field with an original__<field> value takes the ORIGINAL PUBLISHED value (nothing is recalculated).
+    # Only exception: the explicit Menkor recurrent-training price of three Global models (menkor_training_override_usd, a stated price, not a percentage).
+    # It stays, and only the totals that contain that line move by its difference to the published training cost.
+    train = "annual_crew_training_fixed_usd"
+    keep = {}
+    if "menkor_training_override_usd" in df.columns and (ORIGINAL_PREFIX + train) in df.columns:
+        for i, r in df.iterrows():
+            ov, o = _f(r["menkor_training_override_usd"]), _f(r[ORIGINAL_PREFIX + train])
+            if ov is not None and o is not None:
+                keep[i] = ov - o
+    for c in [c for c in df.columns if isinstance(c, str) and c.startswith(ORIGINAL_PREFIX)]:
+        f = c[len(ORIGINAL_PREFIX):]
+        if f in df.columns:
+            df[f] = df[c].where(df[c].notna(), df[f])
+    for i, d in keep.items():
+        df.loc[i, train] = _f(df.loc[i, "menkor_training_override_usd"])
+        for f in ("annual_fixed_cost_usd", "annual_budget_usd", "fixed_excluding_crew_expense_usd"):
+            if _f(df.loc[i, f]) is not None:
+                df.loc[i, f] = _f(df.loc[i, f]) + d
+        h = _f(df.loc[i, "reference_annual_hours"])
+        if h and _f(df.loc[i, "total_cost_per_h_from_annual_usd"]) is not None:
+            df.loc[i, "total_cost_per_h_from_annual_usd"] = _f(df.loc[i, "total_cost_per_h_from_annual_usd"]) + d / h
+        b, v = _f(df.loc[i, "annual_budget_usd"]), _f(df.loc[i, "annual_variable_cost_usd"])
+        if b and v is not None:
+            df.loc[i, "annual_variable_share_report_pct"] = 100.0 * v / b
+            df.loc[i, "annual_fixed_share_report_pct"] = 100.0 - 100.0 * v / b
+    for c, v in (("menkor_adjustment_applied", "False"), ("menkor_adjustment_pct", 0.0),
+                 ("menkor_adjustment_method", "No mark-up: published values."), ("menkor_base_version", "PUBLISHED_VALUES"),
+                 ("menkor_delta_fixed_usd", 0.0), ("menkor_delta_variable_usd", 0.0), ("menkor_delta_budget_usd", 0.0)):
+        if c in df.columns:
+            df[c] = v
+    if "menkor_adjustment_status" in df.columns:
+        m = df["menkor_adjustment_status"].astype(str).str.startswith("adjusted")
+        df.loc[m, "menkor_adjustment_status"] = "not_applied"
+    for i, d in keep.items():                      # the Global training price is the only difference to the published values
+        for c in ("menkor_delta_fixed_usd", "menkor_delta_budget_usd"):
+            if c in df.columns:
+                df.loc[i, c] = d
     df["has_detail"] = df["record_status"] != LEGACY_STATUS
     df["source_kind"] = df["record_status"].map(
         lambda x: "historical" if x == LEGACY_STATUS else ("web_estimate" if str(x).startswith(WEB_PREFIX) else "pdf_acc"))

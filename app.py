@@ -1293,10 +1293,6 @@ def _results_csv(res,disp):
     """CSV export of the current result with its assumptions and exchange rate (same engine result as screen/PDF)."""
     _erd=(res.get("dates") or {}).get("economic_reference_date")
     rows=[("scenario_reference",res["config_hash"]),("model",res["model"]),("mode",res["mode"]),
-          ("menkor_base_adjustment_applied_in_this_result",res["menkor_base"]["applied"]),
-          ("menkor_base_adjustment_pct",res["menkor_base"].get("pct")),("menkor_base_adjustment_status",res["menkor_base"].get("status")),
-          ("menkor_base_text",res["menkor_base"].get("text","")),("original_published_budget_usd",res["menkor_base"].get("published_budget_original")),
-          ("menkor_base_delta_budget_usd",res["menkor_base"].get("delta_total")),
           ("economic_reference_date",str(_erd) if _erd and str(_erd).lower()!="unknown" else "Economic reference date not documented"),
           ("source_currency","USD"),("display_currency",disp.ccy),("usd_to_eur_rate",disp.fx.usd_to_eur if disp.ccy=="EUR" else ""),
           ("rate_date",disp.fx.rate_date if disp.ccy=="EUR" else ""),("hours_flown",res["hours"]["flown"]),
@@ -2247,27 +2243,8 @@ def main():
             _mb=res.get("menkor_base") or {}
             if mode=="reference":
                 st.info("Report reference — original published values. Cost edits apply to Custom simulation only.")
-            elif _mb.get("applied") and not st.session_state.get("auth_is_admin"):
-                st.caption(E.COST_EVOLUTION_NOTE)
-            elif _mb.get("applied"):
-                with st.expander("📋 Menkor cost base — original published values vs base values (read-only)",expanded=False):
-                    st.caption(_mb["text"]+" Your edits replace these values.")
-                    _it=pd.DataFrame([{"Item":i["item"],f"Original published ({disp.ccy})":(round(disp.conv(i["before"])) if i["before"] is not None else None),
-                                       f"Menkor base ({disp.ccy})":(round(disp.conv(i["after"])) if i["after"] is not None else None),
-                                       "Change":(f"{i['pct']:+.1f}%" if i.get("pct") is not None else "n/a"),
-                                       f"Difference ({disp.ccy})":(round(disp.conv(i["delta"])) if i.get("delta") is not None else None),
-                                       "Note":i.get("note","")} for i in _mb["items"]])
-                    st.dataframe(_it,width="stretch",hide_index=True)
-                    if _mb.get("delta_total") is not None:
-                        st.caption(f"Total on the published basis: {D(_mb['published_budget_original'])} original budget {'+' if _mb['delta_total']>=0 else '−'} {D(abs(_mb['delta_total']))} = {D(_mb['published_budget_adjusted'])} (Menkor cost base).")
             else:
                 st.caption(E.COST_EVOLUTION_NOTE)
-            if st.session_state.get("auth_is_admin"):      # internal traceability only: never shown to clients
-                with st.expander("🔎 Data provenance — extracted / calculated / converted / missing"):
-                    if _prov is None: _prov=get_prov()
-                    st.dataframe(_prov_table(row,_prov),width="stretch",hide_index=True)
-                    _d=res.get("dates") or {}
-                    st.caption(f"Dates — economic reference date of the figures: {_d.get('economic_reference_date','unknown')} · consultation date (web page read): {_d.get('consultation_date') or 'n/a'} · database extraction date: {_d.get('extraction_date') or 'n/a'} (processing date, not a price-validity date). Empty means missing — never zero.")
         if res["available"] and (is_essentiel or is_pro): _render_costs_scope(row,res,scn,D,"scope_dash")
         if journey!=J_C:
             st.markdown("<hr>",unsafe_allow_html=True)
