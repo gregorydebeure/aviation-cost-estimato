@@ -50,3 +50,92 @@ Nouveau module `menkor_store.py`, onglet « 🗂 My scenarios » (Essentiel : sc
 - PDF / écrans clients : retrait des mentions « +15 % », « Menkor cost base », « Economic reference date not documented », « currency assumed » et des 5 lignes d'annexe demandées. Nouvelle note : budget dépendant de chaque avion (MSN, programme de maintenance, événements) ; coûts évoluant avec l'inflation, révision périodique, carburant = moyenne de benchmarks régionaux mondiaux. Le tableau +15 % reste visible pour l'admin seulement.
 - Moteur 2.3 (les anciens scénarios sauvegardés sont signalés comme calculés avec une version antérieure). Le « management fee » ne masque plus AOC ni taxes (seulement CAMO/dispatch).
 - Tests : 308 OK (enregistreur, pas un navigateur réel).
+
+- v20.2b : champ « Other maintenance programme » sans infobulle (elle masquait le champ voisin) ; frais de gestion uniquement dans Advanced adjustments ; rappel du carburant (méthode, région, prix, burn) dans Variable costs ; libellés des composants raccourcis (plus de « added once »). Tests : 311 OK.
+
+## v20.3 — comparaison : deux modes + scénarios Cost Master
+- **A. Indicative model comparison** (inchangée dans son principe) : base moyenne propre à chaque modèle, heures et prix carburant communs, consommation propre à chaque avion, aucun ajustement Cost Master. Périmètre vérifié : la comparaison utilise la base de coûts moyens Menkor **une seule fois** (7X : fixes 611 204 USD = valeur stockée, pas de second +15 %) ; l'original publié (588 918 USD) n'est utilisé qu'en mode « Report reference ». L'écran client dit « average costs » sans nommer de source.
+- Règles : champ vide = hypothèse commune ; 0 saisi = vrai zéro (frais fixes conservés, coût/heure « n/a ») ; prix invalide (≤ 0, NaN) = message, jamais de retour silencieux au prix commun. Exceptions par avion dans le panneau fermé « Adjustments ».
+- **B. Compare my saved scenarios** : 2–3 scénarios sauvegardés, chacun avec son avion et ses hypothèses, calculés par le même moteur que Cost Master. « Use each scenario’s assumptions » (défaut) ou « Apply common assumptions » (heures, prix carburant, devise d'affichage ; recalcul sur une copie, sauvegardes intactes, valeurs remplacées listées ; heures charter mises à l'échelle proportionnellement).
+- **Cost Master** : « Save scenario » (nom + nom/MSN facultatif) puis « Add to comparison » (refusé si le scénario a changé depuis la sauvegarde). Le scénario conserve toutes les hypothèses (équipage additionnel, maintenance, management/AOC/CAMO/dispatch/taxes, coûts par atterrissage, dépréciation et intérêts séparés, devises et taux datés, versions base/moteur). Le MSN est stocké dans le JSON du scénario : **aucune migration SQL**.
+- Tableau : heures totales, consommation, prix carburant, fixes, variables, budget d'exploitation, coût par heure, management inclus ou exclu, postes non renseignés ; dépréciation / intérêts / coût économique dans un **tableau séparé**, jamais classés avec le budget d'exploitation ; aucun tri « moins cher ». Phrase « Equal annual hours do not imply equivalent missions or aircraft capabilities. » Export CSV de la comparaison (même lignes que l'écran, versions et référence de comparaison ; la référence change dès qu'une hypothèse change).
+- Version base/moteur différente : le scénario est recalculé et signalé, son budget sauvegardé reste affiché en note, jamais remplacé en base.
+- Tests : 335 OK (dont 24 nouveaux, `tests/test_v20_lot_e.py`).
+- Notes internes admin (« [internal] … ») : petit texte gris en italique (« Admin note · … ») au lieu d'un cadre orange/rouge ; invisibles pour les clients.
+
+## v20.4 — comptes, abonnements, e-mails (voir SETUP_V20_4_FR.md)
+- Pass 48 h supprimé (code, boutons, textes). Market Search reste 300 € ; la ligne « $300 » de la frise d'acquisition devient « € 300 ». Tarifs d'abonnement inchangés (15 € / 50 €).
+- Mots de passe : scrypt salé (`menkor_accounts.py`), conversion silencieuse des anciens SHA-256 à la connexion, verrouillage 15 min après 5 échecs, message identique compte inconnu / mauvais mot de passe, admin en comparaison à temps constant (+ `ADMIN_PASSWORD_HASH` optionnel).
+- RLS activée sur `users` (migration `2026_10_lotD_up.sql`, retour arrière fourni) ; colonnes verrouillage / abonnement ; table `stripe_events` (idempotence).
+- Webhook Stripe (Edge Function Supabase) : abonnement, renouvellement, résiliation ; accès pour active / trialing / past_due ; un price id inconnu ne change jamais le plan ; événements produit anonymes (activé / renouvelé / résilié) sans doublon.
+- E-mails : confirmation d'inscription à l'utilisateur (nécessite `EMAIL_FROM`, domaine vérifié), notification d'inscription au propriétaire (`SIGNUP_NOTIFY_TO` ou `ADMIN_EMAIL`), confirmation d'abonnement (webhook). Rien n'est annoncé comme envoyé sans réponse 2xx du fournisseur.
+- Test corrigé : une date de devis carburant figée (2026-10-20) était devenue périmée ; elle est maintenant relative à la date du jour.
+- Tests : 364 Python OK + 12 Node (logique du webhook). Aucun e-mail réel, aucun appel Stripe/Supabase réel.
+
+## v20.4.1 — secrets robustes (correctif)
+- Les secrets sont lus d'abord dans `st.secrets`, puis directement dans les variables d'environnement Render (`_secret`). Même si le fichier `.streamlit/secrets.toml` est absent, vide ou en cours d'écriture, SUPABASE_URL / SUPABASE_SERVICE_KEY / ADMIN_* restent lisibles.
+- Le pont Render → secrets.toml n'écrit plus le fichier à chaque interaction (seulement s'il change, écriture atomique) et ne dépend plus de la seule variable ADMIN_EMAIL.
+- Les variables EMAIL_FROM, SIGNUP_NOTIFY_TO, ADMIN_PASSWORD_HASH, APP_PUBLIC_URL, EVENTS_ENABLED sont maintenant transmises (elles ne l'étaient pas en v20.4).
+
+## v20.5 — Mot de passe oublié
+- Sidebar (Login) : « Forgot your password? » → e-mail avec lien `?reset=<jeton>`, valable 60 min, usage unique.
+- Jeton signé HMAC (secret optionnel `RESET_SECRET`, sinon dérivé de `SUPABASE_SERVICE_KEY`), lié à l'empreinte du mot de passe actuel : le lien meurt dès qu'il est utilisé ou que le mot de passe change.
+- Réponse identique que le compte existe ou non (pas d'énumération) ; 3 demandes max par session.
+- Le nouveau mot de passe est haché (scrypt) ; compteur d'échecs et verrouillage remis à zéro.
+- Aucune migration SQL. Nécessite `EMAIL_FROM` (domaine vérifié) et `RESEND_API_KEY`.
+- 18 nouveaux tests (384 au total, OK).
+
+## v20.6 — Sensitivity › « Compare with similar aircraft »
+- Remplace « Fleet Comparison » (filtre Manufacturers, tableau, barres par coût/h) par : avion sélectionné + 3 alternatives de la même catégorie, 4 barres max (budget annuel), sélectionné en doré « Selected aircraft ».
+- Catégories : la colonne « Categorie » de la base est le constructeur ; mapping interne explicite par aircraft_id (`SIMILAR_CATEGORIES` dans menkor_engine.py), sans toucher aux données économiques.
+- Sélection déterministe (hash avion + candidat + version de base), indépendante des coûts et du scénario ; constructeurs différents en priorité ; uniquement les fiches de référence détaillées (ni estimations web, ni fiches historiques).
+- Calcul : `E.similar_comparison` → `compute()` avec un scénario propre (heures totales du scénario actif, prix carburant effectif, même taux daté). Aucune modification Cost Master, frais, hypothèse charter ou coût de possession n'est transféré (l'ancien `fleet_comparison`, inchangé et désormais inutilisé, les laissait passer).
+- Bouton « Choose your own comparison » (plan Pro) : positionne My scenarios › Compare aircraft › Indicative model comparison puis clique l'onglet par script (à vérifier en navigateur réel).
+- 22 nouveaux tests (406 au total, OK).
+
+### v20.6.1 — Garde-fou prix carburant
+- Un prix moyen > 10 par litre (devise saisie) est refusé avec un message explicite (séparateur décimal : 1.038 et non 1038) au lieu de produire un budget absurde. Moteur (`fuel_price_implausible`, prix moyen et devis manuel) et comparateur indicatif. 3 tests ajoutés (409 au total).
+
+## v20.7 — « Your flying cost after charter contribution » (Profitability + Quotation)
+- Champ renommé « Owner flight hours / year » (heures propriétaire uniquement ; heures facturées et positionnement inchangés). Libellés associés mis à jour (récapitulatif, seuil, rapport).
+- Calcul unique dans le moteur : `owner_flight_indicator(owner_remaining_cost, heures propriétaire)` → `profit["owner_flight"]`. Le solde existant (= −résultat opérationnel : coûts + frais − recettes nettes, commission une seule fois, positionnement inclus) est réutilisé, rien n'est déduit deux fois.
+- Reste par heure propriétaire = reste annuel ÷ heures propriétaire uniquement ; n/a si 0 h ; couverture exacte / excédent → « Operating costs fully covered » (reste 0, excédent séparé, jamais de coût horaire négatif).
+- Même encadré dans Profitability (sous le résultat opérationnel) et Quotation (sous les indicateurs) ; tarif réellement saisi, indépendant du curseur de marge ; devise et taux daté du scénario. Sans tarif / base de tarif : pas d'encadré, invitation à compléter.
+- 17 nouveaux tests (426 au total, OK).
+
+## v20.8 — Google Analytics 4 (G-YN0BMF7S3M)
+- Nouveau `menkor_analytics.py` + appel `_inject_ga()` dans `app.py`. Consentement d'abord (rien chargé avant « Accept »), une page_view par chargement de page (garde côté navigateur, insensible aux re-runs Streamlit), URL sans paramètres, aucune donnée personnelle ; `GA_ENABLED=0` / `GA_MEASUREMENT_ID` en variables facultatives.
+- 7 tests Python + `tests/ga_browser_check.py` (vrai Chromium, Google simulé, 15 contrôles). Procédure : `GA4_VERIFICATION_FR.md`.
+
+## v20.9 — My scenarios → Compare aircraft → Compare my saved scenarios
+- **No common assumptions in this mode**: the "Assumptions" selector and "Apply common assumptions" are gone; the old session keys (`cmp_harm`, `cmp_s_*`) are purged at each render, so no hidden value can alter a result. Each scenario is computed from its own saved assumptions with the common engine; saved scenarios are never modified. Common assumptions remain only in *Indicative model comparison*.
+- **Scenario versions**: a scenario saved with another base/calculation version is NOT compared silently. The screen explains it and offers "Recalculate for this comparison" (copy in memory, original untouched).
+- **Screen**: scenarios in columns, indicators in rows (main assumptions, results, ownership/economic block only when entered; missing = "n/a"). Owner indicator = the existing engine `owner_flight` (no new formula). Four charts (stacked budget, net revenue vs costs, operating result with zero axis, remaining cost per owner hour — never negative, 0 owner hours = n/a, covered = 0 + surplus shown separately). One stable colour per scenario.
+- **PDF "Generate comparison report (PDF)"**: page 1 title/names/key results, charts, then assumptions, all results, exclusions. Same table and chart data as the screen and CSV (`menkor_store.comparison_table`, `comparison_chart_data`). Broker branding, generation date and comparison reference kept. The PDF is invalidated when selection, assumptions, currency/rate, results or branding change.
+- **Currency**: one currency (USD, or EUR with a dated rate); without a valid dated rate everything stays in USD. Converted once.
+- Files: `app.py`, `menkor_store.py`, `menkor_report.py`, `tests/test_v20_lot_e.py` (2 tests updated), `tests/test_v20_lot_k.py` (20 new tests). Not tested in a real browser.
+
+## v20.10 — +15 % mark-up removed, "Data provenance" panel removed
+- `menkor_engine.load_base()` now reads the **original published values** (`original__*` columns) for every line and total: no +15 % anywhere (Custom simulation = published base; Report reference unchanged). No data file is modified: the CSV is untouched, the switch is in the loader.
+- Only difference kept: the stated Menkor recurrent-training price (120 000 USD) of Global 5000 / Global Express / Global Express XRS; only the totals that contain that line move by its difference to the published training cost.
+- `DB_VERSION` = `v17-167-models-published`: scenarios saved earlier are flagged "other base version" and need the explicit recalculation (originals untouched).
+- Screen: the "Menkor cost base — original vs base values" table and the admin "Data provenance" panel are gone; the results CSV no longer carries the `menkor_base_*` adjustment rows.
+- Tests rewritten for the new behaviour (no mark-up). 454 tests OK.
+
+## v20.11 — My scenarios → Saved scenarios: folders first
+- The broker first sees his **folders as tiles** (name, number of aircraft) plus "No folder"; a click opens the folder, which lists its **aircraft** (model, scenario name, date, annual budget, operating result). "Open" shows the saved data of one aircraft (saved results, saved assumptions, recalculation on demand).
+- Rename / move / delete / duplicate moved behind "Open" (and "Folder options" for the folder itself). The separate "Client folders" section is gone: create, rename, delete folders directly in the browser.
+- Tick 2–3 aircraft of a folder → "Compare the N selected scenarios" opens Compare aircraft → Compare my saved scenarios.
+- Saving: the Folder field offers the existing folders and "＋ New folder…"; it defaults to the folder being browsed / last used.
+- Essentiel plan and Pro without folder: flat list with "Open". No data migration (the `folders` table already exists).
+- Not included: "Open" displays the saved data; it does not reload the values into the Cost Master inputs. Not tested in a real browser. 467 tests OK.
+
+## v21 — Nouvelle base Menkor (118 avions, 12 novembre 2026)
+Aucun déploiement ni migration en production. La base précédente (167 avions, majoration de 15 %) est remplacée par le classeur `Menkor_118_avions_carburant_1274_2026-11-12.xlsx`.
+- **Données** : `data/menkor_base.csv` (118 avions, produit par `tools/build_base_from_xlsx.py`). Totaux recalculés avec les formules du classeur ; écart > 1 USD = arrêt. Aucune valeur inventée : total impossible → champs manquants listés, aucun calcul. Un classeur sans valeurs calculées est refusé.
+- **Instructions du 12/11/2026** : ACJ319neo et ACJ320neo retirés ; carburant unique 482,41 US cents / US gallon = 1,274 USD/L pour tous les avions (carburant annuel = heures × consommation × prix) ; Global 6000 et 7500 à 350 h, avec formation, autres frais fixes, déplacements, catering et redevances égaux à ceux du BBJ2 (hypothèse client, détail dans l'onglet `Modifications_2026-11-12`).
+- **116 avions complets, 2 incomplets** : Challenger 601-1A (presque aucune donnée) et Hawker 400XPR (assurance, maintenance cellule). Signalés « · base incomplete » dans le sélecteur.
+- **Moteur 2.4 / base `v23-menkor-118-2026-11-12`** : composante fixe optionnelle « Maintenance programme » ; ligne « autres » masquée si absente ; plus de majoration. Falcon 7X : fixe 612 713 / variable 2 526 846 / budget 3 139 559 USD.
+- **Scénarios sauvegardés** : version de base changée → avertissement et « Recalculate » explicite ; avions retirés signalés.
+- `tools/audit_adjustment.py` supprimé. Tests : 467 OK (faux Streamlit, pas un navigateur réel).
+- Reconstruire : `python tools/build_base_from_xlsx.py data/source/<classeur>.xlsx data/menkor_base.csv`.
