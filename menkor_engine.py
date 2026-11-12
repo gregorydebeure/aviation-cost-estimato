@@ -26,9 +26,9 @@ from pathlib import Path
 
 import pandas as pd
 
-ENGINE_VERSION = "2.3"
-DB_VERSION = "v17-167-models-published"
-BASE_FILE = "menkor_base_couts_ajustes_15pct.csv"   # file name kept for deployment compatibility. Its +15 % columns are NOT used any more: load_base() reads the original__* published values
+ENGINE_VERSION = "2.4"
+DB_VERSION = "v23-menkor-118-2026-11-12"
+BASE_FILE = "menkor_base.csv"   # Menkor base of 12 Nov 2026 (118 aircraft), built from the Menkor workbook by tools/build_base_from_xlsx.py
 _HERE = Path(__file__).resolve().parent
 # Data files live in data/. If they were uploaded flat next to app.py (GitHub web upload can flatten folders), fall back to that folder.
 DATA_DIR = _HERE / "data" if (_HERE / "data" / BASE_FILE).exists() else (_HERE if (_HERE / BASE_FILE).exists() else _HERE / "data")
@@ -52,7 +52,10 @@ FIXED_COMPONENTS = {
     "hangar":        ("annual_hangar_fixed_usd",        "Hangar"),
     "insurance":     ("annual_insurance_fixed_usd",     "Insurance"),
     "aircraft_misc": ("annual_aircraft_misc_fixed_usd", "Aircraft miscellaneous"),
+    "maint_program": ("annual_maintenance_program_fixed_usd", "Maintenance programme (fixed fee)"),
 }
+# components that exist only for some aircraft (a fixed programme fee): absent = no such fee, NOT a missing value to report
+OPTIONAL_FIXED = {"maint_program"}
 # non-fuel variable components, editable per flight hour: key -> (hourly field, annual field or None, label)
 VAR_COMPONENTS = {
     "airframe_maint":   ("hourly_airframe_maintenance_usd",  "annual_airframe_maintenance_usd",  "Airframe maintenance"),
@@ -65,6 +68,7 @@ VAR_COMPONENTS = {
 
 STATUS_TEXT = {
     "pdf_extracted_review_required": "Menkor reference database — extracted record, review required (see checks).",
+    "menkor_base_2026-11-12": "Menkor base of 12 Nov 2026 (118 aircraft). Crew = Menkor salary scales; maintenance = hourly rates; insurance where entered.",
     "source_values_review_required": "Some printed values are invalid placeholders (left empty) — review required.",
     "model_name_and_source_values_review_required": "Model name differs between file name and report title, and some printed values are invalid — review required.",
     "model_name_review_required": "Model name differs between file name and report title — review required.",
@@ -82,55 +86,18 @@ def _read(name: str, **kw) -> pd.DataFrame:
 
 
 def load_base() -> pd.DataFrame:
-    """167 aircraft (144 PDF-documented + 2 web scenarios + 21 historical). aircraft_id is the stable key.
-    The original published values are used as they are (no mark-up)."""
+    """Menkor base of 12 Nov 2026 (118 aircraft). aircraft_id is the stable key. Values are used exactly as stored: no mark-up, no adjustment.
+    Totals are empty when a component is missing (see menkor_missing_fields): the engine then refuses to calculate instead of inventing a value."""
     df = _read(BASE_FILE, dtype={"aircraft_id": "string", "report_contact_phone": "string"}).copy()
     df["aircraft_id"] = df["aircraft_id"].astype(str)
-    # No +15 % mark-up: every field with an original__<field> value takes the ORIGINAL PUBLISHED value (nothing is recalculated).
-    # Only exception: the explicit Menkor recurrent-training price of three Global models (menkor_training_override_usd, a stated price, not a percentage).
-    # It stays, and only the totals that contain that line move by its difference to the published training cost.
-    train = "annual_crew_training_fixed_usd"
-    keep = {}
-    if "menkor_training_override_usd" in df.columns and (ORIGINAL_PREFIX + train) in df.columns:
-        for i, r in df.iterrows():
-            ov, o = _f(r["menkor_training_override_usd"]), _f(r[ORIGINAL_PREFIX + train])
-            if ov is not None and o is not None:
-                keep[i] = ov - o
-    for c in [c for c in df.columns if isinstance(c, str) and c.startswith(ORIGINAL_PREFIX)]:
-        f = c[len(ORIGINAL_PREFIX):]
-        if f in df.columns:
-            df[f] = df[c].where(df[c].notna(), df[f])
-    for i, d in keep.items():
-        df.loc[i, train] = _f(df.loc[i, "menkor_training_override_usd"])
-        for f in ("annual_fixed_cost_usd", "annual_budget_usd", "fixed_excluding_crew_expense_usd"):
-            if _f(df.loc[i, f]) is not None:
-                df.loc[i, f] = _f(df.loc[i, f]) + d
-        h = _f(df.loc[i, "reference_annual_hours"])
-        if h and _f(df.loc[i, "total_cost_per_h_from_annual_usd"]) is not None:
-            df.loc[i, "total_cost_per_h_from_annual_usd"] = _f(df.loc[i, "total_cost_per_h_from_annual_usd"]) + d / h
-        b, v = _f(df.loc[i, "annual_budget_usd"]), _f(df.loc[i, "annual_variable_cost_usd"])
-        if b and v is not None:
-            df.loc[i, "annual_variable_share_report_pct"] = 100.0 * v / b
-            df.loc[i, "annual_fixed_share_report_pct"] = 100.0 - 100.0 * v / b
-    for c, v in (("menkor_adjustment_applied", "False"), ("menkor_adjustment_pct", 0.0),
-                 ("menkor_adjustment_method", "No mark-up: published values."), ("menkor_base_version", "PUBLISHED_VALUES"),
-                 ("menkor_delta_fixed_usd", 0.0), ("menkor_delta_variable_usd", 0.0), ("menkor_delta_budget_usd", 0.0)):
-        if c in df.columns:
-            df[c] = v
-    if "menkor_adjustment_status" in df.columns:
-        m = df["menkor_adjustment_status"].astype(str).str.startswith("adjusted")
-        df.loc[m, "menkor_adjustment_status"] = "not_applied"
-    for i, d in keep.items():                      # the Global training price is the only difference to the published values
-        for c in ("menkor_delta_fixed_usd", "menkor_delta_budget_usd"):
-            if c in df.columns:
-                df.loc[i, c] = d
     df["has_detail"] = df["record_status"] != LEGACY_STATUS
     df["source_kind"] = df["record_status"].map(
         lambda x: "historical" if x == LEGACY_STATUS else ("web_estimate" if str(x).startswith(WEB_PREFIX) else "pdf_acc"))
     # Compatibility columns used by the Streamlit UI
     df["Modele"] = df["model"]
-    df["Categorie"] = df["manufacturer"].fillna("Historical sheet (manufacturer n/a)")
-    return df.sort_values(["has_detail", "model"], ascending=[False, True], kind="stable").reset_index(drop=True)
+    df["Categorie"] = df["manufacturer"].fillna("Manufacturer n/a")
+    df["data_complete"] = df["annual_budget_usd"].notna()
+    return df.sort_values(["data_complete", "model"], ascending=[False, True], kind="stable").reset_index(drop=True)
 
 
 def load_checks() -> pd.DataFrame:
@@ -301,7 +268,12 @@ def var_components_for(row) -> dict:
     """Editable non-fuel variable components whose scope is KNOWN for this source.
     Reference record: airframe, engine/APU, crew travel, catering, airport fees, other.
     Web estimate: only the combined maintenance line (airframe/engine split unknown) — nothing is invented."""
-    return dict(WEB_VAR_COMPONENTS) if source_kind(row) == "web_estimate" else dict(VAR_COMPONENTS)
+    if source_kind(row) == "web_estimate":
+        return dict(WEB_VAR_COMPONENTS)
+    d = dict(VAR_COMPONENTS)
+    if num(row, VAR_COMPONENTS["other"][0]) is None:       # the Menkor base has no 'other variable' line: it is simply not a line of this record (not reported as missing, not zero)
+        d.pop("other")
+    return d
 
 
 def fixed_label(row, key) -> str:
@@ -800,9 +772,12 @@ def _compute_core(row, scn: Scenario, today: date | None = None) -> dict:
             "annual_variable_cost_usd": var_src, "annual_fuel_cost_usd": fuel_cost_src}
     miss = [k for k, v in need.items() if v is None]
     if miss or not ref_h or ref_h <= 0:
+        _gap = row.get("menkor_missing_fields")
+        _gap = None if _gap is None or (not isinstance(_gap, str) and pd.isna(_gap)) else str(_gap)
         _flag(fl, "error", "missing_core",
-              "Core source values missing or invalid (" + ", ".join(miss or ["reference_annual_hours"]) +
-              ") — no calculation performed; nothing is replaced by zero.")
+              ("The Menkor base is not complete for this aircraft — missing: " + _gap + ". " if _gap else
+               "Core source values missing or invalid (" + ", ".join(miss or ["reference_annual_hours"]) + "). ")
+              + "No calculation performed; nothing is replaced by zero.")
         return res
 
     # ── fixed components (source) ─────────────────────────────────────────────
@@ -1376,6 +1351,22 @@ def _profit(scn: Scenario, res: dict, fixed_total: float, var_h: float, H: float
     return out
 
 
+def apu_note_en(note):
+    """English wording of the APU note of the Menkor base (the workbook is in French). Unknown wording -> a neutral sentence, never the raw French text."""
+    if note is None or (not isinstance(note, str) and pd.isna(note)) or not str(note).strip():
+        return None
+    t = str(note).strip()
+    m = re.search(r"(\d[\d\s.,]*)\s*USD/h\s*APU", t)
+    if m and "hors budget" in t:
+        amt = re.sub(r"\s", "", m.group(1))
+        return f"APU: priced separately at {amt} USD per APU hour and NOT included in the budget (no APU / flight-hour ratio entered)."
+    if "non isol" in t:
+        return "APU: not isolated in the maintenance lines — whether it is covered by them is to be confirmed."
+    if "global" in t.lower():
+        return "APU: covered by the global maintenance package — no APU supplement added."
+    return "APU: treatment to be confirmed."
+
+
 def costs_scope(row, res: dict, scn: Scenario) -> dict:
     """'Costs included & limitations': included lines, lines not entered, lines whose inclusion is NOT CONFIRMED (never shown as zero, never claimed missing just
     because a line is absent: it may sit inside another line or a package), known exclusions and limits. Same text on screen, PDF and CSV."""
@@ -1392,7 +1383,7 @@ def costs_scope(row, res: dict, scn: Scenario) -> dict:
             included.append(dict(label="Cost linked to billed supplements (entered by the user)", category="Other", annual_usd=pr["supplements_cost"], hourly_usd=None))
     if not res.get("historical"):
         for k, (f, _l) in FIXED_COMPONENTS.items():
-            if num(row, f) is None:
+            if num(row, f) is None and k not in OPTIONAL_FIXED:
                 not_confirmed.append(f"{fixed_label(row, k)}: not available in this source — not confirmed (it may be included in another line; not treated as zero).")
         for k, (hf, af, label) in var_components_for(row).items():
             if num(row, hf) is None:
@@ -1402,6 +1393,12 @@ def costs_scope(row, res: dict, scn: Scenario) -> dict:
     # management fees are not in the reference costs; CAMO / dispatch / per-landing costs only appear when the user enters them (no repetitive warning otherwise)
     if ((res.get("management") or {}).get("management") or {}).get("status") != "added":
         exclusions.append(MANAGEMENT_EXCLUDED + " " + MANAGEMENT_NOTE)
+    _apu = apu_note_en(row.get("menkor_apu_note"))
+    if _apu:
+        not_confirmed.append(_apu)
+    _ms = row.get("menkor_maintenance_status")
+    if isinstance(_ms, str) and "valider" in _ms.lower():
+        not_confirmed.append("Maintenance rates: " + _ms.strip() + " (Menkor budget assumption, not confirmed with a maintenance provider).")
     not_confirmed += [
         "Maintenance events outside the hourly and annual maintenance lines (calendar and major inspections): whether they are covered is not confirmed — it depends on the aircraft's maintenance status.",
         "Landing gear overhaul and engine / APU overhaul or restoration events: coverage not confirmed.",
@@ -1504,35 +1501,35 @@ def fleet_comparison(base: pd.DataFrame, scn: Scenario) -> pd.DataFrame:
 # The base "Categorie" column is the MANUFACTURER, not a size class: the size class is an explicit internal mapping by aircraft_id.
 # It is a comparison grouping only (no economic value is derived from it). An aircraft absent from this mapping has "no category".
 SIMILAR_CATEGORIES = {
-    "Very light jets": ["cirrus_vision_sf50", "eclipse_500", "eclipse_550", "embraer_phenom_100", "embraer_phenom_100ev", "cessna_citation_mustang",
-                        "honda_hondajet", "flaris_lar01"],
+    "Very light jets": ["cirrus_vision_sf50", "embraer_phenom_100", "embraer_phenom_100ev", "cessna_citation_mustang",
+                        "honda_hondajet"],
     "Light jets": ["cessna_citation_jet", "cessna_citation_cj1", "cessna_citation_cj2", "cessna_citation_cj2_plus", "cessna_citation_cj3",
-                   "cessna_citation_cj3_plus", "cessna_citation_cj4", "cessna_citation_i_isp", "cessna_citation_bravo", "cessna_citation_encore",
+                   "cessna_citation_cj3_plus", "cessna_citation_cj4", "cessna_citation_bravo", "cessna_citation_encore",
                    "cessna_citation_v_ultra", "embraer_phenom_300", "beechcraft_beechjet_400", "beechcraft_beechjet_400a", "beechcraft_premier_i",
-                   "beechcraft_premier_ia", "hawker_400xp", "hawker_400xpr", "nextant_400xt", "nextant_400xti", "mitsubishi_diamond_1a",
-                   "pilatus_pc_24", "dassault_falcon_10", "learjet_31", "learjet_31a", "learjet_31aer", "learjet_35a", "learjet_36a", "learjet_40",
+                   "beechcraft_premier_ia", "hawker_400xp", "hawker_400xpr", 
+                   "pilatus_pc_24", "learjet_31", "learjet_31a", "learjet_31aer", "learjet_35a", "learjet_36a", "learjet_40",
                    "learjet_40xr", "learjet_45", "learjet_45xr", "learjet_70", "learjet_75"],
     "Midsize jets": ["cessna_citation_excel", "cessna_citation_xls", "cessna_citation_xls_plus", "cessna_citation_iii", "cessna_citation_latitude",
                      "learjet_55", "learjet_55c", "learjet_60", "learjet_60xr", "hawker_700", "hawker_750", "hawker_800a", "hawker_800sp",
                      "hawker_800xp", "hawker_800xpi", "hawker_850xp", "hawker_900xp", "hawker_1000", "dassault_falcon_20c", "dassault_falcon_20c_5",
-                     "dassault_falcon_20f", "dassault_falcon_20f_5", "dassault_falcon_200", "iai_astra_sp", "iai_westwind_1", "iai_westwind_2",
-                     "iai_1123_commodore_jet", "gulfstream_g100", "gulfstream_g150", "sabreliner_sabre_65", "embraer_legacy_450",
+                     "dassault_falcon_20f", "dassault_falcon_20f_5", 
+                     "gulfstream_g100", "gulfstream_g150", "embraer_legacy_450",
                      "embraer_legacy_500", "embraer_praetor_500"],
     "Super midsize jets": ["cessna_citation_sovereign", "cessna_citation_x", "challenger_300", "challenger_350", "gulfstream_g200", "gulfstream_g280",
                            "hawker_4000", "embraer_praetor_600"],
-    "Large-cabin jets": ["challenger_600", "challenger_601_3a", "challenger_604", "challenger_605", "challenger_650", "dassault_falcon_50",
+    "Large-cabin jets": ["challenger_600", "challenger_601_1a", "challenger_601_3a", "challenger_604", "challenger_605", "challenger_650", "dassault_falcon_50",
                          "dassault_falcon_50_40", "dassault_falcon_50ex", "dassault_falcon_900", "dassault_falcon_900b", "dassault_falcon_900c",
                          "dassault_falcon_900dx", "dassault_falcon_900ex", "dassault_falcon_900ex_easy", "dassault_falcon_900lx",
                          "dassault_falcon_2000", "dassault_falcon_2000dx", "dassault_falcon_2000ex_easy", "dassault_falcon_2000lx",
                          "dassault_falcon_2000lxs", "dassault_falcon_2000s", "gulfstream_g300", "gulfstream_g350", "gulfstream_g400",
-                         "gulfstream_g450", "gulfstream_ii", "gulfstream_ii_b", "gulfstream_ii_b_hushkit", "gulfstream_ii_hushkit",
-                         "gulfstream_ii_sp", "gulfstream_ii_sp_hushkit", "gulfstream_iii", "gulfstream_iv", "gulfstream_ivsp",
-                         "embraer_legacy_600", "embraer_legacy_650", "lockheed_jetstar_ii_731"],
+                         "gulfstream_g450", 
+                         "gulfstream_iv", "gulfstream_ivsp",
+                         "embraer_legacy_600", "embraer_legacy_650"],
     "Ultra-long-range jets": ["bombardier_global_5000", "bombardier_global_6000", "bombardier_global_7500", "bombardier_global_express",
                               "bombardier_global_express_xrs", "dassault_falcon_7x", "dassault_falcon_8x", "gulfstream_g500",
                               "gulfstream_g500_2003_2012_model", "gulfstream_g550", "gulfstream_g650", "gulfstream_g650er", "gulfstream_v"],
-    "VIP airliners": ["boeing_bbj", "boeing_bbj2", "boeing_bbj3", "embraer_lineage_1000", "embraer_lineage_1000e", "embraer_erj_170lr", "fokker_100er"],
-    "Regional jets / shuttles": ["embraer_erj_145er", "challenger_850", "challenger_850_cs", "challenger_870c", "dornier_328", "dornier_328_business"],
+    "VIP airliners": ["boeing_bbj2", "embraer_lineage_1000", "embraer_lineage_1000e"],
+    "Regional jets / shuttles": ["challenger_850", "challenger_850_cs", "challenger_870c"],
 }
 SIMILAR_MAX_ALTERNATIVES = 3
 _SIMILAR_CAT_OF = {aid: cat for cat, ids in SIMILAR_CATEGORIES.items() for aid in ids}
@@ -1548,7 +1545,7 @@ def _similar_rank(selected_id, cand_id):
 
 
 def similar_alternatives(base: pd.DataFrame, selected_id):
-    """Up to 3 same-category alternatives (reference records with a detailed cost base only). Deterministic, cost-blind, no duplicate, never the
+    """Up to 3 same-category alternatives (aircraft whose Menkor base is complete only). Deterministic, cost-blind, no duplicate, never the
     selected aircraft, never another category. Pass 1 takes one model per manufacturer (the selected aircraft's manufacturer last);
     pass 2 only completes with remaining models of the same category. Returns (category|None, [aircraft_id])."""
     cat = similar_category(selected_id)
@@ -1557,6 +1554,7 @@ def similar_alternatives(base: pd.DataFrame, selected_id):
     sel = base[base["aircraft_id"] == selected_id]
     sel_mf = str(sel.iloc[0]["manufacturer"]) if len(sel) else ""
     pool = base[base["has_detail"] & (base["source_kind"] == "pdf_acc") & (base["aircraft_id"] != selected_id)
+                & (base["annual_budget_usd"].notna() if "annual_budget_usd" in base.columns else True)
                 & base["aircraft_id"].isin(SIMILAR_CATEGORIES[cat])].drop_duplicates("aircraft_id")
     cands = sorted(((_similar_rank(selected_id, r["aircraft_id"]), r["aircraft_id"], str(r["manufacturer"])) for _, r in pool.iterrows()))
     chosen, used_mf = [], set()
@@ -1582,9 +1580,10 @@ def similar_comparison(base: pd.DataFrame, scn: Scenario, res: dict) -> dict:
     if not len(sel):
         out["status"] = "unavailable"; out["messages"].append("Aircraft not found in the base."); return out
     srow = sel.iloc[0]
-    if not bool(srow["has_detail"]) or str(srow["source_kind"]) != "pdf_acc":
+    _complete = ("annual_budget_usd" not in srow.index) or pd.notna(srow["annual_budget_usd"])
+    if not bool(srow["has_detail"]) or str(srow["source_kind"]) != "pdf_acc" or not _complete:
         out["status"] = "no_detail"
-        out["messages"].append("This comparison is available for aircraft with a detailed Menkor reference record only."); return out
+        out["messages"].append("This comparison is available for aircraft whose Menkor base is complete only."); return out
     cat, alts = similar_alternatives(base, aid)
     out["category"] = cat
     if cat is None:
@@ -1616,7 +1615,7 @@ KEY_FIELDS = ["reference_annual_hours", "reference_fuel_price_usd_per_l", "annua
               "annual_variable_cost_usd", "annual_fuel_cost_usd", "annual_fuel_volume_l", "fuel_burn_l_per_h",
               "annual_crew_expense_fixed_usd", "annual_crew_training_fixed_usd", "annual_hangar_fixed_usd",
               "annual_insurance_fixed_usd", "annual_aircraft_misc_fixed_usd", "annual_airframe_maintenance_usd",
-              "annual_engine_apu_maintenance_usd", "annual_crew_misc_variable_usd", "seats_full_range_nm",
+              "annual_engine_apu_maintenance_usd", "seats_full_range_nm",
               "ferry_range_nm", "normal_cruise_kmh", "block_speed_kmh", "average_preowned_price_usd",
               "maximum_takeoff_weight_kg"]
 
@@ -1639,6 +1638,7 @@ STATUS_TEXT_CLIENT = {
     "source_values_review_required": "Some values of this record are invalid and left empty — review required.",
     "model_name_and_source_values_review_required": "Some values of this record are invalid and left empty — review required.",
     "model_name_review_required": "This record is under review.",
+    "menkor_base_2026-11-12": None,             # Menkor base of 12 Nov 2026: standard record, no alert
     "web_estimate_partial_breakdown_review_required": "Partial web estimate: the cost breakdown differs from the full Menkor reference records.",
     "source_conflict_review_required": "Two reference reports differ for this model — the primary one is used; verify before commercial use.",
     LEGACY_STATUS: "Historical sheet — detailed fields still to be reconstructed.",
