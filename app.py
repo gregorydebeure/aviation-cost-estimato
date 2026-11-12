@@ -201,6 +201,11 @@ input:disabled, textarea:disabled{background-color:var(--field-off)!important;co
 [data-testid="stWidgetLabel"]:has(+ * input:disabled) *{color:var(--text-off)!important;cursor:not-allowed;}
 [data-testid="stSlider"] [data-testid="stSliderThumbValue"], [data-testid="stSlider"] [data-testid="stTickBarMin"], [data-testid="stSlider"] [data-testid="stTickBarMax"]{color:var(--amber)!important;}
 
+/* Folder tiles (My scenarios) */
+[class*="st-key-tile_"] button{min-height:86px;text-align:left;justify-content:flex-start;padding:.7rem 1rem;border-radius:8px;}
+[class*="st-key-tile_"] button p{white-space:pre-line;text-align:left;line-height:1.45;}
+[class*="st-key-tile_new"] button{border-style:dashed!important;opacity:.9;}
+
 /* Expanders: Cost Master fixed / variable bands, provenance, estimate notes... */
 [data-testid="stExpander"]{background-color:var(--card)!important;border:1px solid var(--mid)!important;border-radius:6px;}
 [data-testid="stExpander"] details, [data-testid="stExpander"] details > summary{background-color:var(--card)!important;color:var(--light)!important;border-radius:6px;}
@@ -1385,117 +1390,211 @@ def _broker_sig(b):
 def _fmt_date(iso):
     return str(iso or "")[:10]
 
+NO_FOLDER="__none__"; NEW_FOLDER_OPT="＋ New folder…"
+
+def _ms_set(**kv):
+    """Button callback: navigation state only (never touches saved data)."""
+    for k,v in kv.items(): st.session_state[k]=v
+
+def _ms_compare_selected(ids):
+    """Callback of 'Compare selected': preselects the saved scenarios and opens My scenarios → Compare aircraft → Compare my saved scenarios."""
+    st.session_state["cmp_saved_pick"]=list(ids)[:3]
+    st.session_state["cmp_mode"]="Compare my saved scenarios"
+    st.session_state["ms_section"]="Compare aircraft"
+
+def _scn_summary(it):
+    snap=(it.get("payload") or {}).get("snapshot") or {}
+    stored=STORE.scenario_from_dict((it.get("payload") or {}).get("scenario"))
+    return snap,stored,E.Display(stored.fx).money
+
+def _render_save_block(owner,res,scn,folders,is_pro,default_folder):
+    names=[f["name"] for f in folders]
+    fid=None; new_name=""; pick="No folder"
+    c1,c2=st.columns([3,2])
+    with c1: nm=st.text_input("Scenario name",key="sv_name",max_chars=STORE.MAX_NAME)
+    with c2:
+        if is_pro:
+            opts=["No folder"]+names+[NEW_FOLDER_OPT]
+            # no widget key: the default follows the folder being browsed / last used, and the broker's own choice is kept while that default does not change
+            pick=st.selectbox("Folder",opts,index=opts.index(default_folder) if default_folder in opts else 0)
+            if pick==NEW_FOLDER_OPT: new_name=st.text_input("New folder name",key="sv_newfolder",max_chars=STORE.MAX_NAME)
+            else: fid=next((f["id"] for f in folders if f["name"]==pick),None)
+    if st.button("Save current scenario",key="sv_btn"):
+        ok=True
+        if pick==NEW_FOLDER_OPT:
+            ok,out=STORE.create_folder(_sb_rest,owner,new_name)
+            if ok: fid=out
+            else: st.error(out)
+        if ok:
+            ok,out=STORE.save_scenario(_sb_rest,owner,nm,scn,res,folder_id=fid)
+            if ok:
+                label=new_name.strip() if pick==NEW_FOLDER_OPT else pick
+                st.success(f"Scenario “{STORE._clean_name(nm)}” saved"+(f" in the folder “{label}”." if fid else "."))
+                st.session_state["sv_last_folder"]=label if fid else "No folder"
+                _track("scenario_saved",{"plan":_plan_key()},once_key=f"saved:{out}")
+            else: st.error(out)
+
+def _render_scn_row(it,fname,selectable):
+    sid=it["id"]; snap,stored,Dd=_scn_summary(it)
+    cols=st.columns([0.45,3.2,1.5,1.5,1.0] if selectable else [3.2,1.5,1.5,1.0])
+    i=0; picked=False
+    if selectable:
+        with cols[0]: picked=st.checkbox("Select",key=f"pk_{sid}",label_visibility="collapsed")
+        i=1
+    with cols[i]:
+        st.markdown(f"**{it['name']}**")
+        st.caption(f"{snap.get('model') or it['aircraft_id']} · saved {_fmt_date(it.get('created_at'))}")
+    cols[i+1].metric("Annual budget",Dd(snap["budget_usd"]) if snap.get("budget_usd") is not None else "n/a")
+    cols[i+2].metric("Operating result",Dd(snap["operating_result_usd"]) if snap.get("operating_result_usd") is not None else "n/a")
+    with cols[i+3]: st.button("Open",key=f"op_{sid}",on_click=_ms_set,kwargs=dict(ms_open=sid),width="stretch")
+    return picked
+
+def _render_scn_list(items,fname,folders,selectable):
+    if not items: st.caption("No saved scenario yet."); return
+    picks=[_render_scn_row(it,fname,selectable) for it in items]
+    if selectable:
+        ids=[it["id"] for it,p in zip(items,picks) if p]
+        if len(ids)>3: st.warning("Select at most 3 scenarios to compare.")
+        elif len(ids)>=2: st.button(f"Compare the {len(ids)} selected scenarios",key="ms_cmp_sel",on_click=_ms_compare_selected,args=(ids,))
+        else: st.caption("Tick 2 or 3 aircraft to compare them side by side.")
+
+def _render_scn_detail(df,owner,it,folders,fname,is_pro):
+    sid=it["id"]; snap,stored,Dd=_scn_summary(it); vs=STORE.version_status(it)
+    st.button("← Back",key="ms_back",on_click=_ms_set,kwargs=dict(ms_open=None))
+    st.markdown(f"### {it['name']}")
+    st.caption(f"{snap.get('model') or it['aircraft_id']} · saved {_fmt_date(it.get('created_at'))}"+(f" · folder: {fname.get(it.get('folder_id'),'—')}" if is_pro else ""))
+    if vs["changed"]:
+        st.warning("The Menkor database or the calculation engine has changed since this scenario was saved. The figures below are the figures AS SAVED; "
+                   "use “Recalculate with the current base” to see the current result.")
+    m1,m2,m3=st.columns(3)
+    m1.metric("Annual budget (as saved)",Dd(snap["budget_usd"]) if snap.get("budget_usd") is not None else "not computed")
+    m2.metric("Cost / flown hour (as saved)",Dd(snap["cost_per_h_usd"]) if snap.get("cost_per_h_usd") is not None else "not computed")
+    m3.metric("Operating result (as saved)",Dd(snap["operating_result_usd"]) if snap.get("operating_result_usd") is not None else "not computed")
+    facts=[]
+    if stored.billed_hours or stored.positioning_hours or stored.other_hours:
+        facts.append(f"Hours: {stored.billed_hours:,.0f} billed · {stored.positioning_hours:,.0f} positioning · {stored.other_hours:,.0f} owner")
+    if stored.charter_rate: facts.append(f"Charter rate: {stored.charter_rate:,.0f} {stored.charter_rate_ccy}/h"+(f" · commission {stored.commission_pct:g}%" if stored.commission_pct else ""))
+    if stored.fuel.price: facts.append(f"Fuel price: {stored.fuel.price:,.3f} {stored.fuel.currency}/L")
+    if facts: st.markdown("**Saved assumptions** — "+" · ".join(facts))
+    ue=(it.get("payload") or {}).get("user_entered") or []
+    st.caption("Entered by you: "+(", ".join(x.replace("_"," ") for x in ue) if ue else "nothing (reference data only)")+". Everything else comes from the Menkor reference data.")
+    a1,a2=st.columns(2)
+    with a1:
+        if st.button("Recalculate with the current base",key=f"rc_{sid}",width="stretch"): st.session_state[f"_rc_{sid}"]=True
+    with a2:
+        if st.button("Duplicate",key=f"dp_{sid}",width="stretch"):
+            ok,out=STORE.duplicate_scenario(_sb_rest,owner,sid); _say(ok,"Duplicated.",out)
+    if st.session_state.get(f"_rc_{sid}"):
+        sub=df[df["aircraft_id"]==it["aircraft_id"]]
+        if not len(sub): st.error("This aircraft is no longer in the database.")
+        else:
+            nres=E.compute(sub.iloc[0],stored)
+            st.markdown(f"Recalculated now with base **{E.DB_VERSION}** / engine **{E.ENGINE_VERSION}** (saved with **{vs['saved_db']}** / **{vs['saved_engine']}**):")
+            nb=nres.get("budget_usd"); ob=snap.get("budget_usd")
+            if nb is None: st.info("The current base cannot compute this scenario (missing data). Saved figures are unchanged.")
+            else:
+                st.metric("Annual budget — recalculated",Dd(nb),delta=(Dd(nb-ob) if ob is not None else None),delta_color="off")
+                if ob is not None and abs(nb-ob)<0.5: st.caption("Same result as saved.")
+                else: st.caption("The recalculated result differs from the saved one: the saved figures are NOT updated.")
+    with st.expander("Rename · move · delete"):
+        r1,r2=st.columns([3,1])
+        with r1: rn=st.text_input("Rename",value=it["name"],key=f"rn_{sid}",label_visibility="collapsed",max_chars=STORE.MAX_NAME)
+        with r2:
+            if st.button("Rename",key=f"rnb_{sid}",width="stretch"): _say(STORE.rename_scenario(_sb_rest,owner,sid,rn),"Renamed.","Could not rename.")
+        if is_pro and folders:
+            cur=fname.get(it.get("folder_id"),"No folder"); opts=["No folder"]+[f["name"] for f in folders]
+            mv=st.selectbox("Move to folder",opts,index=opts.index(cur) if cur in opts else 0,key=f"mv_{sid}")
+            if st.button("Move",key=f"mvb_{sid}"):
+                tgt=next((f["id"] for f in folders if f["name"]==mv),None)
+                _say(STORE.move_scenario(_sb_rest,owner,sid,tgt),"Moved.","Could not move.")
+        cf=st.checkbox("I confirm I want to delete this scenario (it can be restored from “Recently deleted”)",key=f"dc_{sid}")
+        if st.button("Delete",key=f"dl_{sid}"):
+            if not cf: st.warning("Tick the confirmation first.")
+            else:
+                if STORE.delete_scenario(_sb_rest,owner,sid,True): st.session_state["ms_open"]=None; st.success("Deleted. You can restore it below.")
+                else: st.error("Could not delete.")
+
+def _render_folder_tiles(owner,folders,all_items):
+    st.markdown('<div class="section-header">Your folders</div>',unsafe_allow_html=True)
+    counts={}
+    for it in all_items: counts[it.get("folder_id")]=counts.get(it.get("folder_id"),0)+1
+    tiles=[(f["id"],f"📁  {f['name']}\n{counts.get(f['id'],0)} aircraft",f"tile_{f['id']}") for f in folders]
+    if counts.get(None): tiles.append((NO_FOLDER,f"🗂  No folder\n{counts[None]} aircraft","tile_nofolder"))
+    for r in range(0,len(tiles),3):
+        cols=st.columns(3)
+        for c,(fid,label,key) in zip(cols,tiles[r:r+3]):
+            with c: st.button(label,key=key,on_click=_ms_set,kwargs=dict(ms_folder=fid),width="stretch")
+    nf=st.text_input("New folder",key="fd_new",max_chars=STORE.MAX_NAME,placeholder="Folder name (client, owner, project…)")
+    if st.button("＋ Create folder",key="fd_create"):
+        ok,out=STORE.create_folder(_sb_rest,owner,nf); _say(ok,"Folder created.",out)
+
+def _render_folder_view(owner,folders,fname,fid,all_items):
+    label="No folder" if fid==NO_FOLDER else fname.get(fid,"Folder")
+    st.button("← All folders",key="ms_allf",on_click=_ms_set,kwargs=dict(ms_folder=None))
+    items=[it for it in all_items if (it.get("folder_id") is None if fid==NO_FOLDER else it.get("folder_id")==fid)]
+    st.markdown(f"### 📁 {label}")
+    st.caption(f"{len(items)} aircraft")
+    _render_scn_list(items,fname,folders,len(items)>=2)
+    if fid!=NO_FOLDER:
+        with st.expander("Folder options"):
+            f1,f2=st.columns([3,1])
+            with f1: rn=st.text_input("Folder name",value=label,key=f"fr_{fid}",label_visibility="collapsed",max_chars=STORE.MAX_NAME)
+            with f2:
+                if st.button("Rename folder",key=f"frb_{fid}",width="stretch"): _say(STORE.rename_folder(_sb_rest,owner,fid,rn),"Renamed.","Could not rename.")
+            cf=st.checkbox("Confirm deletion (the aircraft are kept and move to “No folder”)",key=f"fdc_{fid}")
+            if st.button("Delete folder",key=f"fdb_{fid}"):
+                if not cf: st.warning("Tick the confirmation first.")
+                elif STORE.delete_folder(_sb_rest,owner,fid,True): st.session_state["ms_folder"]=None; st.success("Folder deleted; its scenarios are kept.")
+                else: st.error("Could not delete.")
+
+def _render_saved_scenarios(df,owner,res,scn,folders,fname,is_pro):
+    all_items=STORE.list_scenarios(_sb_rest,owner)
+    open_id=st.session_state.get("ms_open"); cur=st.session_state.get("ms_folder")
+    if cur not in (None,NO_FOLDER) and cur not in fname: cur=st.session_state["ms_folder"]=None        # deleted / unknown folder: back to the root
+    byid={it["id"]:it for it in all_items}
+    if open_id and open_id not in byid: open_id=st.session_state["ms_open"]=None
+    with st.expander("💾 Save the current scenario",expanded=not all_items):
+        st.caption(f"Current scenario: {res['model']} · scenario reference {res['config_hash']}. Everything you entered is saved with the base version, the calculation version and the date.")
+        default=fname.get(cur) if cur not in (None,NO_FOLDER) else st.session_state.get("sv_last_folder","No folder")
+        _render_save_block(owner,res,scn,folders,is_pro,default)
+    if open_id:
+        _render_scn_detail(df,owner,byid[open_id],folders,fname,is_pro)
+    elif is_pro and folders and cur is None:
+        _render_folder_tiles(owner,folders,all_items)
+    elif is_pro and folders:
+        _render_folder_view(owner,folders,fname,cur,all_items)
+    else:
+        st.markdown('<div class="section-header">Your scenarios</div>',unsafe_allow_html=True)
+        _render_scn_list(all_items,fname,folders,is_pro and len(all_items)>=2)
+        if is_pro:
+            nf=st.text_input("New folder",key="fd_new",max_chars=STORE.MAX_NAME,placeholder="Create your first folder (client, owner, project…)")
+            if st.button("＋ Create folder",key="fd_create"):
+                ok,out=STORE.create_folder(_sb_rest,owner,nf); _say(ok,"Folder created.",out)
+    gone=STORE.list_scenarios(_sb_rest,owner,deleted=True)
+    if gone:
+        with st.expander(f"Recently deleted ({len(gone)})"):
+            for g in gone:
+                g1,g2=st.columns([4,1])
+                g1.markdown(f"{g['name']} — {g['aircraft_id']}")
+                with g2:
+                    if st.button("Restore",key=f"rs_{g['id']}"):
+                        _say(STORE.restore_scenario(_sb_rest,owner,g["id"]),"Restored.","Could not restore.")
+
 def _render_my_scenarios(df,aid,scn,res,disp,is_pro):
     """Personal scenarios (Essentiel+), comparison / folders / report branding (Pro). Owner = the authenticated session e-mail, never a typed value."""
     owner=st.session_state.get("auth_email")
     if not owner: st.info("Log in to save and find your scenarios."); return
     if not _storage_configured():
         st.warning("Scenario storage is not configured on this installation (SUPABASE_URL / SUPABASE_SERVICE_KEY). Nothing can be saved for now."); return
-    sections=["Saved scenarios"]+(["Compare aircraft","Client folders","Report branding"] if is_pro else [])
+    sections=["Saved scenarios"]+(["Compare aircraft","Report branding"] if is_pro else [])
     sec=st.radio("Section",sections,horizontal=True,key="ms_section",label_visibility="collapsed")
     if sec not in sections: sec="Saved scenarios"      # e.g. the plan changed since the last run: never expose a Pro section
     folders=STORE.list_folders(_sb_rest,owner) if is_pro else []
     fname={f["id"]:f["name"] for f in folders}
     if sec=="Saved scenarios":
-        st.markdown('<div class="section-header">Save the current scenario</div>',unsafe_allow_html=True)
-        st.caption(f"Current scenario: {res['model']} · scenario reference {res['config_hash']}. Everything you entered is saved with the base version, the calculation version and the date.")
-        c1,c2=st.columns([3,2])
-        with c1: nm=st.text_input("Scenario name",key="sv_name",max_chars=STORE.MAX_NAME)
-        fid=None
-        with c2:
-            if is_pro and folders:
-                pick=st.selectbox("Folder",["No folder"]+[f["name"] for f in folders],key="sv_folder")
-                fid=next((f["id"] for f in folders if f["name"]==pick),None)
-        if st.button("Save current scenario",key="sv_btn"):
-            ok,out=STORE.save_scenario(_sb_rest,owner,nm,scn,res,folder_id=fid)
-            if ok:
-                st.success(f"Scenario “{STORE._clean_name(nm)}” saved.")
-                _track("scenario_saved",{"plan":_plan_key()},once_key=f"saved:{out}")
-            else: st.error(out)
-        st.markdown('<div class="section-header">Your scenarios</div>',unsafe_allow_html=True)
-        flt=None
-        if is_pro and folders:
-            fp=st.selectbox("Show",["All folders"]+[f["name"] for f in folders],key="sv_filter")
-            flt=next((f["id"] for f in folders if f["name"]==fp),None)
-        items=STORE.list_scenarios(_sb_rest,owner,folder_id=flt)
-        if not items: st.caption("No saved scenario yet.")
-        for it in items:
-            sid=it["id"]; snap=(it.get("payload") or {}).get("snapshot") or {}; vs=STORE.version_status(it)
-            stored=STORE.scenario_from_dict((it.get("payload") or {}).get("scenario"))
-            Dd=E.Display(stored.fx).money
-            with st.container():
-                st.markdown(f"**{it['name']}** — {snap.get('model') or it['aircraft_id']} · saved {_fmt_date(it.get('created_at'))}"+(f" · folder: {fname.get(it.get('folder_id'),'—')}" if is_pro else ""))
-                if vs["changed"]:
-                    st.warning("The Menkor database or the calculation engine has changed since this scenario was saved. The figures below are the figures AS SAVED; "
-                               "use “Recalculate with the current base” to see the current result.")
-                m1,m2,m3=st.columns(3)
-                m1.metric("Annual budget (as saved)",Dd(snap["budget_usd"]) if snap.get("budget_usd") is not None else "not computed")
-                m2.metric("Cost / flown hour (as saved)",Dd(snap["cost_per_h_usd"]) if snap.get("cost_per_h_usd") is not None else "not computed")
-                m3.metric("Operating result (as saved)",Dd(snap["operating_result_usd"]) if snap.get("operating_result_usd") is not None else "not computed")
-                ue=(it.get("payload") or {}).get("user_entered") or []
-                st.caption("Entered by you: "+(", ".join(x.replace("_"," ") for x in ue) if ue else "nothing (reference data only)")+". Everything else comes from the Menkor reference data.")
-                a1,a2,a3,a4=st.columns(4)
-                with a1:
-                    if st.button("Recalculate with the current base",key=f"rc_{sid}"): st.session_state[f"_rc_{sid}"]=True
-                with a2:
-                    if st.button("Duplicate",key=f"dp_{sid}"):
-                        ok,out=STORE.duplicate_scenario(_sb_rest,owner,sid); _say(ok,"Duplicated.",out)
-                with a3: rn=st.text_input("Rename",value=it["name"],key=f"rn_{sid}",label_visibility="collapsed",max_chars=STORE.MAX_NAME)
-                with a4:
-                    if st.button("Rename",key=f"rnb_{sid}"):
-                        _say(STORE.rename_scenario(_sb_rest,owner,sid,rn),"Renamed.","Could not rename.")
-                if is_pro and folders:
-                    mv=st.selectbox("Move to folder",["No folder"]+[f["name"] for f in folders],key=f"mv_{sid}")
-                    if st.button("Move",key=f"mvb_{sid}"):
-                        tgt=next((f["id"] for f in folders if f["name"]==mv),None)
-                        _say(STORE.move_scenario(_sb_rest,owner,sid,tgt),"Moved.","Could not move.")
-                cf=st.checkbox("I confirm I want to delete this scenario (it can be restored from “Recently deleted”)",key=f"dc_{sid}")
-                if st.button("Delete",key=f"dl_{sid}"):
-                    if not cf: st.warning("Tick the confirmation first.")
-                    else:
-                        _say(STORE.delete_scenario(_sb_rest,owner,sid,True),"Deleted. You can restore it below.","Could not delete.")
-                if st.session_state.get(f"_rc_{sid}"):
-                    sub=df[df["aircraft_id"]==it["aircraft_id"]]
-                    if not len(sub): st.error("This aircraft is no longer in the database.")
-                    else:
-                        nres=E.compute(sub.iloc[0],stored)
-                        st.markdown(f"Recalculated now with base **{E.DB_VERSION}** / engine **{E.ENGINE_VERSION}** (saved with **{vs['saved_db']}** / **{vs['saved_engine']}**):")
-                        nb=nres.get("budget_usd"); ob=snap.get("budget_usd")
-                        if nb is None: st.info("The current base cannot compute this scenario (missing data). Saved figures are unchanged.")
-                        else:
-                            st.metric("Annual budget — recalculated",Dd(nb),delta=(Dd(nb-ob) if ob is not None else None),delta_color="off")
-                            if ob is not None and abs(nb-ob)<0.5: st.caption("Same result as saved.")
-                            else: st.caption("The recalculated result differs from the saved one: the saved figures are NOT updated.")
-                st.markdown("<hr>",unsafe_allow_html=True)
-        gone=STORE.list_scenarios(_sb_rest,owner,deleted=True)
-        if gone:
-            with st.expander(f"Recently deleted ({len(gone)})"):
-                for g in gone:
-                    g1,g2=st.columns([4,1])
-                    g1.markdown(f"{g['name']} — {g['aircraft_id']}")
-                    with g2:
-                        if st.button("Restore",key=f"rs_{g['id']}"):
-                            _say(STORE.restore_scenario(_sb_rest,owner,g["id"]),"Restored.","Could not restore.")
+        _render_saved_scenarios(df,owner,res,scn,folders,fname,is_pro)
     elif sec=="Compare aircraft":
         _render_compare(df)
-    elif sec=="Client folders":
-        st.markdown('<div class="section-header">Client folders</div>',unsafe_allow_html=True)
-        st.caption("Folders are private to your account. Deleting a folder keeps its scenarios (they become “No folder”).")
-        nf=st.text_input("New folder name",key="fd_new",max_chars=STORE.MAX_NAME)
-        if st.button("Create folder",key="fd_create"):
-            ok,out=STORE.create_folder(_sb_rest,owner,nf); _say(ok,"Folder created.",out)
-        for f in folders:
-            n=len(STORE.list_scenarios(_sb_rest,owner,folder_id=f["id"]))
-            f1,f2,f3=st.columns([3,2,2])
-            with f1: rn=st.text_input(f"{f['name']} ({n} scenario{'s' if n!=1 else ''})",value=f["name"],key=f"fr_{f['id']}")
-            with f2:
-                if st.button("Rename folder",key=f"frb_{f['id']}"): _say(STORE.rename_folder(_sb_rest,owner,f["id"],rn),"Renamed.","Could not rename.")
-            with f3:
-                cf=st.checkbox("Confirm deletion",key=f"fdc_{f['id']}")
-                if st.button("Delete folder",key=f"fdb_{f['id']}"):
-                    if not cf: st.warning("Tick the confirmation first.")
-                    else: _say(STORE.delete_folder(_sb_rest,owner,f["id"],True),"Folder deleted; its scenarios are kept.","Could not delete.")
-        if not folders: st.caption("No folder yet.")
     else:
         st.markdown('<div class="section-header">Report branding</div>',unsafe_allow_html=True)
         st.caption("Your name and logo appear on the PDF report you generate. The Menkor mention, the assumptions, the limits and the exclusions are always kept.")
