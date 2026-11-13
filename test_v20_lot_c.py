@@ -195,8 +195,10 @@ class TestCompare(unittest.TestCase):
     def test_missing_input_is_not_zero(self):
         out = S.compare_aircraft(self.df, self.ids, {**self.common, "fuel_price": None})
         for o in out: self.assertFalse(o["available"]); self.assertIn("fuel price", o["missing"]); self.assertNotIn("budget_usd", o)
-        out = S.compare_aircraft(self.df, self.ids, {**self.common, "flown_hours": 0})
+        out = S.compare_aircraft(self.df, self.ids, {**self.common, "flown_hours": None})
         self.assertTrue(all("annual flown hours" in o["missing"] for o in out))
+        out = S.compare_aircraft(self.df, self.ids, {**self.common, "flown_hours": 0})          # v20.3: a typed 0 is a real zero (fixed costs stay, cost/h n/a)
+        self.assertTrue(all(o["available"] and o["cost_per_h_usd"] is None and o["fixed_annual_usd"] > 0 for o in out))
 
     def test_count_bounds_and_unknown_model(self):
         with self.assertRaises(ValueError): S.compare_aircraft(self.df, self.ids[:1], self.common)
@@ -258,7 +260,7 @@ def ui(ov, rest, email="a@x.co", plan=(True, True), configured=True, state=None)
     state["auth_email"] = email
     st = F.install({"__real_defaults__": True, **FUEL, **ov}, state)
     import app
-    app.render_auth = lambda: plan; app._process_day_pass_return = lambda: None; app._get_logo = lambda: ""
+    app.render_auth = lambda: plan; app._get_logo = lambda: ""
     app._sb_rest = rest; app._storage_configured = lambda: configured
     try: app.main()
     except F.StopApp: pass
@@ -290,18 +292,20 @@ class TestScenarioUI(unittest.TestCase):
 
     def test_listing_shows_saved_figures_and_version_warning_without_silent_recompute(self):
         r = FakeRest(); ui({"Scenario name": "Plan A", "Save current scenario": True}, r)
-        r.t["scenarios"][0]["db_version"] = "older-base"
-        st, _, _ = ui({}, r); t = text(st)
+        r.t["scenarios"][0]["db_version"] = "older-base"; sid = r.t["scenarios"][0]["id"]
+        st, _, _ = ui({}, r); self.assertIn("Plan A", " ".join(str(a[0]) for k, a, kw in st.log if k == "markdown"))   # the list shows the aircraft; details open with “Open”
+        self.assertTrue([1 for kind, lab, key, d in st.widgets if kind == "button" and lab == "Open"])
+        st, _, _ = ui({}, r, state={"ms_open": sid}); t = text(st)
         self.assertIn("Plan A", t); self.assertIn("AS SAVED", t); self.assertIn("Entered by you", t)
         self.assertNotIn("Same result as saved", t)           # no recalculation unless asked
-        st, _, _ = ui({}, r, state={"_rc_" + r.t["scenarios"][0]["id"]: True}); t = text(st)
+        st, _, _ = ui({}, r, state={"ms_open": sid, "_rc_" + sid: True}); t = text(st)
         self.assertIn("Recalculated now with base", t); self.assertIn("older-base", t)
 
     def test_delete_needs_confirmation_then_restore(self):
         r = FakeRest(); ui({"Scenario name": "Plan A", "Save current scenario": True}, r)
         sid = r.t["scenarios"][0]["id"]
-        ui({f"Delete": True}, r); self.assertIsNone(r.t["scenarios"][0]["deleted_at"])
-        ui({"I confirm I want to delete this scenario (it can be restored from “Recently deleted”)": True, "Delete": True}, r)
+        ui({f"Delete": True}, r, state={"ms_open": sid}); self.assertIsNone(r.t["scenarios"][0]["deleted_at"])
+        ui({"I confirm I want to delete this scenario (it can be restored from “Recently deleted”)": True, "Delete": True}, r, state={"ms_open": sid})
         self.assertIsNotNone(r.t["scenarios"][0]["deleted_at"])
         st, _, _ = ui({"Restore": True}, r); self.assertIsNone(r.t["scenarios"][0]["deleted_at"])
 
@@ -317,11 +321,11 @@ class TestScenarioUI(unittest.TestCase):
         st, _, _ = ui({"Section": "Compare aircraft", "Aircraft (2 or 3)": ["Dassault Falcon 7X", "Dassault Falcon 8X"]}, r)
         t = text(st); self.assertNotIn("Select 2 or 3 aircraft", t)
         dfs = [a[0] for k, a, kw in st.log if k == "dataframe"]
-        self.assertTrue(dfs); self.assertTrue(all(row == "not computed" for row in dfs[-1]["Annual budget"]))
+        self.assertTrue(dfs); self.assertTrue(all(row == "not computed" for row in dfs[-1]["Annual operating budget"]))
         st, _, _ = ui({"Section": "Compare aircraft", "Aircraft (2 or 3)": ["Dassault Falcon 7X", "Dassault Falcon 8X"],
                        "Common annual flown hours": 300.0, "Common fuel price (per litre)": 1.0}, r)
         d = [a[0] for k, a, kw in st.log if k == "dataframe"][-1]
-        self.assertTrue(all(str(x).startswith("$") for x in d["Annual budget"]))
+        self.assertTrue(all(str(x).startswith("$") for x in d["Annual operating budget"]))
 
     def test_broker_signature_changes_with_name_or_logo(self):
         _, app, _ = ui({}, FakeRest())
@@ -338,7 +342,7 @@ class TestScenarioUI(unittest.TestCase):
         pdf = R.build_report_pdf(res, E.Display(E.Fx()), [], None, broker=dict(name="Alpha & Co <Aviation>", logo=b.getvalue()))
         with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as f: f.write(pdf)
         out = subprocess.run(["pdftotext", "-layout", f.name, "-"], capture_output=True, text=True).stdout; os.unlink(f.name)
-        self.assertIn("Prepared by Alpha & Co <Aviation>", out); self.assertIn("Menkor Aviation GBL", out); self.assertIn("Main exclusions", out); self.assertIn("Essential assumptions", out)
+        self.assertIn("Prepared by Alpha & Co <Aviation>", out); self.assertIn("Menkor Aviation GBL", out); self.assertIn("Exclusions and limits", out); self.assertIn("Essential assumptions", out)
         plain = R.build_report_pdf(res, E.Display(E.Fx()), [], None)
         self.assertNotIn(b"Prepared by", plain.replace(b"\n", b"")[:0] or b"")
 
@@ -364,7 +368,7 @@ class TestEventsWiring(unittest.TestCase):
             state = {"auth_email": "a@x.co"}
             st = F.install({"__real_defaults__": True, **FUEL, "Request my aircraft budget": True, "Name": "A", "Email": "a@b.co", "Aircraft status": "Already owned", "Send request": True}, state)
             import app
-            app.render_auth = lambda: (True, True); app._process_day_pass_return = lambda: None; app._get_logo = lambda: ""
+            app.render_auth = lambda: (True, True); app._get_logo = lambda: ""
             app._sb_rest = r; app._storage_configured = lambda: True; patch_ok(app)
             try: app.main()
             except F.StopApp: pass
@@ -383,7 +387,7 @@ class TestBenchmarkAtFirstLevel(unittest.TestCase):
         for mm in [k for k in sys.modules if k == "app" or k.startswith("streamlit") or k.startswith("plotly")]: del sys.modules[mm]
         st = F.install({"__real_defaults__": True, **self.OV}, {"auth_email": "a@x.co"})
         import app
-        app.render_auth = lambda: (True, True); app._process_day_pass_return = lambda: None; app._get_logo = lambda: ""
+        app.render_auth = lambda: (True, True); app._get_logo = lambda: ""
         app._sb_rest = FakeRest(); app._storage_configured = lambda: False
         try: app.main()
         except F.StopApp: pass
@@ -402,11 +406,26 @@ class TestBenchmarkAtFirstLevel(unittest.TestCase):
         for mm in [k for k in sys.modules if k == "app" or k.startswith("streamlit") or k.startswith("plotly")]: del sys.modules[mm]
         st = F.install({"__real_defaults__": True, "Aircraft model": "dassault_falcon_7x"}, {"auth_email": "a@x.co"})
         import app
-        app.render_auth = lambda: (True, True); app._process_day_pass_return = lambda: None; app._get_logo = lambda: ""
+        app.render_auth = lambda: (True, True); app._get_logo = lambda: ""
         app._sb_rest = FakeRest(); app._storage_configured = lambda: False
         try: app.main()
         except F.StopApp: pass
         self.assertIn(app.FUEL_PRICE_MISSING, text(st))
+
+
+
+
+class TestNoMagicExpressions(unittest.TestCase):
+    """Streamlit prints the value of a bare expression statement (e.g. `a if c else b`): the Delete button once dumped a DeltaGenerator on screen."""
+    def test_app_has_no_bare_expression_statements(self):
+        from magic_scan import magic_expressions
+        self.assertEqual(magic_expressions(open(os.path.join(ROOT, "app.py"), encoding="utf-8").read()), [])
+
+    def test_delete_rename_restore_still_work_through_the_screen(self):
+        r = FakeRest(); ui({"Scenario name": "P", "Save current scenario": True}, r)
+        ui({"I confirm I want to delete this scenario (it can be restored from “Recently deleted”)": True, "Delete": True}, r, state={"ms_open": r.t["scenarios"][0]["id"]})
+        self.assertIsNotNone(r.t["scenarios"][0]["deleted_at"])
+        st, _, _ = ui({"Restore": True}, r); self.assertIn("Restored.", text(st))
 
 
 if __name__ == "__main__": unittest.main()

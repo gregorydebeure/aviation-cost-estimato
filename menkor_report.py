@@ -356,14 +356,7 @@ def build_report_pdf(res: dict, disp, alerts: list, logo_bytes: bytes | None = N
                             ("TOPPADDING", (0, 0), (-1, -1), 2.5), ("BOTTOMPADDING", (0, 0), (-1, -1), 2.5), ("LEFTPADDING", (0, 0), (-1, -1), 7), ("RIGHTPADDING", (0, 0), (-1, -1), 7)]))
     story += [Spacer(1, 4 * mm), wt]
     if sc and sc.get("exclusions"):
-        ex = [t for t in sc["exclusions"]][:6]
-        rows_x = ([[Paragraph("<b>Main exclusions</b>", sW)]] + [[Paragraph("• " + escape(t), sW)] for t in ex]
-                  + ([[Paragraph(escape(f"{len(sc['exclusions']) - 6} further exclusion(s) and the full list of costs included are in the annex."), sSm)]] if len(sc["exclusions"]) > 6 else [])
-                  + [[Paragraph(escape(THRESHOLD_NOTE), sSm)]])
-        xt = Table(rows_x, colWidths=[174 * mm])
-        xt.setStyle(TableStyle([("FONTNAME", (0, 0), (-1, -1), FR), ("BOX", (0, 0), (-1, -1), 0.8, HexColor("#C5CCD9")), ("BACKGROUND", (0, 0), (-1, -1), LIGHT),
-                                ("TOPPADDING", (0, 0), (-1, -1), 2.5), ("BOTTOMPADDING", (0, 0), (-1, -1), 2.5), ("LEFTPADDING", (0, 0), (-1, -1), 7), ("RIGHTPADDING", (0, 0), (-1, -1), 7)]))
-        story += [Spacer(1, 3 * mm), xt]
+        story += [Spacer(1, 3 * mm), Paragraph(escape("Exclusions and limits (depreciation, interest, taxes, crew scope…): see the annex. " + THRESHOLD_NOTE), sSm)]
 
     # ── Page 2: breakdown, available scenarios, link to the custom study ────────────
     if res["available"]:
@@ -457,7 +450,12 @@ def build_report_pdf(res: dict, disp, alerts: list, logo_bytes: bytes | None = N
     if ws:
         A.append(["Partial web estimate", "USD and US gallon assumed — to confirm; no validity date is documented."])
     A.append(["Cost evolution and fuel", COST_EVOLUTION_NOTE])
-    A.append(["Crew basis", CREW_BASIS_NOTE])
+    _pcr = res.get("pilot_crew") or {}
+    if _pcr.get("entered"):
+        A.append(["Crew basis", "Pilot crew entered by the user, replacing the reference two-pilot crew expense: " + " · ".join(f"{v['count']:g} {v['label'].lower()} × {M(v['salary_usd'])} per year" for v in _pcr["items"].values())
+                  + f" = {M(_pcr['total_usd'])} per year" + (f" (reference: {M(_pcr['reference_usd'])})" if _pcr.get("reference_usd") is not None else "") + ". No flight engineer or cabin crew unless entered."])
+    else:
+        A.append(["Crew basis", CREW_BASIS_NOTE])
     A.append(["Currency", disp.note()])
     sc = res["scenario"]
     if is_ref:

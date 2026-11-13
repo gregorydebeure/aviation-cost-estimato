@@ -557,6 +557,8 @@ class Scenario:
     cycle_cost_ccy: str = "USD"
     avg_flight_hours: float | None = None
     # costs NOT in the report, entered by the user (None / empty = not entered, nothing added)
+    # pilot crew (replaces the reference crew expense of two pilots): 'pilot_in_command' | 'first_officer' -> dict(count, salary (annual, per person, employer cost), ccy). Both must be entered; empty = reference crew expense kept.
+    pilot_crew: dict = field(default_factory=dict)
     additional_crew: dict = field(default_factory=dict)   # 'flight_engineer' | 'flight_attendant' -> dict(count, salary (annual, per person), ccy)
     other_maint_program_h: float | None = None            # other maintenance programme, per flown hour
     other_maint_program_ccy: str = "USD"
@@ -907,10 +909,30 @@ def _compute_core(row, scn: Scenario, today: date | None = None) -> dict:
     # fixed costs retained
     fixed_delta = 0.0
     fx_rows = []
+    # pilot crew entered by the user: REPLACES the reference crew expense (never added on top). Both pilots are required: a partial entry is an error, not a guess.
+    pilot_state, pilot_total = {}, None
+    _pc = scn.pilot_crew or {}
+    _entered = {k: ((_pc.get(k) or {}).get("count"), (_pc.get(k) or {}).get("salary")) for k in PILOT_ITEMS}
+    if any((n or 0) > 0 or (sal or 0) > 0 for n, sal in _entered.values()):
+        _bad = [PILOT_ITEMS[k] for k, (n, sal) in _entered.items() if not n or not sal or n <= 0 or sal <= 0]
+        if _bad:
+            _flag(fl, "error", "pilot_crew_incomplete", "Pilot crew: enter a number and an annual salary for " + " and ".join(_bad) + " (or clear the pilot crew to keep the reference crew expense).")
+            return res
+        pilot_total = 0.0
+        for k, lab in PILOT_ITEMS.items():
+            n, sal = _entered[k]
+            _u, _err = amount_to_usd(sal, (_pc.get(k) or {}).get("ccy", "USD"), scn.fx)
+            if _err:
+                _flag(fl, "error", "pilot_amount", f"{lab}: {_err}")
+                return res
+            pilot_state[k] = dict(label=lab, count=float(n), salary_usd=_u, amount_usd=_u * float(n)); pilot_total += _u * float(n)
+    res["pilot_crew"] = dict(entered=pilot_total is not None, items=pilot_state, total_usd=pilot_total, reference_usd=comp_src.get("crew_expense"))
     for k, (f, _lab) in FIXED_COMPONENTS.items():
         label = fixed_label(row, k)
         src = comp_src[k]
         new = scn.fixed_overrides.get(k)
+        if k == "crew_expense" and pilot_total is not None and src is not None:
+            new = pilot_total                      # pilot crew entered: replaces the reference two-pilot expense (takes precedence over a plain edit of that line)
         if new is not None and src is None:
             _flag(fl, "warn", "override_ignored", f"{label}: source value missing — override ignored.")
             new = None
@@ -972,7 +994,7 @@ def _compute_core(row, scn: Scenario, today: date | None = None) -> dict:
                        if scn.fuel.price_source == "average" else None,
                        benchmark=res.get("fuel_benchmark") if scn.fuel.price_source == "benchmark" else None)
     res["fixed"] = dict(source_total=fixed_src, override_delta=fixed_delta, extra=scn.extra_fixed or 0.0,
-                        annual_total=fixed_total, includes="crew expense (two pilots), crew training, hangar, insurance, aircraft misc")
+                        annual_total=fixed_total, includes="crew expense (" + ("pilot crew entered by the user" if pilot_total is not None else "two pilots") + "), crew training, hangar, insurance, aircraft misc")
     res["variable"] = dict(nonfuel_per_h=nonfuel_h, fuel_per_h=fuel_h, per_h=var_h, annual=var_annual,
                            source_nonfuel_per_h=(var_src - fuel_cost_src) / ref_h,
                            includes="fuel, airframe maintenance, engine/APU maintenance, crew misc (travel, catering, airport fees, other)")
@@ -1185,9 +1207,10 @@ OWNERSHIP_NOTE = ("Economic ownership costs: economic depreciation (not tax amor
                   "Taxes are excluded. This is an economic result, not cash flow.")
 MANAGEMENT_ITEMS = {"management": "Management fee", "aoc": "AOC management fee", "camo": "CAMO", "dispatch": "Dispatch / flight support",
                     "gov_taxes": "Government taxes and charges"}
+PILOT_ITEMS = {"pilot_in_command": "Pilot in command", "first_officer": "First officer"}
 CREW_ITEMS = {"flight_engineer": "Flight engineer", "flight_attendant": "Flight attendant"}
-CREW_BASIS_NOTE = ("The reference crew expense is based on two pilots only: no flight engineer and no cabin crew (flight attendants) are included. "
-                   "Add them in Cost Master if your operation needs them.")
+CREW_BASIS_NOTE = ("The reference crew expense is based on one pilot in command and one first officer only: no flight engineer and no cabin crew (flight attendants) are included. "
+                   "Change the pilot crew or add other crew in Cost Master if your operation needs it.")
 MANAGEMENT_STATUS = {"none": "Not entered", "added": "Added once to the fixed costs", "covered": "Covered by the management fee entered (not added again)"}
 MANAGEMENT_NOTE = "Management fees are not included in the reference costs."
 MANAGEMENT_EXCLUDED = "Management fees excluded."
@@ -1431,12 +1454,14 @@ def costs_scope(row, res: dict, scn: Scenario) -> dict:
     else:
         exclusions.append("Economic depreciation and loan interest: not entered — not included.")
     _crew = res.get("crew_additional") or {}
+    _pcr = res.get("pilot_crew") or {}
+    _base = ("the pilot crew entered by the user (" + " + ".join(f"{v['count']:g} {v['label'].lower()}" for v in _pcr["items"].values()) + ")") if _pcr.get("entered") else "two pilots"
     if not any(v.get("status") == "added" for v in _crew.values()):
-        exclusions.append("Crew: the reference expense covers two pilots only — no flight engineer or cabin crew included.")
+        exclusions.append(f"Crew: the crew expense covers {_base} only — no flight engineer or cabin crew included.")
     else:
         for v in _crew.values():
             if v.get("status") != "added":
-                exclusions.append(f"Crew: no {v['label'].lower()} included (reference expense covers two pilots).")
+                exclusions.append(f"Crew: no {v['label'].lower()} included (crew expense covers {_base}).")
     if ((res.get("management") or {}).get("gov_taxes") or {}).get("status") != "added":
         exclusions.append("Government taxes and charges: not included unless entered.")
     exclusions.append("Taxes (income, corporate, VAT, import duties) are excluded.")

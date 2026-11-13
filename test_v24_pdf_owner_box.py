@@ -57,3 +57,46 @@ class TestOwnerFlightExtension(unittest.TestCase):
     def test_covered_never_negative(self):
         o = E.owner_flight_indicator(-200.0, 50.0, standalone_usd=800.0, contribution_usd=1000.0, fixed_usd=600.0)
         self.assertEqual(o["status"], "surplus"); self.assertTrue(o["per_hour_usd"] in (None, 0.0)); self.assertGreater(o["surplus_usd"], 0)
+
+
+class TestPilotCrew(unittest.TestCase):
+    R_ = BASE[BASE.aircraft_id == AID].iloc[0]
+
+    def comp(self, **kw):
+        base = dict(mode="simulation", fuel=E.FuelConfig(price_source="average", price=1.274, currency="USD"), billed_hours=250.0)
+        base.update(kw)
+        return E.compute(self.R_, E.Scenario(AID, **base), today=TODAY)
+
+    def test_pilot_crew_replaces_the_reference_crew_expense(self):
+        ref = self.comp(); ref_crew = float(self.R_["annual_crew_expense_fixed_usd"])
+        pc = {"pilot_in_command": dict(count=2, salary=150000.0, ccy="USD"), "first_officer": dict(count=1, salary=90000.0, ccy="USD")}
+        r = self.comp(pilot_crew=pc)
+        self.assertAlmostEqual(r["fixed"]["annual_total"] - ref["fixed"]["annual_total"], 390000.0 - ref_crew, places=2)   # replaced, not added
+        self.assertEqual(r["variable"]["annual"], ref["variable"]["annual"])
+        self.assertIn("2 pilot in command + 1 first officer", " ".join(r["scope"]["exclusions"]))
+
+    def test_partial_pilot_entry_is_an_error_not_a_guess(self):
+        r = self.comp(pilot_crew={"pilot_in_command": dict(count=1, salary=150000.0, ccy="USD")})
+        self.assertFalse(r["available"]); self.assertIn("pilot_crew_incomplete", [f["code"] for f in r["flags"]])
+
+    def test_empty_keeps_the_reference(self):
+        self.assertEqual(self.comp()["fixed"]["annual_total"], self.comp(pilot_crew={})["fixed"]["annual_total"])
+        self.assertFalse(self.comp()["pilot_crew"]["entered"])
+
+    def test_pdf_annex_states_the_pilot_crew(self):
+        _, t = pdf_text(billed_hours=250.0, pilot_crew={"pilot_in_command": dict(count=2, salary=150000.0, ccy="USD"), "first_officer": dict(count=1, salary=90000.0, ccy="USD")})
+        self.assertIn("Pilot crew entered by the user", t)
+
+    def test_page_one_holds_everything_and_no_split_exclusion_box(self):
+        res, _ = pdf_text(billed_hours=250.0, other_hours=60.0)
+        r = BASE[BASE.aircraft_id == AID].iloc[0]
+        pdf = R.build_report_pdf(res, E.Display(E.Fx("USD")), E.alerts_for(r, CH, CF, CV), generated_on=TODAY)
+        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as f:
+            f.write(pdf)
+        try:
+            p1 = subprocess.run(["pdftotext", "-f", "1", "-l", "1", f.name, "-"], capture_output=True, text=True).stdout
+            self.assertIn("see the annex", p1); self.assertIn("Essential assumptions", p1)
+            p2 = subprocess.run(["pdftotext", "-f", "2", "-l", "2", f.name, "-"], capture_output=True, text=True).stdout
+            self.assertNotIn("Essential assumptions", p2); self.assertNotIn("Main exclusions", p2)
+        finally:
+            os.unlink(f.name)

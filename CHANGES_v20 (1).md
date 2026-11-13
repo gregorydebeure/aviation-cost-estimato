@@ -146,3 +146,8 @@ Aucun déploiement ni migration en production. La base précédente (167 avions,
 - Management fee: the PDF (essential assumptions + annex) states what the user declared: CAMO / dispatch included in the fee (not added again), or not declared (not assumed).
 - Engine: `owner_flight_indicator` extended (standalone, saving per hour, % of fixed costs covered). `TEMPLATE_VERSION` = 2.1 (old PDFs are regenerated).
 - Tests: 478 OK (fake Streamlit, not a real browser). Nothing deployed.
+
+## v24.2 — one-page PDF summary + pilot crew (13 Nov 2026)
+- PDF page 1: the "Main exclusions" bullet box (split across two pages) is replaced by one line pointing to the annex, which keeps the full list. Page 1 now holds the whole summary.
+- Cost Master: new "Flight crew (pilots)" block. Number + annual salary per person for pilot in command and first officer (e.g. 2 + 1). It REPLACES the reference crew expense (never added on top); both roles are required (partial entry = explicit error). Stated in the PDF annex and exclusions.
+- New `Scenario.pilot_crew`; saved scenarios and comparison flag it. 483 tests OK (fake Streamlit, not a real browser).

@@ -1899,7 +1899,7 @@ def main():
         df_f=df if cat_sel=="All" else df[df["Categorie"]==cat_sel]
         _ids=df_f["aircraft_id"].tolist()
         _sfx={"pdf_acc":"","web_estimate":"  · web estimate","historical":"  · historical"}
-        _lab={i:m+_sfx[k] for i,m,k in zip(df["aircraft_id"],df["model"],df["source_kind"])}
+        _lab={i:m+_sfx[k]+("" if c else "  · base incomplete") for i,m,k,c in zip(df["aircraft_id"],df["model"],df["source_kind"],df["data_complete"])}
         _idx=_ids.index("dassault_falcon_7x") if "dassault_falcon_7x" in _ids else 0
         aid=st.selectbox("Aircraft model",_ids,index=_idx,format_func=lambda i:_lab[i],key="ac_sel")
         row=df[df["aircraft_id"]==aid].iloc[0]
@@ -2115,7 +2115,7 @@ def main():
     # ── Cost Master EDITORS (rendered first so every tab uses the same scenario) ─────
     ov_fixed={}; ov_var={}; extra_fixed_usd=0.0; extra_var_usd=0.0
     mgmt={}; mg_cov=False; cyc_status="none"; cyc_cost=None; cyc_ccy="USD"; cyc_avg=None
-    crew_add={}; omp_usd=None
+    crew_add={}; omp_usd=None; pilot_crew={}
     with tab4:
         if not is_pro:
             premium_gate("pro")
@@ -2133,16 +2133,27 @@ def main():
                             "The airframe / engine-APU / crew-misc split and crew training are not available and are not filled with zero or generic costs.")
                 st.caption("Edit a value to REPLACE that report component. The total is rebuilt as report total + your change, so nothing is counted twice. "
                            "Fuel is edited in the sidebar (burn × price).")
-                with st.expander("🔒 Fixed costs — annual (the report total already includes all five lines)",expanded=True):
+                with st.expander("🔒 Fixed costs — annual (the base total already includes all these lines)",expanded=True):
                     st.caption(E.CREW_BASIS_NOTE)
                     cols=st.columns(3)
-                    for i,(k,(f,_l)) in enumerate(E.FIXED_COMPONENTS.items()):
+                    for i,(k,(f,_l)) in enumerate([x for x in E.FIXED_COMPONENTS.items() if not (x[0] in E.OPTIONAL_FIXED and E.num(row,x[1][0]) is None)]):
                         label=E.fixed_label(row,k); src=E.num(row,f)
                         with cols[i%3]:
                             if src is None: st.markdown(f"**{label}**: not available in this source (not replaced by zero)")
                             else:
                                 v=st.number_input(f"{label} ({disp.ccy}/yr)",min_value=0.0,value=float(disp.conv(src)),step=1000.0,format="%.0f",key=f"ovf_{k}_{_k}",disabled=_dis)
                                 if abs(disp.to_usd(v)-src)>0.5: ov_fixed[k]=disp.to_usd(v)
+                with st.expander("🧑‍✈️ Flight crew (pilots) — replaces the reference crew expense",expanded=False):
+                    _ref_crew=E.num(row,"annual_crew_expense_fixed_usd")
+                    st.caption("The reference crew expense is based on ONE pilot in command and ONE first officer"+(f" ({disp.ccy} {disp.conv(_ref_crew):,.0f} per year)" if _ref_crew is not None else "")+". "
+                               "To use your own crew, enter number and annual salary (employer cost) per person for BOTH roles, e.g. 2 pilots in command + 1 first officer. "
+                               "The result REPLACES the reference crew expense (never added on top). Leave salaries at 0 to keep the reference.")
+                    for _pk,_pl in E.PILOT_ITEMS.items():
+                        pc1,pc2,pc3=st.columns([1,2,1])
+                        with pc1: _pn=st.number_input(f"{_pl} — number",min_value=0,max_value=10,value=1,step=1,key=f"plt_n_{_pk}_{_k}",disabled=_dis)
+                        with pc2: _ps=st.number_input(f"{_pl} — annual salary per person",min_value=0.0,value=0.0,step=1000.0,format="%.0f",key=f"plt_s_{_pk}_{_k}",disabled=_dis)
+                        with pc3: _pcc=st.selectbox(f"{_pl} currency",["USD","EUR"],key=f"plt_c_{_pk}_{_k}",disabled=_dis)
+                        if _ps>0: pilot_crew[_pk]=dict(count=int(_pn),salary=float(_ps),ccy=_pcc)
                 with st.expander("👥 Additional crew — not in the report (annual)",expanded=False):
                     st.caption(E.CREW_BASIS_NOTE+" Default 0: nothing is added until you enter a number of people and an annual salary (employer cost) per person.")
                     for _ck,_cl in E.CREW_ITEMS.items():
@@ -2222,14 +2233,14 @@ def main():
             _rate_txt=(f"{rate_ccy} {rate_in:,.0f} per billed hour — {_gross_txt}" if rate_in>0 else "not entered")
             _comm_txt=("not applicable (rate already net)" if rate_basis=="net" else (f"{commission_pct:g} % of gross revenue, deducted once" if commission_pct is not None else "not entered"))
             _pos_txt=(f"{pos_ratio:g} h per billed hour" if pos_ratio is not None else (f"{float(posit):g} h per year" if _pm!="Ratio per billed hour" else "not entered"))
-            _scope_txt=("Reference costs of the selected model"+(" with your adjustments" if (ov_fixed or ov_var or extra_fixed_usd or extra_var_usd or any((v or {}).get("amount") for v in mgmt.values()) or cyc_status=="added" or omp_usd or any(((v or {}).get("count") or 0)*((v or {}).get("salary") or 0) for v in crew_add.values())) else "")
+            _scope_txt=("Reference costs of the selected model"+(" with your adjustments" if (ov_fixed or ov_var or extra_fixed_usd or extra_var_usd or any((v or {}).get("amount") for v in mgmt.values()) or cyc_status=="added" or omp_usd or pilot_crew or any(((v or {}).get("count") or 0)*((v or {}).get("salary") or 0) for v in crew_add.values())) else "")
                         +". Not a validation that the data is complete.")
             _recap=[("Charter rate and basis",_rate_txt),("Commission",_comm_txt),("Positioning",_pos_txt),
                     ("Owner flight hours",f"{float(other):g} h per year"),("Other commercial fees",f"{disp.money(disp.to_usd(fees_in))} per year"),("Cost scope",_scope_txt)]
             for _l,_v in _recap: st.markdown(f"- **{_l}:** {_v}")
             _complete=bool(rate_in>0 and rate_basis and (rate_basis=="net" or commission_pct is not None) and not (_pm=="Ratio per billed hour" and pos_ratio is None) and billed>0)
             _sig=hashlib.md5(repr((aid,mode,rate_in,rate_ccy,rate_basis,commission_pct,billed,posit,pos_ratio,other,fees_in,supp_rev,supp_cost,
-                                   sorted(ov_fixed.items()),sorted(ov_var.items()),extra_fixed_usd,extra_var_usd,repr(mgmt),repr(crew_add),omp_usd,mg_cov,cyc_status,cyc_cost,cyc_ccy,cyc_avg,
+                                   sorted(ov_fixed.items()),sorted(ov_var.items()),extra_fixed_usd,extra_var_usd,repr(mgmt),repr(crew_add),repr(pilot_crew),omp_usd,mg_cov,cyc_status,cyc_cost,cyc_ccy,cyc_avg,
                                    repr(fuel),_dep,_depc,_int,_intc,disp.ccy)).encode()).hexdigest()
             if st.button(CONFIRM_LABEL,key="conf_btn",disabled=not _complete,width="stretch"): st.session_state["_conf_sig"]=_sig
             confirmed=(st.session_state.get("_conf_sig")==_sig) and _complete
@@ -2243,7 +2254,7 @@ def main():
                    supplements_retained_usd=supp_rev,supplements_cost_usd=supp_cost,positioning_ratio=pos_ratio,positioning_confirmed=confirmed,
                    private_hours_confirmed=confirmed,other_fees_confirmed=confirmed,limits_reviewed=confirmed,
                    depreciation_annual=_dep,depreciation_ccy=_depc,interest_annual=_int,interest_ccy=_intc,
-                   management=mgmt,management_covers_camo_dispatch=bool(mg_cov),cycle_status=cyc_status,cycle_cost=cyc_cost,cycle_cost_ccy=cyc_ccy,avg_flight_hours=cyc_avg,additional_crew=crew_add,other_maint_program_h=omp_usd,
+                   management=mgmt,management_covers_camo_dispatch=bool(mg_cov),cycle_status=cyc_status,cycle_cost=cyc_cost,cycle_cost_ccy=cyc_ccy,avg_flight_hours=cyc_avg,additional_crew=crew_add,pilot_crew=pilot_crew,other_maint_program_h=omp_usd,
                    other_commercial_fees=float(disp.to_usd(fees_in)),fuel=fuel,fixed_overrides=ov_fixed,var_overrides_h=ov_var,
                    extra_fixed=float(extra_fixed_usd),extra_var_h=float(extra_var_usd),fx=fx)
     res=E.compute(row,scn)

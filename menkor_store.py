@@ -86,6 +86,7 @@ def user_entered_fields(scn: E.Scenario) -> list[str]:
     if any((v or {}).get("amount") for v in (scn.management or {}).values()): out.append("management")
     if scn.cycle_status != "none": out.append("cost_per_landing")
     if any(((v or {}).get("count") or 0) * ((v or {}).get("salary") or 0) > 0 for v in (scn.additional_crew or {}).values()): out.append("crew_additional")
+    if any(((v or {}).get("count") or 0) * ((v or {}).get("salary") or 0) > 0 for v in (scn.pilot_crew or {}).values()): out.append("pilot_crew")
     if scn.other_maint_program_h: out.append("other_maintenance_programme")
     if scn.fx.usd_to_eur: out.append("exchange_rate")
     return sorted(set(out))
@@ -374,7 +375,7 @@ def _result_row(key, label, scn: E.Scenario, res: dict, extra: dict | None = Non
 
 _MAINT_KEYS = ("airframe_maint", "engine_apu_maint", "other_maint_program")
 _EDIT_LABELS = (("fixed_cost_edits", "fixed cost edits"), ("variable_cost_edits", "variable cost edits"), ("extra_fixed", "added fixed cost"),
-                ("extra_var_h", "added variable cost"), ("crew_additional", "additional crew"), ("other_maintenance_programme", "other maintenance programme"),
+                ("extra_var_h", "added variable cost"), ("crew_additional", "additional crew"), ("pilot_crew", "pilot crew"), ("other_maintenance_programme", "other maintenance programme"),
                 ("cost_per_landing", "cost per landing"), ("other_commercial_fees", "other commercial fees"))
 
 
