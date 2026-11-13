@@ -46,7 +46,10 @@ def fmt_pct(x, d=1, sign=False):
     return f"{r:+,.{d}f}%" if sign and r > 0 else f"{r:,.{d}f}%"
 
 
-TEMPLATE_VERSION = "2.0"      # bump when the layout/content of the client report changes: the app invalidates PDFs built with another version
+TEMPLATE_VERSION = "2.1"      # bump when the layout/content of the client report changes: the app invalidates PDFs built with another version
+
+
+BUDGET_URL = "https://aviation-cost-estimator.onrender.com/?journey=budget"      # aircraft-specific budget request, shown next to "Not confirmed"
 
 
 def build_report_pdf(res: dict, disp, alerts: list, logo_bytes: bytes | None = None, generated_on=None, study_url: str | None = None, broker: dict | None = None) -> bytes:
@@ -121,6 +124,12 @@ def build_report_pdf(res: dict, disp, alerts: list, logo_bytes: bytes | None = N
     sBd = ParagraphStyle("Bd", parent=sB, fontName=FB)
     sKL = ParagraphStyle("KL", fontName=FR, fontSize=8, leading=10, textColor=SLATE)
     sKV = ParagraphStyle("KV", fontName=FB, fontSize=13.5, leading=16, textColor=NAVY)
+    WHITE, SOFT = HexColor("#FFFFFF"), HexColor("#C9D3E6")
+    sOT = ParagraphStyle("OT", fontName=FB, fontSize=8.6, leading=11, textColor=GOLD)
+    sOL = ParagraphStyle("OL", fontName=FR, fontSize=7.4, leading=9.4, textColor=SOFT)
+    sOV = ParagraphStyle("OV", fontName=FB, fontSize=15, leading=18, textColor=WHITE)
+    sOG = ParagraphStyle("OG", fontName=FB, fontSize=21, leading=25, textColor=GOLD)
+    sOS = ParagraphStyle("OS", fontName=FR, fontSize=7.8, leading=10.2, textColor=SOFT)
     sWh = ParagraphStyle("Wh", parent=sB, textColor=HexColor("#FFFFFF"), fontName=FB)
     sWhr = ParagraphStyle("Whr", parent=sWh, alignment=TA_RIGHT)
 
@@ -179,6 +188,20 @@ def build_report_pdf(res: dict, disp, alerts: list, logo_bytes: bytes | None = N
     dts = res.get("dates") or {}
     fuel = res.get("fuel") or {}
 
+    def _mgmt_scope(mg):
+        """What the management fee entered covers — stated from what the user declared (nothing assumed): items covered by the fee are not added again."""
+        oth = {k: v for k, v in mg.items() if k != "management"}
+        inc = [v["label"] for v in oth.values() if v.get("status") == "covered"]
+        add = [f"{v['label']} ({M(v['amount_usd'])} per year)" for v in oth.values() if v.get("status") == "added"]
+        non = [v["label"] for v in oth.values() if v.get("status") == "none"]
+        t = ("Declared by the user as INCLUDING: " + ", ".join(inc) + " (not added again)." if inc
+             else "The user did not declare CAMO or dispatch / flight support as included in the fee: they are not assumed to be.")
+        if add:
+            t += " Added separately: " + ", ".join(add) + "."
+        if non:
+            t += " Not entered, nothing added (not a confirmed zero): " + ", ".join(non) + "."
+        return t
+
     # ── Assumptions: essential ones on page 1, the rest in the annex ───────────────
     sc = res.get("scope")
     Wm, Wx = [], []
@@ -220,7 +243,7 @@ def build_report_pdf(res: dict, disp, alerts: list, logo_bytes: bytes | None = N
         _mg = res.get("management") or {}
         _fee = (_mg.get("management") or {})
         if _fee.get("status") == "added":
-            Wm.append(f"Management fee entered: {M(_fee['amount_usd'])} per year, added once to the fixed costs. Management fees are not included in the reference costs.")
+            Wm.append(f"Management fee entered: {M(_fee['amount_usd'])} per year, added once to the fixed costs. " + _mgmt_scope(_mg) + " Management fees are not included in the reference costs.")
         elif not (sc and any("Management fees excluded" in t for t in sc.get("exclusions", []))):
             Wm.append("Management fees excluded. Management fees are not included in the reference costs.")
         _act = [f"{v['label']} {M(v['amount_usd'])} per year" for k, v in _mg.items() if k != "management" and v.get("status") == "added"]
@@ -234,6 +257,51 @@ def build_report_pdf(res: dict, disp, alerts: list, logo_bytes: bytes | None = N
     n_alerts = len([a for a in alerts if a["level"] in ("warn", "error")])
     if n_alerts:
         Wm.append(f"{n_alerts} further data alert(s) are listed in the annex.")
+
+    def _owner_box(of):
+        """Highlight: what one flight hour costs the owner without charter, with charter, and what the charter saves. Everything comes from the engine
+        (pr['owner_flight']); nothing is recomputed here. Unknown is shown as n/a, never as zero."""
+        h = of.get("owner_hours") or 0.0
+        sa, ph = of.get("standalone_per_hour_usd"), of.get("per_hour_usd")
+        covered = of["status"] in ("covered", "surplus")
+        w_ = M(sa) + " / h" if sa is not None else "n/a"
+        c_ = ("Fully covered" if covered else (M(ph) + " / h" if ph is not None else "n/a")) if h > 0 else "n/a"
+        sv = of.get("saving_per_hour_usd")
+        s_ = (("− " + M(sv) + " / h") if (sv is not None and sv > 0) else ("no reduction" if sv is not None else "n/a"))
+        red = (f"{min(100.0, (sv / sa) * 100):.0f}% lower" if (sv is not None and sa and sv > 0) else "")
+        if h <= 0:      # no owner hours: the per-hour figure does not exist, show the annual amounts instead (never an invented hour count)
+            sa_, rem_ = of.get("standalone_usd"), of.get("remaining_usd")
+            w_ = (M(sa_) + " / year") if sa_ is not None else "n/a"
+            c_ = "Fully covered" if covered else ((M(rem_) + " / year") if rem_ is not None else "n/a")
+            sv_ = (sa_ - rem_) if (sa_ is not None and rem_ is not None) else None
+            s_ = ("− " + M(sv_) + " / year") if (sv_ is not None and sv_ > 0) else "no reduction"
+            red = f"{min(100.0, sv_ / sa_ * 100):.0f}% lower" if (sv_ and sa_ and sv_ > 0) else ""
+        rows = [[Paragraph("YOUR COST PER FLIGHT HOUR — HOW CHARTER SMOOTHS YOUR COSTS", sOT), Paragraph("", sOL), Paragraph("", sOL)],
+                [Paragraph("WITHOUT CHARTER", sOL), Paragraph("WITH CHARTER", sOL), Paragraph("CHARTER SAVES YOU", sOL)],
+                [Paragraph(escape(w_), sOV), Paragraph(escape(c_), sOG), Paragraph(escape(s_), sOV)],
+                [Paragraph("your own flying carries every cost", sOS), Paragraph("cost remaining per owner flight hour", sOS), Paragraph(escape(red), sOS)]]
+        notes = []
+        if h > 0:
+            tail = (f"Annual: {M(of['standalone_usd'])} without charter → " + (f"{M(of['remaining_usd'])} remaining with charter" if of["status"] == "remaining"
+                    else ("operating costs fully covered" + (f", surplus {M(of['surplus_usd'])}" if of["status"] == "surplus" else ""))))
+            notes.append(f"Based on {h:g} owner flight hours per year. " + tail + ".")
+        else:
+            notes.append("No owner flight hours entered: the cost per owner flight hour cannot be shown. "
+                         + (f"Annual amount remaining to the owner after charter: {M(of['remaining_usd'])}." if of["status"] == "remaining" else "Operating costs are covered by the charter contribution."))
+        cp = of.get("fixed_covered_pct")
+        if cp is not None and cp > 0:
+            notes.append(f"The charter contribution offsets {min(100.0, cp):.0f}% of the fixed costs" + (" (and more)." if cp > 100 else "."))
+        elif of.get("charter_contribution_usd") is not None and of["charter_contribution_usd"] <= 0:
+            notes.append("At these assumptions the charter does not contribute to the fixed costs.")
+        rows.append([Paragraph(escape(" ".join(notes)), sOS), Paragraph("", sOL), Paragraph("", sOL)])
+        rows.append([Paragraph(escape(of["note"]), sOS), Paragraph("", sOL), Paragraph("", sOL)])
+        t_ = Table(rows, colWidths=[58 * mm] * 3)
+        t_.setStyle(TableStyle([("FONTNAME", (0, 0), (-1, -1), FR), ("BACKGROUND", (0, 0), (-1, -1), NAVY), ("BOX", (0, 0), (-1, -1), 1.2, GOLD), ("SPAN", (0, 0), (-1, 0)), ("SPAN", (0, 4), (-1, 4)), ("SPAN", (0, 5), (-1, 5)),
+                                ("LINEBELOW", (0, 0), (-1, 0), 0.5, GOLD), ("LINEAFTER", (0, 1), (1, 3), 0.4, HexColor("#3A4F78")),
+                                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"), ("TOPPADDING", (0, 0), (-1, -1), 2.5), ("BOTTOMPADDING", (0, 0), (-1, -1), 2.5),
+                                ("TOPPADDING", (0, 2), (-1, 2), 4), ("LEFTPADDING", (0, 0), (-1, -1), 9), ("RIGHTPADDING", (0, 0), (-1, -1), 7),
+                                ("TOPPADDING", (0, 4), (-1, 4), 5), ("BOTTOMPADDING", (0, 5), (-1, 5), 5)]))
+        return KeepTogether([t_])
 
     # ── Page 1: title + cost summary + results + essential assumptions + main exclusions ──
     story = [Spacer(1, 2 * mm), P("AVIATION COST REPORT", sT), P(res["model"], sA),
@@ -271,6 +339,9 @@ def build_report_pdf(res: dict, disp, alerts: list, logo_bytes: bytes | None = N
             elif econ_partial:
                 story.append(P("Economic result not complete: missing " + " and ".join(own["missing"]) + ". Enter the amount, or 0 to state an explicit zero.", sSm))
         story.append(Spacer(1, 3 * mm))
+        _of = (pr or {}).get("owner_flight") if has_charter else None
+        if _of:
+            story += [_owner_box(_of), Spacer(1, 3 * mm)]
         S = [["Aircraft", (f"{res['model']} ({mfr})" if mfr else res["model"])], ["Mode", mode_label],
              ["Hours", (f"{hrs['reference']:g} h/year (report reference hours)" if is_ref else
                         f"{flown:g} h flown/year" + ("" if res.get("historical") else (f" ({hrs['billed']:g} billed · {hrs['positioning']:g} positioning · {hrs['other']:g} other)" if has_charter else " (all hours flown, no charter revenue assumed)")))],
@@ -356,7 +427,8 @@ def build_report_pdf(res: dict, disp, alerts: list, logo_bytes: bytes | None = N
             story.append(PageBreak())
             scp = [P("Included in the simulation", sBd)]
             scp += [P("• " + c["label"] + (f" — {M(c['annual_usd'])} per year" if c.get("annual_usd") is not None else ""), sSm) for c in sc["included"]]
-            scp += [P("Not confirmed (unknown is never shown as zero)", sBd)] + [P("• " + t, sSm) for t in sc["not_confirmed"]]
+            _bl = study_url or BUDGET_URL
+            scp += [Paragraph(f'Not confirmed (for a more accurate budget: <link href="{escape(_bl)}" color="#1A3A6E"><u>{escape(_bl)}</u></link>)', sBd)] + [P("• " + t, sSm) for t in sc["not_confirmed"]]
             scp += [P("Known exclusions", sBd)] + [P("• " + t, sSm) for t in sc["exclusions"]]
             scp += [P("Limitations", sBd)] + [P("• " + t, sSm) for t in sc["limits"]]
             story.append(Paragraph("Annex — Costs included and limits", ParagraphStyle("AN0", parent=sH, fontSize=14, spaceBefore=0, spaceAfter=6)))
@@ -433,7 +505,9 @@ def build_report_pdf(res: dict, disp, alerts: list, logo_bytes: bytes | None = N
                   f"private hours {'yes' if sc.get('private_hours_confirmed') else 'no'}, other fees {'yes' if sc.get('other_fees_confirmed') else 'no'} · costs-included review: {'yes' if sc.get('limits_reviewed') else 'no'} (not a validation of data completeness)"])
         mgs = res.get("management") or {}
         if mgs:
-            A.append(["Management fee / CAMO / dispatch", " · ".join(f"{v['label']}: {MANAGEMENT_STATUS[v['status']]}" + (f" ({M(v['amount_usd'])} per year)" if v.get('amount_usd') is not None else "") for v in mgs.values())
+            _st = {"none": "Not entered", "added": "Added once to the fixed costs", "covered": "Included in the management fee (declared by the user) — not added again"}
+            A.append(["Management fee / CAMO / dispatch", " · ".join(f"{v['label']}: {_st[v['status']]}" + (f" ({M(v['amount_usd'])} per year)" if v.get('amount_usd') is not None else "") for v in mgs.values())
+                      + ((" · " + _mgmt_scope(mgs)) if (mgs.get("management") or {}).get("status") == "added" else "")
                       + " · management fees are not included in the reference costs · not entered = nothing added (not a confirmed zero)"])
         A.append(["Additional cost per landing", ("added: cost per landing ÷ average flight duration, applied per flown hour, once" if sc.get("cycle_status") == "added" else "not enabled: nothing added")])
     A += [["Scenario reference", f"{cfg}"],

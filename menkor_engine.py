@@ -1230,18 +1230,31 @@ def _solve_threshold(label, label_fr, fixed_like, u, rho, O, extra_note=""):
 OWNER_FLIGHT_NOTE = "Estimated operating cost remaining after charter contribution. Excludes depreciation, financing and taxes."
 
 
-def owner_flight_indicator(balance_usd: float, owner_hours: float) -> dict:
-    """Owner's remaining operating cost after the charter contribution, computed ONCE here (Profitability and Quotation only display it).
+def owner_flight_indicator(balance_usd: float, owner_hours: float, standalone_usd: float | None = None, contribution_usd: float | None = None,
+                           fixed_usd: float | None = None) -> dict:
+    """Owner's remaining operating cost after the charter contribution, computed ONCE here (Profitability, Quotation and the PDF only display it).
     balance = annual operating costs + commercial fees − net charter revenue − other net revenue already in the engine (= −operating result, commission
     deducted once, positioning costs included). Per owner flight hour = remaining ÷ OWNER hours only — never total or billed hours.
-    status: 'remaining' (balance > 0) | 'covered' (balance = 0 to the cent) | 'surplus' (revenue above costs: remaining 0, surplus shown apart, no negative hourly cost)."""
+    status: 'remaining' (balance > 0) | 'covered' (balance = 0 to the cent) | 'surplus' (revenue above costs: remaining 0, surplus shown apart, no negative hourly cost).
+    Added for the report: the same owner flying WITHOUT any charter (standalone = fixed costs + variable cost of the owner hours), the saving per owner hour
+    and the share of the fixed costs offset by the charter contribution. None whenever it cannot be computed (no owner hours): never a zero."""
     bal = round(float(balance_usd), 2)
     h = float(owner_hours or 0.0)
-    out = dict(owner_hours=h, balance_usd=bal, remaining_usd=0.0, surplus_usd=0.0, per_hour_usd=None, status="covered", note=OWNER_FLIGHT_NOTE)
+    out = dict(owner_hours=h, balance_usd=bal, remaining_usd=0.0, surplus_usd=0.0, per_hour_usd=None, status="covered", note=OWNER_FLIGHT_NOTE,
+               standalone_usd=None, standalone_per_hour_usd=None, saving_per_hour_usd=None, charter_contribution_usd=None, fixed_covered_pct=None)
     if bal > 0:
         out.update(status="remaining", remaining_usd=bal, per_hour_usd=(bal / h if h > 0 else None))
     elif bal < 0:
         out.update(status="surplus", surplus_usd=-bal)
+    if standalone_usd is not None:
+        out["standalone_usd"] = round(float(standalone_usd), 2)
+        if h > 0:
+            out["standalone_per_hour_usd"] = float(standalone_usd) / h
+            out["saving_per_hour_usd"] = out["standalone_per_hour_usd"] - (out["per_hour_usd"] or 0.0)
+    if contribution_usd is not None:
+        out["charter_contribution_usd"] = float(contribution_usd)
+        if fixed_usd and fixed_usd > 0:
+            out["fixed_covered_pct"] = float(contribution_usd) / float(fixed_usd) * 100.0
     return out
 
 
@@ -1305,7 +1318,8 @@ def _profit(scn: Scenario, res: dict, fixed_total: float, var_h: float, H: float
                coverage_pct=((net_rev + s_rev) / cost_base * 100) if cost_base > 0 else None,
                charter_external_contribution=charter_contrib, owner_private_variable_cost=owner_private,
                owner_remaining_cost=fixed_total + owner_private - charter_contrib,
-               owner_flight=owner_flight_indicator(fixed_total + owner_private - charter_contrib, O),
+               owner_flight=owner_flight_indicator(fixed_total + owner_private - charter_contrib, O, standalone_usd=fixed_total + owner_private,
+                                                   contribution_usd=charter_contrib, fixed_usd=fixed_total),
                economic_result=(result - own_total) if own["complete"] else None, ownership_costs_total=own_total if own["complete"] else None)
     # positioning: explicit ratio, or hours entered with strictly positive billed hours
     if scn.positioning_ratio is not None:
