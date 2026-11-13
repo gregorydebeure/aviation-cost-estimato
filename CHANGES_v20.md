@@ -130,12 +130,12 @@ Nouveau module `menkor_store.py`, onglet « 🗂 My scenarios » (Essentiel : sc
 - Essentiel plan and Pro without folder: flat list with "Open". No data migration (the `folders` table already exists).
 - Not included: "Open" displays the saved data; it does not reload the values into the Cost Master inputs. Not tested in a real browser. 467 tests OK.
 
-## v21 — Nouvelle base Menkor (118 avions, 12 novembre 2026)
-Aucun déploiement ni migration en production. La base précédente (167 avions, majoration de 15 %) est remplacée par le classeur `Menkor_118_avions_carburant_1274_2026-11-12.xlsx`.
-- **Données** : `data/menkor_base.csv` (118 avions, produit par `tools/build_base_from_xlsx.py`). Totaux recalculés avec les formules du classeur ; écart > 1 USD = arrêt. Aucune valeur inventée : total impossible → champs manquants listés, aucun calcul. Un classeur sans valeurs calculées est refusé.
-- **Instructions du 12/11/2026** : ACJ319neo et ACJ320neo retirés ; carburant unique 482,41 US cents / US gallon = 1,274 USD/L pour tous les avions (carburant annuel = heures × consommation × prix) ; Global 6000 et 7500 à 350 h, avec formation, autres frais fixes, déplacements, catering et redevances égaux à ceux du BBJ2 (hypothèse client, détail dans l'onglet `Modifications_2026-11-12`).
-- **116 avions complets, 2 incomplets** : Challenger 601-1A (presque aucune donnée) et Hawker 400XPR (assurance, maintenance cellule). Signalés « · base incomplete » dans le sélecteur.
-- **Moteur 2.4 / base `v23-menkor-118-2026-11-12`** : composante fixe optionnelle « Maintenance programme » ; ligne « autres » masquée si absente ; plus de majoration. Falcon 7X : fixe 612 713 / variable 2 526 846 / budget 3 139 559 USD.
-- **Scénarios sauvegardés** : version de base changée → avertissement et « Recalculate » explicite ; avions retirés signalés.
-- `tools/audit_adjustment.py` supprimé. Tests : 467 OK (faux Streamlit, pas un navigateur réel).
-- Reconstruire : `python tools/build_base_from_xlsx.py data/source/<classeur>.xlsx data/menkor_base.csv`.
+## v21 — Base Menkor 118 avions (12-13 novembre 2026)
+Aucun déploiement ni migration en production. La base précédente (167 avions, majoration de 15 %) est remplacée par la base Menkor.
+- **Référence** : `menkor_base.csv` (118 avions). Construit d'abord depuis le classeur `Menkor_118_avions_carburant_1274_2026-11-12.xlsx` avec `tools/build_base_from_xlsx.py`, puis **corrigé à la main le 13/11/2026** (v2). Depuis cette date le CSV est la référence : il n'est plus reproductible par le builder (le classeur est conservé comme archive de la première version).
+- **Instructions du 12/11** : ACJ319neo et ACJ320neo retirés ; carburant unique 482,41 US cents/USG = 1,274 USD/L ; Global 6000 et 7500 à 350 h.
+- **Corrections du 13/11** : Challenger 601-1A et Hawker 400XPR complétés (**118 avions complets, 0 incomplet**) ; maintenance révisée (Falcon 20 et 2000, Citation III et CJ2, Challenger 850 CS et 870C, G100, G300, G350, G400, G500 ancien, Hawker, Learjet, Lineage…) ; frais d'aéroport relevés pour les gros avions ; 10 avions passent au barème d'équipage 3 ; accents réparés (ils étaient abîmés dans le fichier reçu).
+- **Falcon 7X** : fixe 612 713 / variable 2 620 296 / budget 3 233 009 USD.
+- **Moteur 2.4 / base `v24-menkor-118-corrected-2026-11-13`** : les scénarios sauvegardés passent par le « Recalculate » explicite ; les avions retirés sont signalés.
+- **Marque** : le CSV porte « MENKOR AVIATION LTD » (colonne `report_brand`), mais le code ne lit pas cette colonne ; les PDF affichent toujours « Menkor Aviation GBL » (décision en attente).
+- `tools/audit_adjustment.py` supprimé. Tests : 471 OK (faux Streamlit, pas un navigateur réel). L'absence d'avion incomplet est testée avec un cas synthétique (`tests/incomplete_support.py`).

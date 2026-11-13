@@ -27,7 +27,7 @@ from pathlib import Path
 import pandas as pd
 
 ENGINE_VERSION = "2.4"
-DB_VERSION = "v23-menkor-118-2026-11-12"
+DB_VERSION = "v24-menkor-118-corrected-2026-11-13"
 BASE_FILE = "menkor_base.csv"   # Menkor base of 12 Nov 2026 (118 aircraft), built from the Menkor workbook by tools/build_base_from_xlsx.py
 _HERE = Path(__file__).resolve().parent
 # Data files live in data/. If they were uploaded flat next to app.py (GitHub web upload can flatten folders), fall back to that folder.
