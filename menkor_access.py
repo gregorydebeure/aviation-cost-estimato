@@ -46,19 +46,23 @@ def checkout_params(kind, email, ctx, success_url, cancel_url):
                 success_url=success_url, cancel_url=cancel_url)
 
 
-def grants_from_sessions(sessions, email, known_session_ids):
+def grants_from_sessions(sessions, email, known_session_ids, report=None):
     """Pure: Stripe Checkout Sessions (dicts) -> new grant records. Only PAID one-off sessions of this app, exact amount, same e-mail, not already stored."""
     email = (email or "").strip().lower(); out = []
     for s in sessions or []:
         try:
             sid = s.get("id")
-            if not sid or sid in known_session_ids: continue
+            def _skip(why):
+                if report is not None: report.append(f"…{str(sid)[-6:]}: {why}")
+            if not sid: continue
+            if sid in known_session_ids: _skip("already stored"); continue
             md = s.get("metadata") or {}; kind = md.get("product")
-            if kind not in PRODUCTS or s.get("mode") != "payment" or s.get("payment_status") != "paid": continue
+            if kind not in PRODUCTS: _skip("not an access purchase (no product metadata)"); continue
+            if s.get("mode") != "payment" or s.get("payment_status") != "paid": _skip(f"not paid (mode={s.get('mode')}, status={s.get('payment_status')})"); continue
             pr = PRODUCTS[kind]
-            if s.get("currency") != "eur" or s.get("amount_total") != pr["price_eur"] * 100: continue
+            if s.get("currency") != "eur" or s.get("amount_total") != pr["price_eur"] * 100: _skip(f"amount/currency mismatch ({s.get('amount_total')} {s.get('currency')})"); continue
             who = ((s.get("customer_details") or {}).get("email") or s.get("customer_email") or "").strip().lower()
-            if who != email: continue
+            if who != email: _skip("different e-mail"); continue
             bought = _dt.datetime.fromtimestamp(int(s["created"]), _dt.timezone.utc)
             ctx = md.get("ctx") or "pack"
             out.append(dict(session_id=sid, email=email, kind=kind, slots=pr["slots"], context=ctx, purchased_at=_iso(bought),
@@ -68,16 +72,43 @@ def grants_from_sessions(sessions, email, known_session_ids):
     return out
 
 
+LAST_SYNC = {}          # diagnostics of the last sync (read by the admin panel; contains no secret)
+
+
+def _as_dict(x):
+    """Stripe objects -> plain nested dicts, whatever the stripe-python version."""
+    for m in ("to_dict_recursive", "to_dict"):
+        f = getattr(x, m, None)
+        if callable(f):
+            try: return f()
+            except Exception: pass
+    return dict(x) if not isinstance(x, dict) else x
+
+
 def sync_from_stripe(stripe_mod, store, email):
-    """Reads the paid Checkout Sessions of this e-mail from Stripe and stores the missing grants. Returns the number of new grants. Never raises."""
+    """Reads the paid Checkout Sessions of this e-mail from Stripe and stores the missing grants. Returns the number of new grants. Never raises;
+    what happened is left in LAST_SYNC (counts, skip reasons, error type)."""
+    info = LAST_SYNC; info.clear(); info.update(email=email, sessions=0, new=0, stored=0, skipped=[], error=None)
     try:
-        resp = stripe_mod.checkout.Session.list(limit=100, status="complete", customer_details={"email": email})
-        sessions = [dict(x) if not isinstance(x, dict) else x for x in (getattr(resp, "data", None) or resp.get("data", []))]
+        data = []
+        try:
+            resp = stripe_mod.checkout.Session.list(limit=100, status="complete", customer_details={"email": email})
+            data = list(getattr(resp, "data", None) or (resp.get("data", []) if hasattr(resp, "get") else []))
+        except Exception as e:
+            info["filtered_error"] = f"{type(e).__name__}: {str(e)[:160]}"
+        if not data:                                   # fallback: recent completed sessions, filtered by e-mail in code
+            resp = stripe_mod.checkout.Session.list(limit=100, status="complete")
+            data = list(getattr(resp, "data", None) or (resp.get("data", []) if hasattr(resp, "get") else []))
+        sessions = [_as_dict(x) for x in data]
+        info["sessions"] = len(sessions)
         known = {g["session_id"] for g in store.list_grants(email)}
-        new = grants_from_sessions(sessions, email, known)
-        for g in new: store.insert_grant(g)
+        new = grants_from_sessions(sessions, email, known, info["skipped"])
+        info["new"] = len(new)
+        for g in new:
+            if store.insert_grant(g) is not False: info["stored"] += 1
         return len(new)
-    except Exception:
+    except Exception as e:
+        info["error"] = f"{type(e).__name__}: {str(e)[:200]}"
         return 0
 
 
@@ -172,7 +203,10 @@ class SupabaseStore:
         st, data = self.rest("GET", table, {"email": f"eq.{email.lower()}", "select": "*"})
         return data if (st == 200 and isinstance(data, list)) else []
     def list_grants(self, email): return self._get("access_grants", email)
-    def insert_grant(self, g): self.rest("POST", "access_grants", {"on_conflict": "session_id"}, g, "resolution=ignore-duplicates,return=minimal")
+    def insert_grant(self, g):
+        st, _ = self.rest("POST", "access_grants", {"on_conflict": "session_id"}, g, "resolution=ignore-duplicates,return=minimal")
+        if st not in (200, 201, 204): LAST_SYNC["error"] = f"Supabase insert failed (HTTP {st})"; return False
+        return True
     def get_selection(self, email):
         r = self._get("access_selection", email); return r[0] if r else None
     def set_selection(self, rec): self.rest("POST", "access_selection", {"on_conflict": "email"}, rec, "resolution=merge-duplicates,return=minimal")

@@ -975,6 +975,21 @@ def render_auth():
                         url,err=_checkout_url("diagnostic-test@menkor-aviation.test","pro")
                         if url: st.success(f"✓ Checkout link created: {url}")
                         else: st.error(err)
+                    if ACCESS:
+                        st.caption("Access purchases (packs): re-read Stripe for one e-mail and store any missing paid purchase.")
+                        _se=st.text_input("E-mail to sync",key="acc_sync_email",placeholder="buyer@email.com")
+                        if st.button("Sync access purchases",key="acc_sync_btn",width="stretch"):
+                            if not _se.strip(): st.warning("Enter an e-mail.")
+                            else:
+                                try:
+                                    import stripe; stripe.api_key=_secret("STRIPE_SECRET_KEY")
+                                    n=ACCESS.sync_from_stripe(stripe,ACCESS.SupabaseStore(_sb_rest),_se.strip().lower())
+                                except Exception as _e: n=0; ACCESS.LAST_SYNC["error"]=f"{type(_e).__name__}: {str(_e)[:160]}"
+                                L=ACCESS.LAST_SYNC
+                                st.caption(f"Stripe sessions read: {L.get('sessions')} · new purchases: {n} · stored: {L.get('stored')}")
+                                if L.get("filtered_error"): st.caption(f"Filtered query failed (fallback used): {L['filtered_error']}")
+                                if L.get("error"): st.error(L["error"])
+                                for _r in (L.get("skipped") or [])[:15]: st.caption(_r)
             else:
                 st.markdown(f'<div style="font-size:.78rem;color:#4ADE80">✓ {email}</div>', unsafe_allow_html=True)
                 plan=st.session_state["auth_plan"]
