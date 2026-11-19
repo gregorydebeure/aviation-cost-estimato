@@ -699,8 +699,19 @@ def _acc_buy(kind,label,email,plan,key):
 def _render_access_panel(ctx,aid,df):
     stt,store=ctx["state"],ctx["store"]; email=st.session_state["auth_email"]; plan=st.session_state.get("auth_plan")
     names=dict(zip(df["aircraft_id"],df["model"])); sm=stt.summary(); A_=ACCESS
-    with st.expander("🔓 Model access"+("" if ctx["entitled"] else " — this model is locked"),expanded=not ctx["entitled"]):
-        if not ctx["entitled"]: st.warning(f"{names.get(aid,aid)} is not unlocked for your account. Without unlocking, only the free demo is available for this model.")
+    mine=[names[i] for i in (sm["pro_unlocked"] if plan=="pro" else sm["pack_models"]) if i in names]
+    _title="🔓 Model access"+("" if ctx["entitled"] else (" — select one of your models on the left" if mine else " — this model is locked"))
+    with st.expander(_title,expanded=not ctx["entitled"]):
+        _me=", ".join(mine)
+        if ctx["entitled"]:
+            st.success(f"✅ {names.get(aid,aid)} is unlocked: all features are available. Your unlocked models: {_me}.")
+        elif mine:
+            st.info(f"Your unlocked models: **{_me}**. To use all features (Profitability, Sensitivity, Cost Master, Quotation, PDF), select one of them in **Aircraft selection** on the left. "
+                    f"{names.get(aid,aid)} is not one of them, so only the free demo is shown for it.")
+        elif plan!="pro" and sm["pack_slots"]>0:
+            st.warning(f"Step 1: choose your {sm['pack_slots']} model(s) below and click **Apply my models**. Step 2: select one of them in **Aircraft selection** on the left to unlock all features.")
+        else:
+            st.warning(f"{names.get(aid,aid)} is not unlocked for your account. Without unlocking, only the free demo is available for this model.")
         if plan=="pro":
             st.markdown(f"**Menkor Pro** — {sm['pro_quota_left']} new model(s) left this month (quota {A_.PRO_MODELS_PER_MONTH} per month, not carried over). Models already unlocked stay available while your subscription is active.")
             if sm["pro_unlocked"]: st.caption("Unlocked: "+", ".join(names.get(i,i) for i in sm["pro_unlocked"]))

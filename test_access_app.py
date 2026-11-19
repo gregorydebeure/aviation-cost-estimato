@@ -76,6 +76,16 @@ class TestPanel(unittest.TestCase):
         self.assertNotIn("€ 29",t); self.assertNotIn("Comparison pack",t)
         for need in ("€ 79 / month","$ 600","from € 490"): self.assertIn(need,t)
 
+    def test_panel_guides_the_buyer_to_the_left_selector(self):
+        mem = A.MemoryStore(); pack(mem); st = self.render(None, mem, "d")                  # pack holder looking at a model that is not theirs
+        t = " ".join(str(a[0]) for k, a, kw in st.log if k in ("info", "success", "warning"))
+        self.assertIn("Aircraft selection", t); self.assertIn("A, B, C", t)
+        mem = A.MemoryStore(); pack(mem); st = self.render(None, mem, "a")                  # looking at one of their models
+        t = " ".join(str(a[0]) for k, a, kw in st.log if k in ("info", "success", "warning")); self.assertIn("is unlocked", t)
+        mem = A.MemoryStore(); mem.insert_grant(dict(session_id="s", email="x@y.com", kind="comparison", slots=3, context="pack", purchased_at=A._iso(NOW), expires_at=A._iso(NOW + dt.timedelta(days=14))))
+        st = self.render(None, mem, "a"); t = " ".join(str(a[0]) for k, a, kw in st.log if k in ("info", "success", "warning"))
+        self.assertIn("Step 1", t); self.assertIn("Apply my models", t)
+
 
 if __name__ == "__main__":
     unittest.main()
