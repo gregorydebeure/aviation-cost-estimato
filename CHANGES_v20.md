@@ -157,3 +157,16 @@ Aucun déploiement ni migration en production. La base précédente (167 avions,
 - Market Search : 300 € -> **600 USD** (affichage + paiement Stripe en USD, 60 000 cents).
 - Budget d'un avion précis : « dès 490 € » affiché (parcours « Request an aircraft-specific budget » et grille).
 - Essentiel 15 € conservé tel quel (absent de la grille partenaires : à trancher). Budget individuel 29 € et Pack Comparaison 59 € NON mis en vente : ils exigent le déblocage par modèle côté serveur (non construit) ; la note partenaires précise aussi que les modalités restent à arrêter.
+
+## v26 — accès par modèle (19 nov 2026) — interrupteur éteint par défaut
+- Nouveau `menkor_access.py` : packs 29 € / 59 € (14 jours, modèles modifiables, packs additifs), Pro 10 nouveaux modèles par mois (sans report), modèle supplémentaire 15 €, vérification des paiements auprès de Stripe (payé, montant exact, même e-mail), stockage Supabase.
+- `app.py` : porte d'accès (Pro/pack = fonctions Pro uniquement sur les modèles débloqués ; autre modèle = démo gratuite), panneau « Model access » (achat, choix/échange de modèles, déblocage Pro), comparaison limitée aux modèles débloqués. Actif seulement si `ACCESS_RULES_ENABLED=1` et tables présentes.
+- `model_access_migration.sql` : 3 tables (à exécuter une fois dans Supabase, par Greg). Mise en service détaillée : `ACCESS_SETUP.md`.
+- Tests : `test_access.py` (règles, 14 tests), `test_access_app.py` (câblage, faux Streamlit).
+
+## v27 — Suppression de l'offre Essentiel (15 €/mois)
+- Aucun abonné Essentiel (confirmé par Greg) : l'offre est retirée du code. Plus de bouton d'achat, plus de reconnaissance du prix `STRIPE_PRICE_ESSENTIEL`, plus de test Essentiel dans les diagnostics admin.
+- Le tableau des offres devient Free | Pack modèle (visible seulement quand `ACCESS_RULES_ENABLED=1`) | Pro 79 €/mois. Les onglets Profitability, Sensitivity et My scenarios demandent désormais Pro (ou un modèle débloqué par un pack).
+- Un compte dont la base porterait encore le plan « essentiel » est traité comme Free.
+- `menkor_store.py` et le gabarit d'e-mail de `menkor_accounts.py` ne sont pas modifiés (aucun effet sans abonné Essentiel).
+- Tests : accès et prix exécutés avec des stubs ; le reste de la suite ne tourne pas dans mon environnement (modules et données absents). Ce n'est pas une validation dans un vrai navigateur.

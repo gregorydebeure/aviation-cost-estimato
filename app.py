@@ -12,6 +12,10 @@ import re as _re
 import html as _html
 import datetime as _datetime
 import menkor_accounts as ACC
+try:
+    import menkor_access as ACCESS                    # model-level access rules (packs / Pro quota); inactive unless ACCESS_RULES_ENABLED=1
+except Exception:
+    ACCESS=None
 import warnings
 warnings.filterwarnings("ignore")
 
@@ -19,9 +23,9 @@ import os
 from pathlib import Path
 import streamlit.components.v1 as components
 
-_BRIDGE_KEYS = ["STRIPE_SECRET_KEY", "STRIPE_PRICE_ESSENTIEL", "STRIPE_PRICE_PRO", "ADMIN_EMAIL", "ADMIN_PASSWORD",
+_BRIDGE_KEYS = ["STRIPE_SECRET_KEY", "STRIPE_PRICE_PRO", "ADMIN_EMAIL", "ADMIN_PASSWORD",
                 "SUPABASE_URL", "SUPABASE_SERVICE_KEY", "RESEND_API_KEY", "BUDGET_REQUEST_TO"]
-_BRIDGE_OPTIONAL = ["STRIPE_PRICE_PRO_LEGACY", "RESET_SECRET", "EMAIL_FROM", "SIGNUP_NOTIFY_TO", "ADMIN_PASSWORD_HASH", "APP_PUBLIC_URL", "EVENTS_ENABLED"]
+_BRIDGE_OPTIONAL = ["ACCESS_RULES_ENABLED", "STRIPE_PRICE_PRO_LEGACY", "RESET_SECRET", "EMAIL_FROM", "SIGNUP_NOTIFY_TO", "ADMIN_PASSWORD_HASH", "APP_PUBLIC_URL", "EVENTS_ENABLED"]
 
 try:
     # Platforms like Render have no native st.secrets support, only plain env vars — bridge them into
@@ -627,8 +631,107 @@ def _track(event,props=None,once_key=None):
     except Exception:
         return False
 
+# ─── MODEL-LEVEL ACCESS (packs, Pro quota, additional models) ────────────────
+def _access_rules_on():
+    """Enforced only when ACCESS_RULES_ENABLED=1, menkor_access.py is deployed and the 3 Supabase tables exist (model_access_migration.sql).
+    Otherwise the app behaves exactly as before. Never raises."""
+    try:
+        if ACCESS is None or str(_secret("ACCESS_RULES_ENABLED","0"))!="1" or not _storage_configured(): return False
+        ok=st.session_state.get("_acc_tables_ok")
+        if ok is None:
+            ok=bool(ACCESS.SupabaseStore(_sb_rest).tables_ready()); st.session_state["_acc_tables_ok"]=ok
+        return ok
+    except Exception:
+        return False
+
+def _access_state(email,plan,force=False):
+    """Loads the access state; paid Stripe sessions are synced at most every 5 minutes (or on demand)."""
+    import time
+    store=ACCESS.SupabaseStore(_sb_rest)
+    if force or time.time()-st.session_state.get("_acc_sync_at",0)>300:
+        try:
+            import stripe; stripe.api_key=_secret("STRIPE_SECRET_KEY")
+            ACCESS.sync_from_stripe(stripe,store,email)
+        except Exception: pass
+        st.session_state["_acc_sync_at"]=time.time()
+    return ACCESS.load_state(store,email,plan),store
+
+def _access_gate(df,aid,is_essentiel,is_pro):
+    """Returns (is_essentiel, is_pro, ctx). Rules off / admin / not logged in: unchanged, ctx None.
+    Pro or pack holder: full Pro features ONLY on the models they have unlocked; any other model behaves like the free demo."""
+    st.session_state["_acc_ids"]=None
+    email=st.session_state.get("auth_email")
+    if not email or st.session_state.get("auth_is_admin") or not _access_rules_on(): return is_essentiel,is_pro,None
+    plan=st.session_state.get("auth_plan")
+    try:
+        stt,store=_access_state(email,plan)
+    except Exception:
+        return is_essentiel,is_pro,None
+    all_ids=df["aircraft_id"].tolist(); ent=stt.entitled_ids(all_ids)
+    ctx=dict(state=stt,store=store,entitled=aid in ent,all_ids=all_ids)
+    st.session_state["_acc_ids"]=sorted(ent)
+    return (True,True,ctx) if aid in ent else (False,False,ctx)
+
+def _acc_filter(df):
+    ids=st.session_state.get("_acc_ids")
+    return df if ids is None else df[df["aircraft_id"].isin(ids)]
+
+def _access_checkout_url(kind,email,plan):
+    try:
+        import stripe; stripe.api_key=_secret("STRIPE_SECRET_KEY")
+        p=ACCESS.checkout_params(kind,email,"pro" if plan=="pro" else "pack",
+                                 "https://aviation-cost-estimator.onrender.com/?access=paid","https://aviation-cost-estimator.onrender.com/?access=cancelled")
+        return stripe.checkout.Session.create(**p).url,None
+    except Exception as e:
+        return None,f"{type(e).__name__}: {e}"
+
+def _acc_buy(kind,label,email,plan,key):
+    P=ACCESS.PRODUCTS[kind]
+    if st.button(f"{label} — € {P['price_eur']}",key=f"accbuy_{key}",width="stretch"):
+        url,err=_access_checkout_url(kind,email,plan)
+        st.session_state[f"_accurl_{key}"]=url
+        if not url:
+            st.warning("Payment couldn't be started right now. Please try again shortly, or contact support if this persists.")
+            if st.session_state.get("auth_is_admin"): st.caption(f"Admin detail: {err}")
+    _u=st.session_state.get(f"_accurl_{key}")
+    if _u: st.markdown(f'<div style="text-align:center;margin:.3rem 0"><a href="{_u}" target="_blank" style="background:#C9A84C;color:#0B1629;padding:.5rem 1.2rem;border-radius:5px;font-weight:700;text-decoration:none">💳 Pay € {P["price_eur"]} on Stripe</a></div>',unsafe_allow_html=True)
+
+def _render_access_panel(ctx,aid,df):
+    stt,store=ctx["state"],ctx["store"]; email=st.session_state["auth_email"]; plan=st.session_state.get("auth_plan")
+    names=dict(zip(df["aircraft_id"],df["model"])); sm=stt.summary(); A_=ACCESS
+    with st.expander("🔓 Model access"+("" if ctx["entitled"] else " — this model is locked"),expanded=not ctx["entitled"]):
+        if not ctx["entitled"]: st.warning(f"{names.get(aid,aid)} is not unlocked for your account. Without unlocking, only the free demo is available for this model.")
+        if plan=="pro":
+            st.markdown(f"**Menkor Pro** — {sm['pro_quota_left']} new model(s) left this month (quota {A_.PRO_MODELS_PER_MONTH} per month, not carried over). Models already unlocked stay available while your subscription is active.")
+            if sm["pro_unlocked"]: st.caption("Unlocked: "+", ".join(names.get(i,i) for i in sm["pro_unlocked"]))
+            if not ctx["entitled"]:
+                if st.button(f"Unlock {names.get(aid,aid)}",key="acc_unlock",width="stretch"):
+                    ok,msg,rec=stt.unlock_pro_model(aid,ctx["all_ids"])
+                    if ok and rec: store.insert_pro_unlock(rec); st.rerun()
+                    elif not ok: st.warning(msg)
+            if sm["pro_quota_left"]<=0: _acc_buy("extra_model","Add one model this month",email,plan,"extra")
+        else:
+            if sm["pack_slots"]>0:
+                exp=sm["pack_expires_at"]
+                st.markdown(f"**Your pack(s)** — {sm['pack_slots']} model(s), available until {exp.strftime('%d %b %Y %H:%M UTC')}. You can change the models below; reports already downloaded stay yours.")
+                cur=[i for i in sm["pack_models"] if i in names]
+                pick=st.multiselect("Models unlocked by your pack",list(names),default=cur,format_func=lambda i:names[i],max_selections=sm["pack_slots"],key="acc_pick")
+                if st.button("Apply my models",key="acc_apply",width="stretch"):
+                    ok,msg,rec=stt.choose_pack_models(pick,ctx["all_ids"])
+                    if ok and rec: store.set_selection(rec); st.rerun()
+                    else: st.warning(msg)
+                _acc_buy("extra_model","Add one more model for 14 days",email,plan,"extra")
+            else:
+                st.markdown("**No active pack.** Unlock the models you need for 14 days, or subscribe to Menkor Pro.")
+            _acc_buy("single","Budget individuel — 1 model, 14 days",email,plan,"single")
+            _acc_buy("comparison","Pack Comparaison — 3 models, 14 days",email,plan,"comparison")
+        st.caption("Prices in euros, excluding applicable taxes. Changing hours, fuel or costs on an unlocked model never uses another unlock. "
+                   "A pack bought during an active period adds its models (it does not extend the dates). Comparisons use unlocked models only. No global export of the database.")
+        if st.button("🔄 Refresh my purchases",key="acc_refresh"):
+            _access_state(email,plan,force=True); st.rerun()
+
 def _plan_key():
-    return "pro" if st.session_state.get("auth_plan")=="pro" else ("essentiel" if st.session_state.get("auth_plan")=="essentiel" else "free")
+    return "pro" if st.session_state.get("auth_plan")=="pro" else "free"
 
 def _mail_post(*a,**k):
     import requests
@@ -734,12 +837,12 @@ def _login(email,pwd):
         if fields: _sb_update_user(email,fields)                                    # attempt counter / lockout (needs the lot-D columns; harmless without them)
     return (True,rec) if ok else (False,msg)
 
-PLAN_PRICE_KEYS = {"essentiel":"STRIPE_PRICE_ESSENTIEL", "pro":"STRIPE_PRICE_PRO"}
-PLAN_LABELS = {"essentiel":"Essentiel — €15/month", "pro":"Menkor Pro — €79/month"}
+PLAN_PRICE_KEYS = {"pro":"STRIPE_PRICE_PRO"}
+PLAN_LABELS = {"pro":"Menkor Pro — €79/month"}
 MARKET_SEARCH_PRICE_USD = 600          # one flat fee, charged in USD (Stripe unit_amount = cents)
 PRECISE_BUDGET_FROM_EUR = 490          # manual aircraft-specific budget: "from" price, scope agreed, extended work on quote
 def _check_sub(email):
-    """Returns 'pro', 'essentiel', or None based on any active Stripe subscription for this email.
+    """Returns 'pro' or None based on any active Stripe subscription for this email.
     IMPORTANT: Stripe Checkout creates a brand-new Customer object every time it's given customer_email
     without an existing customer id — so the same person can end up with several Customer records
     under one email (visible side-by-side in the Stripe Dashboard → Clients). We must check ALL of
@@ -747,7 +850,7 @@ def _check_sub(email):
     object is silently missed forever even though the payment went through."""
     try:
         import stripe; stripe.api_key=_secret("STRIPE_SECRET_KEY")
-        pro_price=_secret("STRIPE_PRICE_PRO",""); ess_price=_secret("STRIPE_PRICE_ESSENTIEL","")
+        pro_price=_secret("STRIPE_PRICE_PRO","")
         pro_legacy={x.strip() for x in str(_secret("STRIPE_PRICE_PRO_LEGACY","") or "").split(",") if x.strip()}   # former Pro price(s): existing subscribers stay Pro
         custs=stripe.Customer.list(email=email,limit=25)
         if not custs.data: return None
@@ -758,7 +861,6 @@ def _check_sub(email):
                 for item in sub["items"]["data"]:
                     pid=item["price"]["id"]
                     if pid==pro_price or pid in pro_legacy: plan="pro"; active_cid=cust.id
-                    elif pid==ess_price and plan!="pro": plan="essentiel"; active_cid=active_cid or cust.id
             if plan=="pro": break
         if active_cid: _sb_update_user(email,{"stripe_cid":active_cid})
         _prev=(_sb_get_user(email) or {}).get("plan")
@@ -818,13 +920,9 @@ def _plan_buttons(email,current_plan=None):
         st.warning(f"⚠ {label} checkout isn't available right now. Please try again shortly, or contact support if this persists.")
         if is_admin: st.caption(f"Admin detail: {err}")
     st.markdown('<div style="font-size:.74rem;color:#8496B0;text-align:center;margin:.3rem 0 .2rem 0;letter-spacing:.06em;text-transform:uppercase">Monthly subscription</div>',unsafe_allow_html=True)
-    if current_plan not in ("essentiel","pro"):
-        url,err=_checkout_url(email,"essentiel")
-        if url: st.markdown(f'<div style="text-align:center;margin-top:.3rem"><a href="{url}" target="_blank" style="display:block;background:#1A3A6E;color:#D6E4F7;border:1px solid #8496B0;padding:.5rem 1.2rem;border-radius:5px;font-weight:600;text-decoration:none">Essentiel — 15€/month</a></div>', unsafe_allow_html=True)
-        else: _fail("Essentiel",err)
     if current_plan!="pro":
         url,err=_checkout_url(email,"pro")
-        if url: st.markdown(f'<div style="text-align:center;margin-top:.5rem"><a href="{url}" target="_blank" style="display:block;background:#C9A84C;color:#0B1629;padding:.5rem 1.2rem;border-radius:5px;font-weight:700;text-decoration:none">⭐ {"Upgrade to Pro" if current_plan=="essentiel" else "Menkor Pro"} — 79€/month</a></div>', unsafe_allow_html=True)
+        if url: st.markdown(f'<div style="text-align:center;margin-top:.5rem"><a href="{url}" target="_blank" style="display:block;background:#C9A84C;color:#0B1629;padding:.5rem 1.2rem;border-radius:5px;font-weight:700;text-decoration:none">⭐ Menkor Pro — 79€/month</a></div>', unsafe_allow_html=True)
         else: _fail("Pro",err)
 
 def render_auth():
@@ -842,8 +940,8 @@ def render_auth():
                         st.caption("No users yet, or Supabase isn't configured (SUPABASE_URL / SUPABASE_SERVICE_KEY).")
                     for ud in users:
                         ue=ud.get("email",""); p=ud.get("plan")
-                        col="#4ADE80" if p=="pro" else ("#60A5FA" if p=="essentiel" else "#F87171")
-                        lbl={"pro":"Pro","essentiel":"Essentiel"}.get(p,"✗")
+                        col="#4ADE80" if p=="pro" else "#F87171"
+                        lbl={"pro":"Pro"}.get(p,"✗")
                         st.markdown(f'<div style="font-size:.75rem;border-bottom:1px solid #1A3A6E;padding:2px 0"><b>{ue}</b> <span style="color:{col}">{lbl}</span></div>', unsafe_allow_html=True)
                     if st.button("🔄 Refresh",key="admin_ref",width="stretch"):
                         for ud in users: _check_sub(ud.get("email",""))
@@ -870,14 +968,9 @@ def render_auth():
                         if ok: st.success(f"✓ Email sent to {_ae}. Check your inbox (and spam folder).")
                         else: st.error(detail)
                 with st.expander("🩺 Stripe checkout diagnostics"):
-                    _sk=_secret("STRIPE_SECRET_KEY",""); _pe=_secret("STRIPE_PRICE_ESSENTIEL",""); _pp=_secret("STRIPE_PRICE_PRO","")
+                    _sk=_secret("STRIPE_SECRET_KEY",""); _pp=_secret("STRIPE_PRICE_PRO","")
                     st.caption(f"STRIPE_SECRET_KEY: {'✓ set (' + str(len(_sk)) + ' chars)' if _sk else '✗ missing'}")
-                    st.caption(f"STRIPE_PRICE_ESSENTIEL: {'✓ ' + _pe if _pe else '✗ missing'}")
                     st.caption(f"STRIPE_PRICE_PRO: {'✓ ' + _pp if _pp else '✗ missing'}")
-                    if st.button("Test Essentiel checkout link",key="stripe_test_ess",width="stretch"):
-                        url,err=_checkout_url("diagnostic-test@menkor-aviation.test","essentiel")
-                        if url: st.success(f"✓ Checkout link created: {url}")
-                        else: st.error(err)
                     if st.button("Test Pro checkout link",key="stripe_test_pro",width="stretch"):
                         url,err=_checkout_url("diagnostic-test@menkor-aviation.test","pro")
                         if url: st.success(f"✓ Checkout link created: {url}")
@@ -887,9 +980,6 @@ def render_auth():
                 plan=st.session_state["auth_plan"]
                 if plan=="pro":
                     st.markdown('<div style="font-size:.72rem;color:#C9A84C">⭐ Pro plan</div>', unsafe_allow_html=True)
-                elif plan=="essentiel":
-                    st.markdown('<div style="font-size:.72rem;color:#60A5FA;margin-bottom:.4rem">✓ Essentiel plan</div>', unsafe_allow_html=True)
-                    _plan_buttons(email,current_plan="essentiel")
                 else:
                     st.markdown('<div style="font-size:.72rem;color:#F87171;margin-bottom:.4rem">⚠ No subscription</div>', unsafe_allow_html=True)
                     _plan_buttons(email,current_plan=None)
@@ -937,29 +1027,37 @@ def render_auth():
                         if ok: st.success(msg); _plan_buttons(em.strip().lower(),current_plan=None)
                         else: st.error(msg)
                     else: st.warning("Fill in all fields.")
-            st.markdown('<div style="font-size:.7rem;color:#8496B0;text-align:center;margin-top:.4rem">Dashboard free · Essentiel 15€/mo · Menkor Pro 79€/mo</div>', unsafe_allow_html=True)
+            st.markdown('<div style="font-size:.7rem;color:#8496B0;text-align:center;margin-top:.4rem">Dashboard free · Menkor Pro 79€/mo</div>', unsafe_allow_html=True)
     plan=st.session_state.get("auth_plan")
-    return plan in ("essentiel","pro"), plan=="pro"
+    return plan=="pro", plan=="pro"      # single paid plan; the tuple shape is kept for the access gate
 
 PLAN_ROWS=[("Dashboard — free demo (Falcon 7X, report scenario)",True,True,True),
            ("Dashboard — any aircraft, your hours and fuel price",False,True,True),
            ("Profitability",False,True,True),("Sensitivity",False,True,True),
-           ("Cost Master, PDF report and CSV export",False,False,True),("Quotation",False,False,True),
+           ("Cost Master, PDF report and CSV export",False,True,True),("Quotation",False,True,True),
            ("Market Search (manual service, $ 600 per request, separate)",True,True,True),
            ("Aircraft-specific budget (manual study, from € 490, scope agreed, separate)",True,True,True)]
+# Pack column = full features, but only on the models unlocked by the pack (shown only when the access rules are on).
 
 def _plan_table(required=None):
-    """Free / Essentiel / Pro comparison. Prices are the existing ones; only features that exist today are listed."""
+    """Free / Pack / Pro comparison (the Pack column only appears when the model-access rules are live)."""
+    packs=False
+    try: packs=bool(_access_rules_on())
+    except Exception: packs=False
     def _cell(included,hi):
         mark='<span style="color:#4ADE80;font-weight:700">✓</span>' if included else '<span style="color:#4A5568">—</span>'
         bg="background:rgba(201,168,76,.10);" if hi else ""
         return f'<td style="text-align:center;padding:.5rem .4rem;{bg}">{mark}</td>'
-    body="".join(f'<tr><td style="padding:.5rem .6rem;color:#D6E4F7;font-size:.82rem">{name}</td>{_cell(f_,False)}{_cell(e_,required=="essentiel")}{_cell(p_,required=="pro")}</tr>' for name,f_,e_,p_ in PLAN_ROWS)
+    def _row(name,f_,k_,p_):
+        mid=_cell(k_,False) if packs else ""
+        return f'<tr><td style="padding:.5rem .6rem;color:#D6E4F7;font-size:.82rem">{name}</td>{_cell(f_,False)}{mid}{_cell(p_,required=="pro")}</tr>'
+    body="".join(_row(*r) for r in PLAN_ROWS)
+    pack_th='<th style="padding:.5rem .4rem;font-size:.7rem;color:#8496B0">Model pack<br>from 29€</th>' if packs else ""
     st.markdown(f"""<table style="width:100%;border-collapse:collapse;background:#13233F;border:1px solid #1A3A6E;border-radius:6px;margin-bottom:1rem">
         <thead><tr style="border-bottom:1px solid #1A3A6E">
             <th style="text-align:left;padding:.5rem .6rem;font-size:.68rem;letter-spacing:.08em;text-transform:uppercase;color:#8496B0">Feature</th>
             <th style="padding:.5rem .4rem;font-size:.7rem;color:#8496B0">Free</th>
-            <th style="padding:.5rem .4rem;font-size:.7rem;color:#8496B0">Essentiel<br>15€/mo</th>
+            {pack_th}
             <th style="padding:.5rem .4rem;font-size:.7rem;color:#8496B0">Menkor Pro<br>79€/mo</th>
         </tr></thead>
         <tbody>{body}</tbody>
@@ -972,7 +1070,7 @@ def _plan_access():
     else: _plan_buttons(email,current_plan=st.session_state.get("auth_plan"))
 
 def premium_gate(required="pro"):
-    req_label="Pro" if required=="pro" else "Essentiel"
+    req_label="Pro"
     price_label=PLAN_LABELS.get(required,"")
     st.markdown(f"""<div style="background:linear-gradient(135deg,#112244 0%,#1A3A6E 100%);
          border:1px solid #C9A84C;border-radius:12px;padding:2.5rem;text-align:center;margin:2rem 0 1rem 0">
@@ -1045,7 +1143,7 @@ def _render_free_demo(df,aid,model_name):
             <div class="metric-sub" style="margin-top:.4rem">Annual budget {dd.money(dres["budget_usd"])} · cost per flown hour {dd.money(dres["cost_per_h_usd"]) if dres["cost_per_h_usd"] is not None else "n/a"} · {dres["hours"]["flown"]:,.0f} flown hours</div>
             <div class="metric-sub" style="margin-top:.4rem">Page 1: cost summary, results, essential assumptions, main exclusions. Page 2: detailed breakdown, scenarios, link to a custom study.</div>
             <div class="metric-sub" style="margin-top:.4rem;color:#F59E0B">The PDF report for your own scenario is available with the Pro plan.</div></div>''',unsafe_allow_html=True)
-    if aid!=DEMO_AID: st.caption(f"Your selection ({model_name}) is available with an Essentiel or Pro plan.")
+    if aid!=DEMO_AID: st.caption(f"Your selection ({model_name}) is available with a Menkor Pro plan.")
     st.markdown('<div class="section-header">What each plan includes</div>',unsafe_allow_html=True)
     _plan_table(None)
     _plan_access()
@@ -1585,7 +1683,7 @@ def _render_saved_scenarios(df,owner,res,scn,folders,fname,is_pro):
                         _say(STORE.restore_scenario(_sb_rest,owner,g["id"]),"Restored.","Could not restore.")
 
 def _render_my_scenarios(df,aid,scn,res,disp,is_pro):
-    """Personal scenarios (Essentiel+), comparison / folders / report branding (Pro). Owner = the authenticated session e-mail, never a typed value."""
+    """Personal scenarios (Pro), comparison / folders / report branding (Pro). Owner = the authenticated session e-mail, never a typed value."""
     owner=st.session_state.get("auth_email")
     if not owner: st.info("Log in to save and find your scenarios."); return
     if not _storage_configured():
@@ -1598,7 +1696,7 @@ def _render_my_scenarios(df,aid,scn,res,disp,is_pro):
     if sec=="Saved scenarios":
         _render_saved_scenarios(df,owner,res,scn,folders,fname,is_pro)
     elif sec=="Compare aircraft":
-        _render_compare(df)
+        _render_compare(_acc_filter(df))
     else:
         st.markdown('<div class="section-header">Report branding</div>',unsafe_allow_html=True)
         st.caption("Your name and logo appear on the PDF report you generate. The Menkor mention, the assumptions, the limits and the exclusions are always kept.")
@@ -1868,10 +1966,9 @@ def main():
 
     if _render_password_reset(): st.stop()
 
-    _plan_name = "Pro" if is_pro else ("Essentiel" if is_essentiel else "Free")
-    _plan_color = "#4ADE80" if is_pro else ("#60A5FA" if is_essentiel else "#8496B0")
+    _plan_name = "Pro" if is_pro else "Free"
+    _plan_color = "#4ADE80" if is_pro else "#8496B0"
     _plan_includes = ("Dashboard · Profitability · Sensitivity · Cost Master · Quotation · Market Search" if is_pro
-        else "Dashboard · Profitability · Sensitivity" if is_essentiel
         else "Dashboard · Market Search only")
     st.markdown(f'''<div style="display:flex;align-items:center;gap:.6rem;background:#13233F;border:1px solid #1A3A6E;
          border-left:3px solid {_plan_color};border-radius:6px;padding:.5rem .9rem;margin-bottom:.8rem;font-size:.8rem">
@@ -2100,20 +2197,23 @@ def main():
                     with oi1: _int=st.number_input("Annual loan interest and financing costs",min_value=0.0,value=None,step=10000.0,format="%.0f",key="own_int",placeholder="not entered")
                     with oi2: _intc=st.selectbox("Currency ",["USD","EUR"],key="own_int_ccy")
 
+    is_essentiel,is_pro,_acc_ctx=_access_gate(df,aid,is_essentiel,is_pro)
+    if _acc_ctx: _render_access_panel(_acc_ctx,aid,df)
+
     def _tab_label(base,required):
         if required is None: return base
-        unlocked = is_pro or (required=="essentiel" and is_essentiel)
+        unlocked = is_pro
         if unlocked: return base
-        return f"{base}  🔒 {'15€/mo' if required=='essentiel' else '79€/mo'}"
+        return f"{base}  🔒 79€/mo"
 
     tab1,tab2,tab3,tab4,tab5,tab6,tab7=st.tabs([
         _tab_label("📊 Dashboard",None),
-        _tab_label("📈 Profitability","essentiel"),
-        _tab_label("🔍 Sensitivity","essentiel"),
+        _tab_label("📈 Profitability","pro"),
+        _tab_label("🔍 Sensitivity","pro"),
         _tab_label("💼 Cost Master","pro"),
         _tab_label("✈️ Quotation","pro"),
         _tab_label("🌐 Market Search",None),
-        _tab_label("🗂 My scenarios","essentiel"),
+        _tab_label("🗂 My scenarios","pro"),
     ])
 
     # ── Cost Master EDITORS (rendered first so every tab uses the same scenario) ─────
@@ -2367,7 +2467,7 @@ def main():
     # TAB 2: PROFITABILITY
     with tab2:
         if not is_essentiel:
-            premium_gate("essentiel")
+            premium_gate("pro")
         else:
             st.markdown('<div class="section-header">Charter Profitability — Estimated Operating Result</div>',unsafe_allow_html=True)
             st.caption(disp.note())
@@ -2430,7 +2530,7 @@ def main():
     # TAB 3: SENSITIVITY
     with tab3:
         if not is_essentiel:
-            premium_gate("essentiel")
+            premium_gate("pro")
         else:
             st.markdown('<div class="section-header">Sensitivity — Billed Hours vs Operating Result</div>',unsafe_allow_html=True)
             st.caption(disp.note())
@@ -2846,7 +2946,7 @@ def main():
 
     # ── TAB 7 : MY SCENARIOS ───────────────────────────────────────────
     with tab7:
-        if not (is_essentiel or is_pro): premium_gate("essentiel")
+        if not (is_essentiel or is_pro): premium_gate("pro")
         else: _render_my_scenarios(get_base(),aid,scn,res,disp,is_pro)
 
     _goto=st.session_state.pop("_goto_tab",None)
