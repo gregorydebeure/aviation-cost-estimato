@@ -21,7 +21,7 @@ import streamlit.components.v1 as components
 
 _BRIDGE_KEYS = ["STRIPE_SECRET_KEY", "STRIPE_PRICE_ESSENTIEL", "STRIPE_PRICE_PRO", "ADMIN_EMAIL", "ADMIN_PASSWORD",
                 "SUPABASE_URL", "SUPABASE_SERVICE_KEY", "RESEND_API_KEY", "BUDGET_REQUEST_TO"]
-_BRIDGE_OPTIONAL = ["RESET_SECRET", "EMAIL_FROM", "SIGNUP_NOTIFY_TO", "ADMIN_PASSWORD_HASH", "APP_PUBLIC_URL", "EVENTS_ENABLED"]
+_BRIDGE_OPTIONAL = ["STRIPE_PRICE_PRO_LEGACY", "RESET_SECRET", "EMAIL_FROM", "SIGNUP_NOTIFY_TO", "ADMIN_PASSWORD_HASH", "APP_PUBLIC_URL", "EVENTS_ENABLED"]
 
 try:
     # Platforms like Render have no native st.secrets support, only plain env vars — bridge them into
@@ -735,7 +735,9 @@ def _login(email,pwd):
     return (True,rec) if ok else (False,msg)
 
 PLAN_PRICE_KEYS = {"essentiel":"STRIPE_PRICE_ESSENTIEL", "pro":"STRIPE_PRICE_PRO"}
-PLAN_LABELS = {"essentiel":"Essentiel — €15/month", "pro":"Pro — €50/month"}
+PLAN_LABELS = {"essentiel":"Essentiel — €15/month", "pro":"Menkor Pro — €79/month"}
+MARKET_SEARCH_PRICE_USD = 600          # one flat fee, charged in USD (Stripe unit_amount = cents)
+PRECISE_BUDGET_FROM_EUR = 490          # manual aircraft-specific budget: "from" price, scope agreed, extended work on quote
 def _check_sub(email):
     """Returns 'pro', 'essentiel', or None based on any active Stripe subscription for this email.
     IMPORTANT: Stripe Checkout creates a brand-new Customer object every time it's given customer_email
@@ -746,6 +748,7 @@ def _check_sub(email):
     try:
         import stripe; stripe.api_key=_secret("STRIPE_SECRET_KEY")
         pro_price=_secret("STRIPE_PRICE_PRO",""); ess_price=_secret("STRIPE_PRICE_ESSENTIEL","")
+        pro_legacy={x.strip() for x in str(_secret("STRIPE_PRICE_PRO_LEGACY","") or "").split(",") if x.strip()}   # former Pro price(s): existing subscribers stay Pro
         custs=stripe.Customer.list(email=email,limit=25)
         if not custs.data: return None
         plan=None; active_cid=None
@@ -754,7 +757,7 @@ def _check_sub(email):
             for sub in subs.data:
                 for item in sub["items"]["data"]:
                     pid=item["price"]["id"]
-                    if pid==pro_price: plan="pro"; active_cid=cust.id
+                    if pid==pro_price or pid in pro_legacy: plan="pro"; active_cid=cust.id
                     elif pid==ess_price and plan!="pro": plan="essentiel"; active_cid=active_cid or cust.id
             if plan=="pro": break
         if active_cid: _sb_update_user(email,{"stripe_cid":active_cid})
@@ -796,7 +799,7 @@ def _market_search_checkout_url(email, meta):
         # Dashboard (Settings → Payment methods) and reject this parameter on Checkout Session creation.
         s=stripe.checkout.Session.create(
             mode="payment", customer_email=email,
-            line_items=[{"price_data":{"currency":"eur","unit_amount":30000,
+            line_items=[{"price_data":{"currency":"usd","unit_amount":MARKET_SEARCH_PRICE_USD*100,
                 "product_data":{"name":"Personalized Aircraft Market Search"}},"quantity":1}],
             metadata=meta,
             success_url="https://aviation-cost-estimator.onrender.com/?market_submitted=1",
@@ -821,7 +824,7 @@ def _plan_buttons(email,current_plan=None):
         else: _fail("Essentiel",err)
     if current_plan!="pro":
         url,err=_checkout_url(email,"pro")
-        if url: st.markdown(f'<div style="text-align:center;margin-top:.5rem"><a href="{url}" target="_blank" style="display:block;background:#C9A84C;color:#0B1629;padding:.5rem 1.2rem;border-radius:5px;font-weight:700;text-decoration:none">⭐ {"Upgrade to Pro" if current_plan=="essentiel" else "Pro"} — 50€/month</a></div>', unsafe_allow_html=True)
+        if url: st.markdown(f'<div style="text-align:center;margin-top:.5rem"><a href="{url}" target="_blank" style="display:block;background:#C9A84C;color:#0B1629;padding:.5rem 1.2rem;border-radius:5px;font-weight:700;text-decoration:none">⭐ {"Upgrade to Pro" if current_plan=="essentiel" else "Menkor Pro"} — 79€/month</a></div>', unsafe_allow_html=True)
         else: _fail("Pro",err)
 
 def render_auth():
@@ -934,7 +937,7 @@ def render_auth():
                         if ok: st.success(msg); _plan_buttons(em.strip().lower(),current_plan=None)
                         else: st.error(msg)
                     else: st.warning("Fill in all fields.")
-            st.markdown('<div style="font-size:.7rem;color:#8496B0;text-align:center;margin-top:.4rem">Dashboard free · Essentiel 15€/mo · Pro 50€/mo</div>', unsafe_allow_html=True)
+            st.markdown('<div style="font-size:.7rem;color:#8496B0;text-align:center;margin-top:.4rem">Dashboard free · Essentiel 15€/mo · Menkor Pro 79€/mo</div>', unsafe_allow_html=True)
     plan=st.session_state.get("auth_plan")
     return plan in ("essentiel","pro"), plan=="pro"
 
@@ -942,7 +945,8 @@ PLAN_ROWS=[("Dashboard — free demo (Falcon 7X, report scenario)",True,True,Tru
            ("Dashboard — any aircraft, your hours and fuel price",False,True,True),
            ("Profitability",False,True,True),("Sensitivity",False,True,True),
            ("Cost Master, PDF report and CSV export",False,False,True),("Quotation",False,False,True),
-           ("Market Search (manual service, € 300 per request, separate)",True,True,True)]
+           ("Market Search (manual service, $ 600 per request, separate)",True,True,True),
+           ("Aircraft-specific budget (manual study, from € 490, scope agreed, separate)",True,True,True)]
 
 def _plan_table(required=None):
     """Free / Essentiel / Pro comparison. Prices are the existing ones; only features that exist today are listed."""
@@ -956,7 +960,7 @@ def _plan_table(required=None):
             <th style="text-align:left;padding:.5rem .6rem;font-size:.68rem;letter-spacing:.08em;text-transform:uppercase;color:#8496B0">Feature</th>
             <th style="padding:.5rem .4rem;font-size:.7rem;color:#8496B0">Free</th>
             <th style="padding:.5rem .4rem;font-size:.7rem;color:#8496B0">Essentiel<br>15€/mo</th>
-            <th style="padding:.5rem .4rem;font-size:.7rem;color:#8496B0">Pro<br>50€/mo</th>
+            <th style="padding:.5rem .4rem;font-size:.7rem;color:#8496B0">Menkor Pro<br>79€/mo</th>
         </tr></thead>
         <tbody>{body}</tbody>
     </table>""", unsafe_allow_html=True)
@@ -1225,7 +1229,7 @@ def _render_similar_comparison(df,scn,res,disp,is_pro):
     if is_pro:
         st.button("Choose your own comparison",key="sim_cmp_btn",on_click=_open_compare_aircraft)
     else:
-        st.caption("Comparing aircraft of your choice is part of the Pro plan (50€/mo).")
+        st.caption("Comparing aircraft of your choice is part of the Menkor Pro plan (79€/mo).")
 
 # ─── MAIN ────────────────────────────────────────────────────────────────────
 
@@ -2100,7 +2104,7 @@ def main():
         if required is None: return base
         unlocked = is_pro or (required=="essentiel" and is_essentiel)
         if unlocked: return base
-        return f"{base}  🔒 {'15€/mo' if required=='essentiel' else '50€/mo'}"
+        return f"{base}  🔒 {'15€/mo' if required=='essentiel' else '79€/mo'}"
 
     tab1,tab2,tab3,tab4,tab5,tab6,tab7=st.tabs([
         _tab_label("📊 Dashboard",None),
@@ -2265,7 +2269,7 @@ def main():
     if (is_essentiel or is_pro) and res["available"]: _track("first_simulation",{"plan":_plan_key(),"journey":{J_A:"A",J_B:"B",J_C:"C"}.get(journey)},once_key="first_sim")
 
     if journey==J_C:
-        st.info("You selected an aircraft-specific budget: it is prepared manually by Menkor Aviation. The tabs below remain available for an indicative simulation.")
+        st.info(f"You selected an aircraft-specific budget: it is prepared manually by Menkor Aviation, from € {PRECISE_BUDGET_FROM_EUR} (scope agreed with you; extended work on quote). The tabs below remain available for an indicative simulation.")
         _render_budget_offer(row["model"],"offer_c")
         st.markdown("<hr>",unsafe_allow_html=True)
 
@@ -2692,7 +2696,7 @@ def main():
             st.markdown('<div class="section-header" style="margin-top:1.4rem">Indicative acquisition timeline — Market → AOC</div>',unsafe_allow_html=True)
             st.caption("Indicative timeline: durations and costs are order-of-magnitude figures, adapted to each project (aircraft, jurisdiction, financing, inspection findings).")
             _tl_steps=[
-                ("01","Market Search / Advisory — Taxes / AOC / Registration","Full market search and technical screening, run alongside early advisory on applicable taxes, AOC placement options and the target registration jurisdiction.","3–5 days","€ 300"),
+                ("01","Market Search / Advisory — Taxes / AOC / Registration","Full market search and technical screening, run alongside early advisory on applicable taxes, AOC placement options and the target registration jurisdiction.","3–5 days","$ 600"),
                 ("02","Preselection / First Pre-Audit","Shortlist narrowed by our B1/B2 engineers and CAMO team; first pre-audit of maintenance records, engine program status and airframe history.","3–7 days",None),
                 ("03","LOI / Deposit Escrow / Pre-Inspection","Letter of Intent negotiated and signed; deposit placed in escrow; informal pre-inspection to confirm the aircraft warrants a full PPI.","5–10 days","$1,500–$3,000"),
                 ("04","APA / PPI","Aircraft Purchase Agreement finalized alongside the Pre-Purchase Inspection: full technical inspection, discrepancy list, closing conditions drafted.","7–14 days","$15,000–$35,000"),
@@ -2754,7 +2758,7 @@ def main():
             </div>''',unsafe_allow_html=True)
 
         st.markdown("<hr>",unsafe_allow_html=True)
-        st.markdown('<div class="section-header">What You Get — € 300 Flat Fee</div>',unsafe_allow_html=True)
+        st.markdown('<div class="section-header">What You Get — $ 600 Flat Fee</div>',unsafe_allow_html=True)
         f1,f2,f3=st.columns(3)
         with f1:
             st.markdown('''<div class="metric-card">
@@ -2771,7 +2775,7 @@ def main():
                 <div class="metric-label">✓ Market Positioning</div>
                 <div class="metric-sub">Where each asking price sits against comparable aircraft, with the information we hold on maintenance programmes. Asking prices and estimated values are shown separately.</div>
             </div>''',unsafe_allow_html=True)
-        st.caption("Flat fee: € 300, one price for every model. Delivery timeframe confirmed when your request is reviewed.")
+        st.caption("Flat fee: $ 600 (USD), one price for every model. Delivery timeframe confirmed when your request is reviewed.")
 
         st.markdown("<hr>",unsafe_allow_html=True)
         st.markdown('<div class="section-header">Request Your Market Search</div>',unsafe_allow_html=True)
@@ -2789,7 +2793,7 @@ def main():
             ms_name = st.text_input("Your name")
             ms_email = st.text_input("Your email")
             ms_notes = st.text_area("Additional criteria (optional)")
-            submitted = st.form_submit_button("Proceed to Payment — € 300", width="stretch")
+            submitted = st.form_submit_button("Proceed to Payment — $ 600", width="stretch")
 
         if submitted:
             if not (ms_name and ms_email and ms_budget):
@@ -2799,7 +2803,7 @@ def main():
                         "max_hours":ms_hours,"location":ms_location,"client_name":ms_name,"notes":ms_notes[:450]}
                 url = _market_search_checkout_url(ms_email, meta)
                 if url:
-                    st.markdown(f'<div style="text-align:center;margin-top:.8rem"><a href="{url}" target="_blank" style="background:#C9A84C;color:#0B1629;padding:.6rem 1.5rem;border-radius:5px;font-weight:700;text-decoration:none">💳 Pay € 300 and Submit Request</a></div>', unsafe_allow_html=True)
+                    st.markdown(f'<div style="text-align:center;margin-top:.8rem"><a href="{url}" target="_blank" style="background:#C9A84C;color:#0B1629;padding:.6rem 1.5rem;border-radius:5px;font-weight:700;text-decoration:none">💳 Pay $ 600 and Submit Request</a></div>', unsafe_allow_html=True)
                     st.info("After payment, our team prepares your personalized market report. Delivery timeframe confirmed when your request is reviewed.")
 
     # ── Cost Master → saved scenarios → comparison ──────────────────────────────────────────────────────────

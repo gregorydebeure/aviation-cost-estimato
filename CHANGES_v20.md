@@ -139,3 +139,21 @@ Aucun déploiement ni migration en production. La base précédente (167 avions,
 - **Moteur 2.4 / base `v24-menkor-118-corrected-2026-11-13`** : les scénarios sauvegardés passent par le « Recalculate » explicite ; les avions retirés sont signalés.
 - **Marque** : le CSV porte « MENKOR AVIATION LTD » (colonne `report_brand`), mais le code ne lit pas cette colonne ; les PDF affichent toujours « Menkor Aviation GBL » (décision en attente).
 - `tools/audit_adjustment.py` supprimé. Tests : 471 OK (faux Streamlit, pas un navigateur réel). L'absence d'avion incomplet est testée avec un cas synthétique (`tests/incomplete_support.py`).
+
+## v24.1 — PDF template 2.1 (13 Nov 2026)
+- PDF page 1: new highlighted box "Your cost per flight hour — how charter smooths your costs" (without charter / with charter / charter saves you). Figures come from the engine (`owner_flight`), nothing recomputed in the PDF. Without owner hours: annual amounts are shown, never an invented hour count.
+- Annex: heading "Not confirmed" now reads "(for a more accurate budget: <link>)" — link = `study_url` if given, otherwise `BUDGET_URL` in `menkor_report.py`.
+- Management fee: the PDF (essential assumptions + annex) states what the user declared: CAMO / dispatch included in the fee (not added again), or not declared (not assumed).
+- Engine: `owner_flight_indicator` extended (standalone, saving per hour, % of fixed costs covered). `TEMPLATE_VERSION` = 2.1 (old PDFs are regenerated).
+- Tests: 478 OK (fake Streamlit, not a real browser). Nothing deployed.
+
+## v24.2 — one-page PDF summary + pilot crew (13 Nov 2026)
+- PDF page 1: the "Main exclusions" bullet box (split across two pages) is replaced by one line pointing to the annex, which keeps the full list. Page 1 now holds the whole summary.
+- Cost Master: new "Flight crew (pilots)" block. Number + annual salary per person for pilot in command and first officer (e.g. 2 + 1). It REPLACES the reference crew expense (never added on top); both roles are required (partial entry = explicit error). Stated in the PDF annex and exclusions.
+- New `Scenario.pilot_crew`; saved scenarios and comparison flag it. 483 tests OK (fake Streamlit, not a real browser).
+
+## v25 — nouvelle grille tarifaire (18 nov 2026)
+- Menkor Pro : 50 € -> **79 €/mois** (affichage, boutons, grille, libellés d'onglets). Le prix Stripe est un secret : créer un prix récurrent 79 € dans Stripe et mettre son identifiant dans `STRIPE_PRICE_PRO`. Les abonnés à l'ancien prix 50 € restent Pro si leur ancien identifiant est listé dans le nouveau secret optionnel `STRIPE_PRICE_PRO_LEGACY` (séparés par des virgules).
+- Market Search : 300 € -> **600 USD** (affichage + paiement Stripe en USD, 60 000 cents).
+- Budget d'un avion précis : « dès 490 € » affiché (parcours « Request an aircraft-specific budget » et grille).
+- Essentiel 15 € conservé tel quel (absent de la grille partenaires : à trancher). Budget individuel 29 € et Pack Comparaison 59 € NON mis en vente : ils exigent le déblocage par modèle côté serveur (non construit) ; la note partenaires précise aussi que les modalités restent à arrêter.
