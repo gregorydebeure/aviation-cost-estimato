@@ -170,3 +170,4 @@ Aucun déploiement ni migration en production. La base précédente (167 avions,
 - Un compte dont la base porterait encore le plan « essentiel » est traité comme Free.
 - `menkor_store.py` et le gabarit d'e-mail de `menkor_accounts.py` ne sont pas modifiés (aucun effet sans abonné Essentiel).
 - Tests : accès et prix exécutés avec des stubs ; le reste de la suite ne tourne pas dans mon environnement (modules et données absents). Ce n'est pas une validation dans un vrai navigateur.
+- v27b : nouveau panneau « 💶 Plans & pricing — what you can get » (sous le bandeau du plan, visible de tous) : Free, Budget individuel 29 €, Pack Comparaison 59 €, modèle supplémentaire 15 €, Pro 79 €/mois, Market Search 600 USD, budget dès 490 €, avec le contenu de chaque offre. Les lignes packs n'apparaissent que si `ACCESS_RULES_ENABLED=1`. Libellé des onglets verrouillés : « Pro or pack » quand les packs sont actifs.

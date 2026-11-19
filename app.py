@@ -1063,6 +1063,32 @@ def _plan_table(required=None):
         <tbody>{body}</tbody>
     </table>""", unsafe_allow_html=True)
 
+def _offers_panel(packs_live):
+    """One place listing everything that is sold, with what each offer contains. Pack lines appear only when the access rules are live."""
+    P=ACCESS.PRODUCTS if ACCESS else {}
+    days=getattr(ACCESS,"PACK_DAYS",14); quota=getattr(ACCESS,"PRO_MODELS_PER_MONTH",10)
+    def _tr(name,price,what,hi=False):
+        bg="background:rgba(201,168,76,.10);" if hi else ""
+        return (f'<tr style="border-top:1px solid #1A3A6E;{bg}"><td style="padding:.55rem .6rem;color:#E8C46A;font-weight:700;font-size:.82rem;white-space:nowrap">{name}</td>'
+                f'<td style="padding:.55rem .6rem;color:#D6E4F7;font-size:.82rem;white-space:nowrap">{price}</td>'
+                f'<td style="padding:.55rem .6rem;color:#D6E4F7;font-size:.8rem">{what}</td></tr>')
+    rows=[_tr("Free","€ 0","Dashboard on the demo aircraft (Falcon 7X, report scenario). Market Search can be ordered.")]
+    if packs_live and P:
+        full="Full access on the chosen model: your hours and fuel price, Profitability, Sensitivity, Cost Master, PDF report, CSV export, Quotation, saved scenarios."
+        rows.append(_tr("Single model",f"€ {P['single']['price_eur']} · one-off",f"1 model for {days} days. {full} You can change the model during the period; downloaded reports stay yours."))
+        rows.append(_tr("Comparison pack",f"€ {P['comparison']['price_eur']} · one-off",f"3 models for {days} days, with side-by-side comparison between them. Same features as above."))
+        rows.append(_tr("Additional model",f"€ {P['extra_model']['price_eur']} · one-off",f"1 more model: added to your pack for its remaining period, or +1 for the month on Menkor Pro. Packs bought together add up."))
+    pro_what=(f"Everything above on {quota} new models per calendar month. Models already unlocked stay available while you subscribe; unused quota is not carried over." if packs_live
+              else "Full access: any aircraft, Profitability, Sensitivity, Cost Master, PDF report, CSV export, Quotation, saved scenarios and comparison.")
+    rows.append(_tr("Menkor Pro","€ 79 / month",pro_what,True))
+    rows.append(_tr("Market Search",f"$ {MARKET_SEARCH_PRICE_USD} · per request","Manual market study, sold separately from the plans above."))
+    rows.append(_tr("Aircraft-specific budget",f"from € {PRECISE_BUDGET_FROM_EUR}","Manual study for one aircraft; scope agreed beforehand, extended work on quote."))
+    st.markdown(f"""<table style="width:100%;border-collapse:collapse;background:#13233F;border:1px solid #1A3A6E;border-radius:6px;margin-bottom:.6rem">
+        <thead><tr><th style="text-align:left;padding:.5rem .6rem;font-size:.68rem;letter-spacing:.08em;text-transform:uppercase;color:#8496B0">Offer</th>
+        <th style="text-align:left;padding:.5rem .6rem;font-size:.68rem;letter-spacing:.08em;text-transform:uppercase;color:#8496B0">Price</th>
+        <th style="text-align:left;padding:.5rem .6rem;font-size:.68rem;letter-spacing:.08em;text-transform:uppercase;color:#8496B0">What you get</th></tr></thead>
+        <tbody>{"".join(rows)}</tbody></table>""", unsafe_allow_html=True)
+
 def _plan_access():
     """Direct access to the existing sign-up / subscription flow (nothing new is created here)."""
     email=st.session_state.get("auth_email")
@@ -1975,6 +2001,9 @@ def main():
         <span style="color:{_plan_color};font-weight:700">● {_plan_name} plan</span>
         <span style="color:#8496B0">— included: {_plan_includes}</span>
     </div>''', unsafe_allow_html=True)
+    try: _packs_live=bool(_access_rules_on())
+    except Exception: _packs_live=False
+    with st.expander("💶 Plans & pricing — what you can get",expanded=False): _offers_panel(_packs_live)
     st.markdown("<hr>",unsafe_allow_html=True)
 
     try:
@@ -2204,7 +2233,7 @@ def main():
         if required is None: return base
         unlocked = is_pro
         if unlocked: return base
-        return f"{base}  🔒 79€/mo"
+        return f"{base}  🔒 {'Pro or pack' if _packs_live else '79€/mo'}"
 
     tab1,tab2,tab3,tab4,tab5,tab6,tab7=st.tabs([
         _tab_label("📊 Dashboard",None),
