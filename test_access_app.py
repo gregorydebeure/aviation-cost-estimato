@@ -86,6 +86,15 @@ class TestPanel(unittest.TestCase):
         st = self.render(None, mem, "a"); t = " ".join(str(a[0]) for k, a, kw in st.log if k in ("info", "success", "warning"))
         self.assertIn("Step 1", t); self.assertIn("Apply my models", t)
 
+    def test_sidebar_list_shows_unlocked_models_plus_demo(self):
+        df = pd.DataFrame({"aircraft_id": ["a", "b", "c", "dassault_falcon_7x"], "model": ["A", "B", "C", "F7X"], "Categorie": ["x"] * 4})
+        mem = A.MemoryStore(); pack(mem, "single", ("a",))
+        st, app, _ = boot(None, mem); shown, mine = app._sidebar_models(df)
+        self.assertEqual(sorted(shown["aircraft_id"]), ["a", "dassault_falcon_7x"]); self.assertEqual(mine, {"a"})
+        st, app, _ = boot(None, A.MemoryStore()); shown, mine = app._sidebar_models(df); self.assertEqual(len(shown), 4); self.assertEqual(mine, set())      # nothing unlocked yet: full list
+        st, app, _ = boot(None, mem, admin=True); self.assertEqual(len(app._sidebar_models(df)[0]), 4)                                                     # admin unrestricted
+        st, app, _ = boot(None, mem, on=False); self.assertEqual(len(app._sidebar_models(df)[0]), 4)                                                       # rules off
+
 
 if __name__ == "__main__":
     unittest.main()

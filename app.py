@@ -676,6 +676,19 @@ def _acc_filter(df):
     ids=st.session_state.get("_acc_ids")
     return df if ids is None else df[df["aircraft_id"].isin(ids)]
 
+def _sidebar_models(df):
+    """Aircraft list shown in the sidebar. Account with unlocked models (pack or Pro): those models plus the free demo aircraft. Everyone else (rules off, admin, nothing unlocked yet): the full list.
+    Returns (df_shown, unlocked_ids)."""
+    email=st.session_state.get("auth_email")
+    if not email or st.session_state.get("auth_is_admin") or not _access_rules_on(): return df,set()
+    try:
+        stt,_s=_access_state(email,st.session_state.get("auth_plan"))
+        mine=set(stt.entitled_ids(df["aircraft_id"].tolist()))
+    except Exception:
+        return df,set()
+    if not mine: return df,set()
+    return df[df["aircraft_id"].isin(mine|{"dassault_falcon_7x"})],mine
+
 def _access_checkout_url(kind,email,plan):
     try:
         import stripe; stripe.api_key=_secret("STRIPE_SECRET_KEY")
@@ -2050,13 +2063,20 @@ def main():
         st.markdown('<div class="section-header">✈ Aircraft Selection</div>',unsafe_allow_html=True)
         st.text_input("Quick find (model or alias, e.g. Global 7000)",key="ac_search",on_change=_on_search)
         if st.session_state.get("ac_search_note"): st.caption(st.session_state["ac_search_note"])
-        man_opts=["All"]+sorted(df["Categorie"].unique().tolist())
+        df_ui,_mine=_sidebar_models(df)
+        if _mine: st.caption("✓ Your unlocked models are listed below, plus the Falcon 7X demo.")
+        man_opts=["All"]+sorted(df_ui["Categorie"].unique().tolist())
+        if st.session_state.get("ac_cat") not in man_opts: st.session_state["ac_cat"]="All"
         cat_sel=st.selectbox("Manufacturer",man_opts,key="ac_cat")
-        df_f=df if cat_sel=="All" else df[df["Categorie"]==cat_sel]
+        df_f=df_ui if cat_sel=="All" else df_ui[df_ui["Categorie"]==cat_sel]
         _ids=df_f["aircraft_id"].tolist()
         _sfx={"pdf_acc":"","web_estimate":"  · web estimate","historical":"  · historical"}
         _lab={i:m+_sfx[k]+("" if c else "  · base incomplete") for i,m,k,c in zip(df["aircraft_id"],df["model"],df["source_kind"],df["data_complete"])}
+        if _mine: _lab={i:(l+"  ✓ yours" if i in _mine else l+"  · demo") for i,l in _lab.items()}
         _idx=_ids.index("dassault_falcon_7x") if "dassault_falcon_7x" in _ids else 0
+        if st.session_state.get("ac_sel") not in _ids:                                           # selection no longer offered (model swapped, quick find on a locked model)
+            if _mine and st.session_state.get("ac_sel") in _lab: st.session_state["ac_search_note"]="That aircraft is not among your unlocked models: showing the free demo. Unlock it in “Model access”."
+            st.session_state["ac_sel"]=_ids[_idx]
         aid=st.selectbox("Aircraft model",_ids,index=_idx,format_func=lambda i:_lab[i],key="ac_sel")
         row=df[df["aircraft_id"]==aid].iloc[0]
         hist=not bool(row["has_detail"])
