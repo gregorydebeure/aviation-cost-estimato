@@ -1103,30 +1103,45 @@ def _plan_table(required=None):
     </table>""", unsafe_allow_html=True)
 
 def _offers_panel(packs_live):
-    """One place listing everything that is sold, with what each offer contains. Pack lines appear only when the access rules are live."""
+    """Everything that is sold, with what each offer contains. Each paid offer is a button: one click prepares the Stripe payment (or subscription) link.
+    Pack lines appear only when the access rules are live."""
     P=ACCESS.PRODUCTS if ACCESS else {}
     days=getattr(ACCESS,"PACK_DAYS",14); quota=getattr(ACCESS,"PRO_MODELS_PER_MONTH",10)
-    def _tr(name,price,what,hi=False):
-        bg="background:rgba(201,168,76,.10);" if hi else ""
-        return (f'<tr style="border-top:1px solid #1A3A6E;{bg}"><td style="padding:.55rem .6rem;color:#E8C46A;font-weight:700;font-size:.82rem;white-space:nowrap">{name}</td>'
-                f'<td style="padding:.55rem .6rem;color:#D6E4F7;font-size:.82rem;white-space:nowrap">{price}</td>'
-                f'<td style="padding:.55rem .6rem;color:#D6E4F7;font-size:.8rem">{what}</td></tr>')
-    rows=[_tr("Free","€ 0","Dashboard on the demo aircraft (Falcon 7X, report scenario). Market Search can be ordered.")]
-    if packs_live and P:
-        full="Full access on the chosen model: your hours and fuel price, Profitability, Sensitivity, Cost Master, PDF report, CSV export, Quotation, saved scenarios."
-        rows.append(_tr("Single model",f"€ {P['single']['price_eur']} · one-off",f"1 model for {days} days. {full} You can change the model during the period; downloaded reports stay yours."))
-        rows.append(_tr("Comparison pack",f"€ {P['comparison']['price_eur']} · one-off",f"3 models for {days} days, with side-by-side comparison between them. Same features as above."))
-        rows.append(_tr("Additional model",f"€ {P['extra_model']['price_eur']} · one-off",f"1 more model: added to your pack for its remaining period, or +1 for the month on Menkor Pro. Packs bought together add up."))
+    email=st.session_state.get("auth_email"); plan=st.session_state.get("auth_plan")
+    full="Full access on the chosen model: your hours and fuel price, Profitability, Sensitivity, Cost Master, PDF report, CSV export, Quotation, saved scenarios."
     pro_what=(f"Everything above on {quota} new models per calendar month. Models already unlocked stay available while you subscribe; unused quota is not carried over." if packs_live
               else "Full access: any aircraft, Profitability, Sensitivity, Cost Master, PDF report, CSV export, Quotation, saved scenarios and comparison.")
-    rows.append(_tr("Menkor Pro","€ 79 / month",pro_what,True))
-    rows.append(_tr("Market Search",f"$ {MARKET_SEARCH_PRICE_USD} · per request","Manual market study, sold separately from the plans above."))
-    rows.append(_tr("Aircraft-specific budget",f"from € {PRECISE_BUDGET_FROM_EUR}","Manual study for one aircraft; scope agreed beforehand, extended work on quote."))
-    st.markdown(f"""<table style="width:100%;border-collapse:collapse;background:#13233F;border:1px solid #1A3A6E;border-radius:6px;margin-bottom:.6rem">
-        <thead><tr><th style="text-align:left;padding:.5rem .6rem;font-size:.68rem;letter-spacing:.08em;text-transform:uppercase;color:#8496B0">Offer</th>
-        <th style="text-align:left;padding:.5rem .6rem;font-size:.68rem;letter-spacing:.08em;text-transform:uppercase;color:#8496B0">Price</th>
-        <th style="text-align:left;padding:.5rem .6rem;font-size:.68rem;letter-spacing:.08em;text-transform:uppercase;color:#8496B0">What you get</th></tr></thead>
-        <tbody>{"".join(rows)}</tbody></table>""", unsafe_allow_html=True)
+    rows=[("free","Free","€ 0","Dashboard on the demo aircraft (Falcon 7X, report scenario). Market Search can be ordered.")]
+    if packs_live and P:
+        rows+=[("single","Single model",f"€ {P['single']['price_eur']} · one-off",f"1 model for {days} days. {full} You can change the model during the period; downloaded reports stay yours."),
+               ("comparison","Comparison pack",f"€ {P['comparison']['price_eur']} · one-off",f"3 models for {days} days, with side-by-side comparison between them. Same features as above."),
+               ("extra_model","Additional model",f"€ {P['extra_model']['price_eur']} · one-off","1 more model: added to your pack for its remaining period, or +1 for the month on Menkor Pro. Packs bought together add up.")]
+    rows+=[("pro","Menkor Pro","€ 79 / month",pro_what),
+           ("market","Market Search",f"$ {MARKET_SEARCH_PRICE_USD} · per request","Manual market study, sold separately from the plans above. Order it from the 🌐 Market Search tab."),
+           ("budget","Aircraft-specific budget",f"from € {PRECISE_BUDGET_FROM_EUR}","Manual study for one aircraft; scope agreed beforehand, extended work on quote.")]
+    st.caption("Click an offer to get its payment link.")
+    h1,h2,h3=st.columns([1.5,1.3,4])
+    h1.markdown("**Offer**"); h2.markdown("**Price**"); h3.markdown("**What you get**")
+    for key,name,price,what in rows:
+        c1,c2,c3=st.columns([1.5,1.3,4])
+        with c1:
+            if key in ("free","market"): st.markdown(f"**{name}**")
+            elif key=="budget":
+                st.button(name,key="offer_budget",width="stretch",on_click=lambda: st.session_state.__setitem__("journey",J_C))
+            elif key=="pro" and plan=="pro": st.markdown("**Menkor Pro ✓** current plan")
+            elif st.button(name,key=f"offer_{key}",width="stretch"):
+                if not email: st.session_state["_offer_msg"]=(key,None,"Create a free account (or log in) in the sidebar first, then click the offer again.")
+                else:
+                    url,err=(_checkout_url(email,"pro") if key=="pro" else _access_checkout_url(key,email,plan))
+                    st.session_state["_offer_msg"]=(key,url,err)
+        c2.markdown(price); c3.caption(what)
+    msg=st.session_state.get("_offer_msg")
+    if msg:
+        key,url,err=msg; label=dict((k,n) for k,n,_p,_w in rows).get(key,key)
+        if url: st.markdown(f'<div style="text-align:center;margin:.6rem 0"><a href="{url}" target="_blank" style="background:#C9A84C;color:#0B1629;padding:.55rem 1.4rem;border-radius:5px;font-weight:700;text-decoration:none">💳 {label} — continue to Stripe</a></div>',unsafe_allow_html=True)
+        else:
+            st.warning(err if not email else "Payment couldn't be started right now. Please try again shortly, or contact support if this persists.")
+            if email and st.session_state.get("auth_is_admin"): st.caption(f"Admin detail: {err}")
 
 def _plan_access():
     """Direct access to the existing sign-up / subscription flow (nothing new is created here)."""

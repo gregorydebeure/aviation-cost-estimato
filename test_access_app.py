@@ -67,14 +67,33 @@ class TestPanel(unittest.TestCase):
         txt = " ".join(str(a[0]) for k, a, kw in st.log if k in ("markdown", "caption", "warning", "info"))
         self.assertIn("never uses another unlock", txt); self.assertIn("does not extend", txt); self.assertIn("excluding applicable taxes", txt)
 
+    def _text(self, st):
+        return " ".join(str(x) for k, a, kw in st.log for x in a if isinstance(x, str)) + " " + " ".join(w[1] for w in st.widgets)
+
     def test_offers_panel_lists_everything_and_packs_only_when_live(self):
-        st, app, _ = boot("pro", on=True)
-        out=[]; app.st.markdown=lambda *a,**k: out.append(a[0] if a else "")
-        app._offers_panel(True); t=" ".join(out)
-        for need in ("€ 29","€ 59","€ 15","€ 79 / month","$ 600","from € 490","14 days"): self.assertIn(need,t)
-        out.clear(); app._offers_panel(False); t=" ".join(out)
-        self.assertNotIn("€ 29",t); self.assertNotIn("Comparison pack",t)
-        for need in ("€ 79 / month","$ 600","from € 490"): self.assertIn(need,t)
+        st, app, _ = boot("pro", on=True); app._offers_panel(True); t = self._text(st)
+        for need in ("€ 29","€ 59","€ 15","€ 79 / month","$ 600","from € 490","14 days","Single model","Comparison pack","Additional model"): self.assertIn(need, t)
+        st, app, _ = boot("pro", on=True); app._offers_panel(False); t = self._text(st)
+        self.assertNotIn("€ 29", t); self.assertNotIn("Comparison pack", t)
+        for need in ("€ 79 / month","$ 600","from € 490"): self.assertIn(need, t)
+
+    def test_clicking_an_offer_prepares_the_payment_link(self):
+        st, app, _ = boot(None); st.overrides["Comparison pack"] = True
+        seen = []; app._access_checkout_url = lambda kind, email, plan: (seen.append((kind, email, plan)) or ("https://stripe.test/x", None))
+        app._offers_panel(True); self.assertEqual(seen, [("comparison", "x@y.com", None)])
+        self.assertIn("https://stripe.test/x", self._text(st)); self.assertIn("continue to Stripe", self._text(st))
+
+    def test_clicking_pro_uses_the_subscription_checkout_and_logged_out_is_told_to_register(self):
+        st, app, _ = boot(None); st.overrides["Menkor Pro"] = True
+        seen = []; app._checkout_url = lambda email, plan="pro": (seen.append((email, plan)) or ("https://stripe.test/sub", ""))
+        app._offers_panel(True); self.assertEqual(seen, [("x@y.com", "pro")]); self.assertIn("https://stripe.test/sub", self._text(st))
+        st, app, _ = boot(None); st.session_state["auth_email"] = None; st.overrides["Single model"] = True
+        app._access_checkout_url = lambda *a: self.fail("no payment without an account")
+        app._offers_panel(True); self.assertIn("Create a free account", " ".join(str(x) for k, a, kw in st.log for x in a))
+
+    def test_current_pro_has_no_button_to_buy_pro_again(self):
+        st, app, _ = boot("pro"); app._offers_panel(True)
+        self.assertNotIn("Menkor Pro", [w[1] for w in st.widgets if w[0] == "button"])
 
     def test_panel_guides_the_buyer_to_the_left_selector(self):
         mem = A.MemoryStore(); pack(mem); st = self.render(None, mem, "d")                  # pack holder looking at a model that is not theirs
