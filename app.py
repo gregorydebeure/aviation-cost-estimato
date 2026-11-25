@@ -16,6 +16,15 @@ try:
     import menkor_access as ACCESS                    # model-level access rules (packs / Pro quota); inactive unless ACCESS_RULES_ENABLED=1
 except Exception:
     ACCESS=None
+try:
+    import menkor_market as MKT                       # aircraft-for-sale marketplace; inactive unless MARKET_ENABLED=1 and its tables exist
+except Exception:
+    MKT=None
+try:
+    import menkor_legal as LEG                        # legal documents (versioned texts, PDF) and explicit acceptance before payment; inactive unless LEGAL_FLOW_ENABLED=1
+    import menkor_orders as ORD                       # orders, proof of acceptance, reconciliation of paid sessions, customer documents
+except Exception:
+    LEG=None; ORD=None
 import warnings
 warnings.filterwarnings("ignore")
 
@@ -25,7 +34,10 @@ import streamlit.components.v1 as components
 
 _BRIDGE_KEYS = ["STRIPE_SECRET_KEY", "STRIPE_PRICE_PRO", "ADMIN_EMAIL", "ADMIN_PASSWORD",
                 "SUPABASE_URL", "SUPABASE_SERVICE_KEY", "RESEND_API_KEY", "BUDGET_REQUEST_TO"]
-_BRIDGE_OPTIONAL = ["ACCESS_RULES_ENABLED", "STRIPE_PRICE_PRO_LEGACY", "RESET_SECRET", "EMAIL_FROM", "SIGNUP_NOTIFY_TO", "ADMIN_PASSWORD_HASH", "APP_PUBLIC_URL", "EVENTS_ENABLED"]
+_BRIDGE_OPTIONAL = ["ACCESS_RULES_ENABLED", "MARKET_ENABLED", "MARKET_SHOW_SAMPLES", "STRIPE_PRICE_PRO_LEGACY", "RESET_SECRET", "EMAIL_FROM", "SIGNUP_NOTIFY_TO", "ADMIN_PASSWORD_HASH", "APP_PUBLIC_URL", "EVENTS_ENABLED",
+                   "LEGAL_FLOW_ENABLED", "LEGAL_FLOW_STARTED_AT", "LEGAL_TAX_MODE", "LEGAL_EFFECTIVE_DATE", "LEGAL_SELLER_NAME", "LEGAL_SELLER_COUNTRY", "LEGAL_SELLER_ADDRESS",
+                   "LEGAL_SELLER_REG_NUMBER", "LEGAL_SELLER_TAX_ID", "LEGAL_CONTACT_EMAIL", "LEGAL_COMPLAINTS_EMAIL", "LEGAL_MARKETS", "LEGAL_GOVERNING_LAW", "LEGAL_COURTS",
+                   "LEGAL_REFUND_POLICY", "LEGAL_CANCELLATION_POLICY", "LEGAL_TAX_NOTE", "LEGAL_HOST_DETAILS", "LEGAL_RETENTION_YEARS"]
 
 try:
     # Platforms like Render have no native st.secrets support, only plain env vars — bridge them into
@@ -610,7 +622,7 @@ def _sb_rest(method,table,params=None,json=None,prefer=None):
         if not h["Prefer"]: h.pop("Prefer")
         r=requests.request(method,f"{url}/rest/v1/{table}",headers=h,params=params,json=json,timeout=6)
         data=None
-        if method=="GET" and r.status_code==200:
+        if (method=="GET" and r.status_code==200) or (method in ("PATCH","POST") and "representation" in (prefer or "") and r.status_code in (200,201)):
             try: data=r.json()
             except Exception: data=None
         return r.status_code,data
@@ -651,7 +663,8 @@ def _access_state(email,plan,force=False):
     if force or time.time()-st.session_state.get("_acc_sync_at",0)>300:
         try:
             import stripe; stripe.api_key=_secret("STRIPE_SECRET_KEY")
-            ACCESS.sync_from_stripe(stripe,store,email)
+            if _legal_strict(): _sync_orders(email,force=True)           # orders first: a grant needs a paid, accepted order
+            ACCESS.sync_from_stripe(stripe,store,email,ORD.paid_order_ids(_sb_rest,email) if _legal_strict() else None)
         except Exception: pass
         st.session_state["_acc_sync_at"]=time.time()
     return ACCESS.load_state(store,email,plan),store
@@ -689,18 +702,18 @@ def _sidebar_models(df):
     if not mine: return df,set()
     return df[df["aircraft_id"].isin(mine|{"dassault_falcon_7x"})],mine
 
-def _access_checkout_url(kind,email,plan):
+def _access_checkout_url(kind,email,plan,order=None):
     try:
-        import stripe; stripe.api_key=_secret("STRIPE_SECRET_KEY")
         p=ACCESS.checkout_params(kind,email,"pro" if plan=="pro" else "pack",
                                  "https://aviation-cost-estimator.onrender.com/?access=paid","https://aviation-cost-estimator.onrender.com/?access=cancelled")
-        return stripe.checkout.Session.create(**p).url,None
+        return _stripe_checkout(p,order).url,None
     except Exception as e:
         return None,f"{type(e).__name__}: {e}"
 
 def _acc_buy(kind,label,email,plan,key):
     P=ACCESS.PRODUCTS[kind]
     if st.button(f"{label} — € {P['price_eur']}",key=f"accbuy_{key}",width="stretch"):
+        if _legal_on(): _order_start(kind); st.rerun()
         url,err=_access_checkout_url(kind,email,plan)
         st.session_state[f"_accurl_{key}"]=url
         if not url:
@@ -754,6 +767,245 @@ def _render_access_panel(ctx,aid,df):
         if st.button("🔄 Refresh my purchases",key="acc_refresh"):
             _access_state(email,plan,force=True); st.rerun()
 
+
+# ─── AIRCRAFT FOR SALE (marketplace) ─────────────────────────────────────────
+def _market_on():
+    """Visible only when MARKET_ENABLED=1, menkor_market.py is deployed and its 2 Supabase tables exist (market_migration.sql). Never raises."""
+    try:
+        if MKT is None or str(_secret("MARKET_ENABLED","0"))!="1" or not _storage_configured(): return False
+        ok=st.session_state.get("_mk_tables_ok")
+        if ok is None:
+            ok=bool(MKT.SupabaseStore(_sb_rest).tables_ready()); st.session_state["_mk_tables_ok"]=ok
+        return ok
+    except Exception:
+        return False
+
+_MK_REFRESHED={}      # listing id -> last Stripe refresh (epoch): public browsing never hammers Stripe
+
+def _mk_owner_plan(email,cache):
+    if email not in cache: cache[email]=(_sb_get_user(email) or {}).get("plan")
+    return cache[email]
+
+def _mk_live_listings(store):
+    """Public listings: approved and paid (or included in an active Pro plan), recently sold ones, plus labelled samples."""
+    import time
+    now=MKT._now(); plans={}; out=[]
+    rows=store.list_status("published","sold")
+    for l in rows:
+        if l.get("status")=="published" and l.get("billing")=="paid" and l.get("stripe_subscription_id"):
+            pu=MKT._parse(l.get("paid_until"))
+            if pu and pu<=now and time.time()-_MK_REFRESHED.get(l["id"],0)>600 and len(_MK_REFRESHED)<5000:   # renewal may have happened: re-read Stripe (at most every 10 min per listing)
+                _MK_REFRESHED[l["id"]]=time.time()
+                try:
+                    import stripe; stripe.api_key=_secret("STRIPE_SECRET_KEY"); l=MKT.sync_listing_billing(stripe,store,l)      # the subscription is already linked to the listing (it was checked against its paid order at that time): renewal read only
+                except Exception: pass
+        if MKT.is_live(l,_mk_owner_plan(l.get("owner_email",""),plans) if l.get("billing")=="pro" else None,now): out.append(l)
+    if str(_secret("MARKET_SHOW_SAMPLES","1"))!="0": out+=MKT.sample_listings()
+    return out
+
+def _mk_checkout_url(store,l,order=None):
+    try:
+        p=MKT.checkout_params(l,_public_url()+"/?market=paid",_public_url()+"/?market=cancelled")
+        sess=_stripe_checkout(p,order)
+        store.update(l["id"],{"stripe_session_id":sess.id,"updated_at":MKT._iso(MKT._now())})
+        return sess.url,None
+    except Exception as e:
+        return None,f"{type(e).__name__}: {e}"
+
+def _mk_can_cost(aid,is_pro):
+    """Reference operating cost of a model: same rule as the rest of the app (free demo aircraft, admin, Pro / pack models)."""
+    if aid==DEMO_AID or st.session_state.get("auth_is_admin"): return True
+    email=st.session_state.get("auth_email")
+    if not email: return False
+    if not _access_rules_on(): return bool(is_pro)
+    try:
+        stt,_s=_access_state(email,st.session_state.get("auth_plan")); return aid in stt.entitled_ids([aid])
+    except Exception: return False
+
+def _mk_cost_block(l,df,is_pro):
+    aid=l.get("aircraft_id")
+    st.markdown('<div class="section-header">Operating cost of this model</div>',unsafe_allow_html=True)
+    if not aid or aid not in set(df["aircraft_id"]):
+        st.caption("This model is not in the Menkor cost database yet: no operating-cost estimate is available for it."); return
+    if not _mk_can_cost(aid,is_pro):
+        st.info("The reference operating cost of this model is available with Menkor Pro or a model pack. Open “Plans & pricing” at the top of the page.")
+        return
+    dfx=E.Fx("USD",None,None); dd=E.Display(dfx)
+    res=E.compute(df[df["aircraft_id"]==aid].iloc[0],E.Scenario(aircraft_id=aid,mode="reference",fx=dfx))
+    if not res["available"]: st.caption("No estimate available for this model right now."); return
+    c1,c2,c3=st.columns(3)
+    c1.metric("Annual budget (reference)",dd.money(res["budget_usd"])); c2.metric("Cost / flown hour",dd.money(res["cost_per_h_usd"]) if res["cost_per_h_usd"] is not None else "n/a")
+    c3.metric("Reference hours / year",f"{res['hours']['reference']:,.0f} h" if (res.get("hours") or {}).get("reference") else "n/a")
+    st.caption("Menkor report-reference scenario for this model (the report's own hours and fuel price). It is not this specific aircraft's operation: for that, use the Dashboard with your own assumptions.")
+
+def _mk_card_html(l):
+    e=_html.escape
+    badge=""
+    if l.get("is_sample"): badge+='<span style="background:#7F1D1D;color:#FCA5A5;padding:2px 8px;border-radius:3px;font-size:.7rem;font-weight:700;letter-spacing:.06em">SAMPLE</span> '
+    if l.get("status")=="sold": badge+='<span style="background:#B91C1C;color:#FFF;padding:2px 8px;border-radius:3px;font-size:.7rem;font-weight:700;letter-spacing:.06em">SOLD</span> '
+    loc=", ".join(x for x in (l.get("city"),l.get("country")) if x)
+    hrs=f"{l['total_hours']:,.0f} h" if l.get("total_hours") is not None else "hours n/a"
+    return (f'<div style="background:#13233F;border:1px solid #1A3A6E;border-radius:8px;padding:.9rem 1rem;margin-bottom:.4rem">'
+            f'<div style="height:70px;background:linear-gradient(135deg,#112244,#1A3A6E);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:2rem;color:#C9A84C">✈</div>'
+            f'<div style="margin-top:.5rem">{badge}<span style="font-size:.72rem;color:#8496B0">{e(str(l.get("category") or ""))}</span></div>'
+            f'<div style="font-size:1.05rem;font-weight:700;color:#E8C46A;margin-top:.15rem">{e(str(l.get("year") or ""))} {e(str(l.get("manufacturer") or ""))} {e(str(l.get("model") or ""))}</div>'
+            f'<div style="font-size:.8rem;color:#D6E4F7">{e(hrs)} · {e(loc) or "location n/a"}</div>'
+            f'<div style="font-size:1rem;font-weight:700;color:#D6E4F7;margin-top:.2rem">{e(MKT.price_label(l))}</div></div>')
+
+def _mk_send_lead_email(listing,lead):
+    sec=_mail_secrets(); e=_html.escape
+    html_=(f"<p>New enquiry for your listing <b>{e(str(listing.get('year') or ''))} {e(listing.get('manufacturer',''))} {e(listing.get('model',''))}</b>.</p>"
+           f"<p><b>From:</b> {e(lead['from_name'] or '—')} &lt;{e(lead['from_email'])}&gt;</p><p>{e(lead['message']).replace(chr(10),'<br>')}</p>"
+           "<p style='color:#666;font-size:12px'>Reply directly to this person. Sent through Aviation Cost Estimator.</p>")
+    try: return ACC.send_email(_mail_post,sec.get("RESEND_API_KEY"),sec.get("EMAIL_FROM") or ACC.TEST_SENDER,listing["owner_email"],"New enquiry on your aircraft listing",html_)
+    except Exception as ex: return False,f"{type(ex).__name__}"
+
+def _mk_detail(l,store,df,is_pro):
+    e=_html.escape
+    if st.button("← Back to results",key="mk_back"): st.session_state["mk_open"]=None; st.rerun()
+    title=f"{l.get('year') or ''} {l.get('manufacturer','')} {l.get('model','')}".strip()
+    st.markdown(f'<div class="main-title" style="font-size:1.4rem">{e(title)}</div>',unsafe_allow_html=True)
+    st.markdown(_mk_card_html(l),unsafe_allow_html=True)
+    loc=", ".join(x for x in (l.get("city"),l.get("country")) if x)
+    d1,d2,d3,d4=st.columns(4)
+    d1.metric("Year",str(l.get("year") or "n/a")); d2.metric("Total hours",f"{l['total_hours']:,.0f} h" if l.get("total_hours") is not None else "n/a")
+    d3.metric("Location",loc or "n/a"); d4.metric("Price",MKT.price_label(l))
+    if l.get("serial_number"): st.caption(f"Serial number: {l['serial_number']}")
+    st.markdown("**Description**"); st.text(l.get("description") or "")          # st.text: user content is never interpreted as HTML
+    _mk_cost_block(l,df,is_pro)
+    st.markdown('<div class="section-header">Contact the seller</div>',unsafe_allow_html=True)
+    em=st.session_state.get("auth_email")
+    if l.get("is_sample"): st.info("This is a sample listing: contact is not available."); return
+    if l.get("status")=="sold": st.info("This aircraft has been sold."); return
+    if not em: st.info("Create a free account (or log in) in the sidebar to contact the seller."); return
+    nm=st.text_input("Your name",key=f"mk_nm_{l['id']}"); msg=st.text_area("Your message",key=f"mk_msg_{l['id']}",max_chars=1500,placeholder="Introduce yourself and what you would like to know.")
+    st.caption(f"The seller receives your message and your e-mail address ({em}) so they can reply to you.")
+    if st.button("Send message",key=f"mk_send_{l['id']}"):
+        if len(msg.strip())<10: st.warning("Write a short message first."); return
+        if not MKT.lead_allowed(store.list_leads_from(em),em): st.warning("You have reached today's limit of messages. Please try again tomorrow."); return
+        lead=MKT.new_lead(l,em,nm,msg); store.insert_lead(lead); ok,detail=_mk_send_lead_email(l,lead)
+        if ok: st.success("Message sent to the seller.")
+        else: st.warning("Your message was saved, but the e-mail to the seller could not be sent right now.")
+
+def _mk_browse(store,df,is_pro):
+    live=_mk_live_listings(store)
+    oid=st.session_state.get("mk_open"); cur=next((x for x in live if x["id"]==oid),None)
+    if cur: _mk_detail(cur,store,df,is_pro); return
+    c1,c2,c3,c4=st.columns(4)
+    cats=["All"]+sorted({x["category"] for x in live if x.get("category")}); mans=["All"]+sorted({x["manufacturer"] for x in live if x.get("manufacturer")}); cs=["All"]+sorted({x["country"] for x in live if x.get("country")})
+    with c1: f_cat=st.selectbox("Type",cats,key="mk_f_cat")
+    with c2: f_man=st.selectbox("Manufacturer",mans,key="mk_f_man")
+    with c3: f_cty=st.selectbox("Location (country)",cs,key="mk_f_cty")
+    with c4: f_sort=st.selectbox("Sort by",["newest","year","hours"],format_func=lambda v:{"newest":"Newest","year":"Year (newest first)","hours":"Hours (lowest first)"}[v],key="mk_f_sort")
+    c5,c6,c7=st.columns([1,1,2])
+    with c5: f_year=st.number_input("Year from",min_value=0,max_value=2100,value=0,step=1,key="mk_f_year")
+    with c6: f_hrs=st.number_input("Max hours (0 = any)",min_value=0,max_value=100000,value=0,step=500,key="mk_f_hrs")
+    with c7: f_txt=st.text_input("Search (model, city…)",key="mk_f_txt")
+    res=MKT.filter_listings(live,f_cat,f_man,f_cty,f_year or None,(f_hrs if f_hrs>0 else None),f_txt,f_sort)
+    n_real=sum(1 for x in res if not x.get("is_sample")); st.caption(f"{len(res)} aircraft ({n_real} real listing(s)). Listings marked SAMPLE are fictional demonstration entries.")
+    if not res: st.info("No aircraft match these filters."); return
+    for i in range(0,len(res),2):
+        cols=st.columns(2)
+        for col,l in zip(cols,res[i:i+2]):
+            with col:
+                st.markdown(_mk_card_html(l),unsafe_allow_html=True)
+                if st.button("View details",key=f"mk_view_{l['id']}",width="stretch"): st.session_state["mk_open"]=l["id"]; st.rerun()
+
+def _mk_form(store,df,email):
+    base_models=["Other (not in the Menkor database)"]+df["model"].tolist()
+    cats=list(E.SIMILAR_CATEGORIES.keys())+["Other"]
+    with st.expander("➕ New listing",expanded=False):
+        with st.form("mk_new_form",clear_on_submit=False):
+            pick=st.selectbox("Aircraft model",base_models,help="Choose a model from the database to enable the operating-cost estimate on your listing.")
+            o1,o2,o3=st.columns(3)
+            with o1: man_t=st.text_input("Manufacturer (if not in the database)")
+            with o2: mod_t=st.text_input("Model (if not in the database)")
+            with o3: cat_t=st.selectbox("Type (if not in the database)",cats)
+            a1,a2,a3,a4=st.columns(4)
+            with a1: yr=st.number_input("Year",min_value=1960,max_value=2100,value=2015,step=1)
+            with a2: hrs=st.text_input("Total hours",placeholder="e.g. 3200")
+            with a3: ctry=st.text_input("Country",placeholder="e.g. France")
+            with a4: city=st.text_input("City / airport (optional)")
+            b1,b2,b3,b4=st.columns([1.2,1,1,1.4])
+            with b1: price=st.text_input("Asking price",placeholder="e.g. 12500000")
+            with b2: cur=st.selectbox("Currency",list(MKT.CURRENCIES))
+            with b3: onreq=st.checkbox("Price on request")
+            with b4: sn=st.text_input("Serial number (optional)")
+            desc=st.text_area("Description",max_chars=MKT.MAX_DESC,placeholder="Maintenance status, avionics, cabin, location details, availability…")
+            st.caption("Your e-mail is never shown. Buyers contact you through the form and you receive their messages by e-mail. Photos are not supported yet.")
+            go_=st.form_submit_button("Save as draft")
+        if go_:
+            row=None if pick==base_models[0] else df[df["model"]==pick].iloc[0]
+            raw=dict(manufacturer=(row["manufacturer"] if row is not None else man_t),model=(row["model"] if row is not None else mod_t),
+                     category=((E.similar_category(row["aircraft_id"]) or "Other") if row is not None else cat_t),aircraft_id=(row["aircraft_id"] if row is not None else None),
+                     year=yr,total_hours=hrs,country=ctry,city=city,price_amount=price,price_currency=cur,price_on_request=onreq,serial_number=sn,description=desc)
+            ok,errs,clean=MKT.validate_listing(raw)
+            if not ok:
+                for m in errs: st.warning(m)
+            elif store.insert(MKT.new_listing(email,clean)): st.success("Draft saved. Submit it for review below."); st.rerun()
+            else: st.error("The listing could not be saved right now.")
+
+def _mk_mine(store,df,is_pro,email):
+    plan=st.session_state.get("auth_plan"); mine=sorted(store.list_owner(email),key=lambda x:x.get("created_at") or "",reverse=True)
+    _mk_form(store,df,email)
+    st.markdown(f'<div class="section-header">My listings</div>',unsafe_allow_html=True)
+    st.caption(f"Menkor Pro subscribers can list {MKT.PRO_INCLUDED_LISTINGS} aircraft at no extra cost. Otherwise a listing costs € {MKT.LISTING_PRICE_EUR} per month, charged only after we have reviewed and approved it. You can stop at any time; the listing stays visible until the end of the paid period.")
+    if not mine: st.info("You have no listing yet."); return
+    for l in mine:
+        label,action=MKT.owner_state(l,plan)
+        with st.container(border=True):
+            st.markdown(f"**{_html.escape(str(l.get('year') or ''))} {_html.escape(l.get('manufacturer',''))} {_html.escape(l.get('model',''))}** — {_html.escape(label)}")
+            k=l["id"]; b1,b2,b3,b4=st.columns(4)
+            if action=="submit" and b1.button("Submit for review",key=f"mk_sub_{k}"): store.update(k,{"status":"pending","reject_reason":None,"updated_at":MKT._iso(MKT._now())}); st.rerun()
+            if action=="pay":
+                if b1.button(f"Activate — € {MKT.LISTING_PRICE_EUR}/month",key=f"mk_pay_{k}"):
+                    if _legal_on(): _order_start("listing",extra={"listing_id":k}); st.rerun()
+                    url,err=_mk_checkout_url(store,l); st.session_state[f"_mkurl_{k}"]=(url,err)
+                u=st.session_state.get(f"_mkurl_{k}")
+                if u and u[0]: st.markdown(f'<a href="{u[0]}" target="_blank" style="background:#C9A84C;color:#0B1629;padding:.45rem 1.1rem;border-radius:5px;font-weight:700;text-decoration:none">💳 Continue to Stripe</a>',unsafe_allow_html=True)
+                elif u:
+                    st.warning("Payment couldn't be started right now. Please try again shortly.")
+                    if st.session_state.get("auth_is_admin"): st.caption(f"Admin detail: {u[1]}")
+            if l.get("status")=="published" and l.get("billing")=="paid":
+                if b2.button("🔄 Refresh payment status",key=f"mk_ref_{k}"):
+                    import stripe; stripe.api_key=_secret("STRIPE_SECRET_KEY"); _sync_orders(email,force=True); MKT.sync_listing_billing(stripe,store,l,ORD.paid_order_ids(_sb_rest,email) if _legal_strict() else None); st.rerun()
+                if l.get("stripe_subscription_id") and not l.get("cancel_at_period_end") and b3.button("Stop renewal",key=f"mk_stop_{k}"):
+                    import stripe; stripe.api_key=_secret("STRIPE_SECRET_KEY"); ok,msg=MKT.cancel_at_period_end(stripe,store,l); st.session_state["_mk_msg"]=msg; st.rerun()
+            if l.get("status")=="published" and MKT.is_live(l,plan) and b4.button("Mark as sold",key=f"mk_sold_{k}"):
+                store.update(k,{"status":"sold","sold_at":MKT._iso(MKT._now()),"updated_at":MKT._iso(MKT._now())}); st.rerun()
+            if l.get("status") in ("draft","rejected","pending") and st.button("Withdraw / delete",key=f"mk_wd_{k}"): store.update(k,{"status":"withdrawn","updated_at":MKT._iso(MKT._now())}); st.rerun()
+    if st.session_state.get("_mk_msg"): st.info(st.session_state.pop("_mk_msg"))
+
+def _mk_moderation(store):
+    pend=store.list_status("pending"); st.markdown('<div class="section-header">Listings waiting for review</div>',unsafe_allow_html=True)
+    if not pend: st.info("Nothing to review."); return
+    everything=store.list_all(); plans={}
+    for l in pend:
+        with st.container(border=True):
+            st.markdown(f"**{_html.escape(str(l.get('year') or ''))} {_html.escape(l.get('manufacturer',''))} {_html.escape(l.get('model',''))}** · {_html.escape(l.get('country',''))} · {_html.escape(MKT.price_label(l))} · owner: {_html.escape(l['owner_email'])}")
+            st.text(l.get("description") or "")
+            k=l["id"]; owner_plan=_mk_owner_plan(l["owner_email"],plans); bill=MKT.billing_for(everything,l["owner_email"],owner_plan,k)
+            st.caption(f"If approved: {'included in the owner’s Pro plan' if bill=='pro' else f'owner must activate € {MKT.LISTING_PRICE_EUR}/month'}.")
+            why=st.text_input("Reason (shown to the owner if rejected)",key=f"mk_why_{k}")
+            a,b=st.columns(2)
+            if a.button("✓ Approve",key=f"mk_ok_{k}"):
+                store.update(k,{"status":"published","billing":bill,"published_at":MKT._iso(MKT._now()),"reject_reason":None,"updated_at":MKT._iso(MKT._now())}); st.rerun()
+            if b.button("✗ Reject",key=f"mk_no_{k}"):
+                if not why.strip(): st.warning("Add a short reason first.")
+                else: store.update(k,{"status":"rejected","reject_reason":why.strip()[:300],"updated_at":MKT._iso(MKT._now())}); st.rerun()
+
+def _render_marketplace(df,is_pro):
+    store=MKT.SupabaseStore(_sb_rest); email=st.session_state.get("auth_email"); admin=bool(st.session_state.get("auth_is_admin"))
+    st.markdown('<div class="main-title" style="font-size:1.4rem">🛩 Aircraft for sale</div>',unsafe_allow_html=True)
+    st.caption("Find an aircraft by type, manufacturer and location, and see its operating cost. Brokers and owners can list their aircraft.")
+    views=["Browse"]+(["My listings"] if email else [])+(["Moderation"] if admin else [])
+    if st.session_state.get("mk_view") not in views: st.session_state["mk_view"]="Browse"
+    v=st.radio("View",views,horizontal=True,key="mk_view",label_visibility="collapsed")
+    if v=="Browse": _mk_browse(store,df,is_pro)
+    elif v=="My listings": _mk_mine(store,df,is_pro,email)
+    else: _mk_moderation(store)
+    if not email: st.info("Want to list an aircraft? Create a free account (or log in) in the sidebar.")
+
 def _plan_key():
     return "pro" if st.session_state.get("auth_plan")=="pro" else "free"
 
@@ -770,11 +1022,16 @@ def _notify_admin_new_signup(email):
     sec=_mail_secrets(); s_,h_=ACC.admin_signup_email(email,_datetime.datetime.now(_datetime.timezone.utc))
     return ACC.send_email(_mail_post,sec.get("RESEND_API_KEY"),sec.get("EMAIL_FROM") or ACC.TEST_SENDER,sec.get("SIGNUP_NOTIFY_TO") or sec.get("ADMIN_EMAIL"),s_,h_)
 
-def _register(email,pwd):
+def _register(email,pwd,accepted=None,lang="en"):
     email=email.strip().lower()
     if not _re.match(r"[^@]+@[^@]+\.[^@]+",email): return False,"Invalid email."
     if len(pwd)<6: return False,"Password must be at least 6 characters."
     if _sb_get_user(email): return False,"Account already exists."
+    if _legal_on():                       # free account: explicit acceptance of the Terms of Use, proof stored BEFORE the account exists
+        ok_,_probs=_legal_gate(lang)
+        if not ok_: return False,"Registration is temporarily unavailable. Please try again later."
+        try: ORD.record_signup_acceptance(_sb_rest,email,_legal_bundle(lang),accepted is True,LEG.label("signup",lang),_legal_cfg())
+        except ORD.OrderError as e: return False,(e.problems or [e.code])[0]
     ok,detail=_sb_insert_user(email,_hash(pwd))
     if not ok:
         return False,f"Could not create account — {detail}"
@@ -879,9 +1136,12 @@ def _check_sub(email):
         custs=stripe.Customer.list(email=email,limit=25)
         if not custs.data: return None
         plan=None; active_cid=None
+        _strict=_legal_strict()          # order flow on: only subscriptions bought through an accepted, paid order (or existing before LEGAL_FLOW_STARTED_AT) count
+        if _strict: _sync_orders(email,force=True); _paid=ORD.paid_order_ids(_sb_rest,email); _t0=_legal_started_ts()
         for cust in custs.data:
             subs=stripe.Subscription.list(customer=cust.id,status="active",limit=10)
             for sub in subs.data:
+                if _strict and not ((sub.get("metadata") or {}).get("order_id") in _paid or int(sub.get("created") or 0)<_t0): continue
                 for item in sub["items"]["data"]:
                     pid=item["price"]["id"]
                     if pid==pro_price or pid in pro_legacy: plan="pro"; active_cid=cust.id
@@ -895,7 +1155,7 @@ def _check_sub(email):
         return plan
     except Exception: return None
 
-def _checkout_url(email,plan="pro"):
+def _checkout_url(email,plan="pro",order=None):
     """Returns (url, error). error is a human-readable string on failure, never silently None without reason."""
     try:
         import stripe
@@ -910,32 +1170,32 @@ def _checkout_url(email,plan="pro"):
         stripe.api_key=key
         # No payment_method_types here: newer Stripe accounts manage accepted payment methods from the
         # Dashboard (Settings → Payment methods) and reject this parameter on Checkout Session creation.
-        s=stripe.checkout.Session.create(mode="subscription",
+        s=_stripe_checkout(dict(mode="subscription",
             customer_email=email,line_items=[{"price":price,"quantity":1}],metadata={"plan":plan},
             success_url=f"https://aviation-cost-estimator.onrender.com/?subscribed={plan}",
-            cancel_url="https://aviation-cost-estimator.onrender.com/?cancelled=1")
+            cancel_url="https://aviation-cost-estimator.onrender.com/?cancelled=1"),order)
         return s.url,None
     except Exception as e:
         return None,f"{type(e).__name__}: {e}"
 
-def _market_search_checkout_url(email, meta):
+def _market_search_checkout_url(email, meta, order=None):
     try:
-        import stripe; stripe.api_key=_secret("STRIPE_SECRET_KEY")
         # No payment_method_types here: newer Stripe accounts manage accepted payment methods from the
         # Dashboard (Settings → Payment methods) and reject this parameter on Checkout Session creation.
-        s=stripe.checkout.Session.create(
+        s=_stripe_checkout(dict(
             mode="payment", customer_email=email,
             line_items=[{"price_data":{"currency":"usd","unit_amount":MARKET_SEARCH_PRICE_USD*100,
                 "product_data":{"name":"Personalized Aircraft Market Search"}},"quantity":1}],
             metadata=meta,
             success_url="https://aviation-cost-estimator.onrender.com/?market_submitted=1",
-            cancel_url="https://aviation-cost-estimator.onrender.com/?market_cancelled=1")
+            cancel_url="https://aviation-cost-estimator.onrender.com/?market_cancelled=1"),order)
         return s.url
     except Exception as e:
         st.warning("Payment couldn't be started right now. Please try again in a moment, or contact support if this keeps happening.")
         if st.session_state.get("auth_is_admin"): st.caption(f"Admin detail: {type(e).__name__}: {e}")
         return None
 
+_BTN_N=[0]          # per-run counter: unique widget keys when the same buttons are drawn in several places
 def _plan_buttons(email,current_plan=None):
     """Renders a subscribe button for every plan tier above the user's current one (monthly subscriptions only).
     On failure, the customer only ever sees a gentle message — the real Stripe error is shown to admins only."""
@@ -944,10 +1204,340 @@ def _plan_buttons(email,current_plan=None):
         st.warning(f"⚠ {label} checkout isn't available right now. Please try again shortly, or contact support if this persists.")
         if is_admin: st.caption(f"Admin detail: {err}")
     st.markdown('<div style="font-size:.74rem;color:#8496B0;text-align:center;margin:.3rem 0 .2rem 0;letter-spacing:.06em;text-transform:uppercase">Monthly subscription</div>',unsafe_allow_html=True)
-    if current_plan!="pro":
+    if current_plan!="pro" and _legal_on():
+        if st.session_state.get("auth_email")==email:
+            _BTN_N[0]+=1
+            if st.button("⭐ Menkor Pro — 79€/month",key=f"pb_pro_{_BTN_N[0]}",width="stretch"): _order_start("pro"); st.rerun()
+        else: st.caption("Log in to subscribe.")
+    elif current_plan!="pro":
         url,err=_checkout_url(email,"pro")
         if url: st.markdown(f'<div style="text-align:center;margin-top:.5rem"><a href="{url}" target="_blank" style="display:block;background:#C9A84C;color:#0B1629;padding:.5rem 1.2rem;border-radius:5px;font-weight:700;text-decoration:none">⭐ Menkor Pro — 79€/month</a></div>', unsafe_allow_html=True)
         else: _fail("Pro",err)
+
+# ─── LEGAL DOCUMENTS, ORDERS, PROOF OF ACCEPTANCE (v29) ───────────────────────
+# Active only with LEGAL_FLOW_ENABLED=1 (see LEGAL_SETUP.md). Every Stripe Checkout is created by `_stripe_checkout`, which refuses to run
+# without a stored order that has its stored acceptance. With the flag off the app behaves exactly as before.
+_LEGAL_RETURN_PARAMS=("subscribed","access","market","market_submitted")
+
+def _legal_on():
+    try: return bool(LEG and ORD and str(_secret("LEGAL_FLOW_ENABLED","0"))=="1")
+    except Exception: return False
+
+def _legal_cfg():
+    try: return LEG.read_config(_secret) if LEG else {}
+    except Exception: return {}
+
+def _legal_cat():
+    return ORD.catalog(ACCESS,MKT,MARKET_SEARCH_PRICE_USD)
+
+def _legal_bundle(lang):
+    return LEG.build_bundle(lang,_legal_cfg(),extra={"offers_table":ORD.offers_table(_legal_cat(),lang)},stripe_key=str(_secret("STRIPE_SECRET_KEY","") or ""))
+
+def _legal_started_ts():
+    """LEGAL_FLOW_STARTED_AT (ISO date, set when the flow is switched on): subscriptions created BEFORE it are existing customers and keep working."""
+    try:
+        v=str(_secret("LEGAL_FLOW_STARTED_AT","") or "").strip()
+        if not v: return None
+        d=_datetime.datetime.fromisoformat(v.replace("Z","+00:00"))
+        return (d if d.tzinfo else d.replace(tzinfo=_datetime.timezone.utc)).timestamp()
+    except Exception: return None
+
+def _legal_tables_ok():
+    ok=st.session_state.get("_legal_tables_ok")
+    if ok is None:
+        ok=all(_sb_rest("GET",t,{"select":"*","limit":"1"})[0]==200 for t in ORD.TABLES); st.session_state["_legal_tables_ok"]=ok
+    return ok
+
+def _legal_gate(lang="en"):
+    """(ok, problems): the order flow can run only when storage, tables, start date and every legal document are ready."""
+    probs=[]
+    if not _legal_on(): return False,["LEGAL_FLOW_ENABLED is not 1"]
+    if not _storage_configured(): probs.append("Supabase is not configured")
+    elif not _legal_tables_ok(): probs.append("legal_migration.sql has not been run")
+    if _legal_started_ts() is None: probs.append("LEGAL_FLOW_STARTED_AT is missing")
+    probs+=list(_legal_bundle(lang).problems)
+    return (not probs),probs
+
+def _legal_strict():
+    """True when payments are only recognised through accepted orders (subscriptions older than LEGAL_FLOW_STARTED_AT stay valid)."""
+    return _legal_on() and _legal_started_ts() is not None
+
+def _legal_links(lang="en",absolute=False):
+    """Links to the public pages (new tab, so an order in progress is never lost)."""
+    base=_public_url()+"/" if absolute else ""
+    names={k:LEG.doc_title(k,lang) for k in LEG.DOC_KEYS}
+    return " · ".join(f'<a href="{base}?legal={k}&lang={lang}" target="_blank" style="color:#C9A84C">{_html.escape(names[k])}</a>' for k in ("terms","withdrawal","privacy","cookies","notice"))
+
+def _legal_footer():
+    try:
+        if not LEG: return
+        if not _legal_bundle("en").ready: return                 # nothing is linked until the texts are published
+        st.markdown(f'<div style="text-align:center;font-size:.72rem;margin:.3rem 0">{_legal_links("en")}<br>{_legal_links("fr")}</div>',unsafe_allow_html=True)
+    except Exception: pass
+
+def _render_legal_page():
+    """Public page ?legal=<doc>&lang=<en|fr>, reachable without login. Returns True when it drew a page."""
+    try:
+        key=str(st.query_params.get("legal","") or "")
+        if not key or not LEG or key not in LEG.DOC_KEYS: return False
+        lang=str(st.query_params.get("lang","en") or "en"); lang=lang if lang in LEG.LANGS else "en"
+    except Exception: return False
+    b=_legal_bundle(lang); cfg=_legal_cfg()
+    other="fr" if lang=="en" else "en"
+    st.markdown(f'<div class="main-title" style="font-size:1.4rem">✈ Aviation Cost Estimator</div>',unsafe_allow_html=True)
+    st.markdown(f'<a href="?legal={key}&lang={other}" style="color:#C9A84C">{"Français" if lang=="en" else "English"}</a>',unsafe_allow_html=True)
+    if not b.ready or key not in b.docs:
+        st.info("These documents are being finalised and are not published yet." if lang=="en" else "Ces documents sont en cours de finalisation et ne sont pas encore publiés.")
+        return True
+    d=b.docs[key]
+    st.caption((f"Version {d['version']} · in force since {d['effective']}" if lang=="en" else f"Version {d['version']} · en vigueur depuis le {d['effective']}"))
+    st.markdown(d["text"])
+    try: st.download_button("⬇ PDF",data=LEG.document_pdf(d,lang,cfg.get("seller_name","")),file_name=f"{key}-{lang}-v{d['version']}.pdf",mime="application/pdf",key=f"legal_pdf_{key}")
+    except Exception: pass
+    st.markdown(f'<div style="margin-top:1rem;font-size:.8rem">{_legal_links(lang)}</div>',unsafe_allow_html=True)
+    return True
+
+# ── the only place where a Stripe Checkout Session is created ────────────────
+def _order_customer(stripe,o):
+    """One Stripe Customer per e-mail (reused), carrying the billing identity of the order: invoices are generated natively by Stripe from it."""
+    try:
+        cp=ORD.customer_params(o); prev=[x for x in ORD.list_orders(_sb_rest,o["email"]) if x.get("stripe_customer_id")]
+        if prev:
+            cid=prev[0]["stripe_customer_id"]; stripe.Customer.modify(cid,name=cp["name"],address=cp["address"],metadata=cp["metadata"]); return cid
+        return stripe.Customer.create(**cp).id
+    except Exception: return None
+
+def _stripe_checkout(params,order=None):
+    """Creates the Checkout Session. With the order flow on, an accepted order is REQUIRED (server-side check on the stored acceptance): no UI state is trusted."""
+    import stripe; stripe.api_key=_secret("STRIPE_SECRET_KEY")
+    if not _legal_on(): return stripe.checkout.Session.create(**params)
+    if not order: raise PermissionError("An accepted order is required before any payment.")
+    ok,probs=_legal_gate(order.get("lang","en"))
+    if not ok: raise PermissionError("Ordering is not available: "+"; ".join(probs[:2]))
+    o=ORD.assert_payable(_sb_rest,order["email"],order["id"])
+    items=params.get("line_items") or []
+    if items and "price" in items[0]: ORD.verify_price(stripe.Price.retrieve(items[0]["price"]),o)        # the configured Stripe price must be the displayed offer
+    cid=_order_customer(stripe,o)
+    s=stripe.checkout.Session.create(**ORD.decorate_params(params,o,_legal_cfg(),cid))
+    ORD.link_session(_sb_rest,o["email"],o["id"],s.id,cid)
+    return s
+
+def _as_plain(x):
+    for m in ("to_dict_recursive","to_dict"):
+        f=getattr(x,m,None)
+        if callable(f):
+            try: return f()
+            except Exception: pass
+    return dict(x) if not isinstance(x,dict) else x
+
+def _send_order_confirmation(o):
+    """One confirmation e-mail per paid order (claimed atomically), with the accepted terms ATTACHED. Released for a retry if sending fails."""
+    email=o["email"]
+    if not ORD.claim_confirmation(_sb_rest,email,o["id"]): return False
+    ok=False
+    try:
+        cfg=_legal_cfg(); a,docs=ORD.accepted_documents(_sb_rest,email,o["id"])
+        pdf=ORD.acceptance_pdf(a,docs,o,cfg.get("seller_name","")); inv=None
+        try:
+            if o.get("stripe_invoice_id"):
+                import stripe; stripe.api_key=_secret("STRIPE_SECRET_KEY"); inv=stripe.Invoice.retrieve(o["stripe_invoice_id"]).get("hosted_invoice_url")
+        except Exception: inv=None
+        subj,html_,att=ORD.confirmation_email(o,a,o["lang"],cfg,_public_url()+"/?view=purchases",inv,pdf)
+        sec=_mail_secrets(); ok,_d=ORD.send_email(_mail_post,sec.get("RESEND_API_KEY"),sec.get("EMAIL_FROM") or ACC.TEST_SENDER,email,subj,html_,att)
+    except Exception: ok=False
+    if not ok: ORD.release_confirmation(_sb_rest,email,o["id"])
+    return ok
+
+def _sync_orders(email,force=False):
+    """Reads the Stripe Checkout Sessions of this e-mail (server side) and moves orders to paid / expired. Idempotent. Returns the newly paid orders."""
+    import time
+    if not _legal_on() or not email or not _storage_configured(): return []
+    if not force and time.time()-st.session_state.get("_ord_sync_at",0)<300: return []
+    st.session_state["_ord_sync_at"]=time.time(); new=[]
+    try:
+        import stripe; stripe.api_key=_secret("STRIPE_SECRET_KEY"); data=[]
+        try:
+            r=stripe.checkout.Session.list(limit=100,customer_details={"email":email}); data=list(getattr(r,"data",None) or [])
+        except Exception: data=[]
+        if not data:
+            r=stripe.checkout.Session.list(limit=100); data=list(getattr(r,"data",None) or [])
+        res=ORD.reconcile(_sb_rest,[_as_plain(x) for x in data],email,_legal_cfg())
+        ORD.expire_stale(_sb_rest,email)
+        new=res["paid"]
+        for o in new: _send_order_confirmation(o)
+        for o in ORD.list_orders(_sb_rest,email):                 # confirmations that failed earlier are retried
+            if o.get("status") in ("paid","partially_refunded") and not o.get("confirmation_sent_at"): _send_order_confirmation(o)
+    except Exception: pass
+    return new
+
+# ── order panel (shown above the tabs) ───────────────────────────────────────
+def _order_reset_boxes():
+    """The acceptance boxes are NEVER carried over from a previous order: every new order (or a restart) shows them unticked."""
+    for k_ in ("ord_terms","ord_imm","ord_ack","ord_mkt"):
+        try: st.session_state.pop(k_,None)
+        except Exception: pass
+
+def _order_start(key,extra=None,email=None):
+    _order_reset_boxes()
+    st.session_state["_order"]=dict(key=key,extra=extra or {},email=email,placed=None,url=None,err=None)
+    st.session_state["_scroll_top"]=True
+
+def _order_cancel():
+    o=st.session_state.get("_order") or {}; p=o.get("placed")
+    if p:
+        try: ORD.cancel_pending(_sb_rest,p["email"],p["id"])
+        except Exception: pass
+    _order_reset_boxes(); st.session_state.pop("_order",None)
+
+def _order_checkout(order):
+    """Dispatches to the existing product code; every one of them goes through _stripe_checkout with the accepted order."""
+    k=order["offer_key"]; email=order["email"]; plan=st.session_state.get("auth_plan")
+    if k=="pro": return _checkout_url(email,"pro",order=order)
+    if ACCESS and k in ACCESS.PRODUCTS: return _access_checkout_url(k,email,plan,order=order)
+    if k=="listing":
+        store=MKT.SupabaseStore(_sb_rest); l=store.get(order["extra"].get("listing_id"))
+        if not l or l.get("owner_email")!=email: return None,"Listing not found for this account."
+        return _mk_checkout_url(store,l,order=order)
+    if k=="market_search":
+        url=_market_search_checkout_url(email,order["extra"].get("meta") or {},order=order); return url,(None if url else "Payment could not be started.")
+    return None,"Unknown offer."
+
+def _render_order_panel():
+    o=st.session_state.get("_order")
+    if not o: return
+    lang=st.session_state.get("_legal_lang","en"); fr=lang=="fr"
+    with st.container(border=True):
+        st.markdown('<div class="section-header">🧾 Your order</div>',unsafe_allow_html=True)
+        st.radio("Language / Langue",["en","fr"],format_func=lambda x:"English" if x=="en" else "Français",horizontal=True,key="_legal_lang")
+        lang=st.session_state.get("_legal_lang","en"); fr=lang=="fr"
+        ok,probs=_legal_gate(lang)
+        if not ok:
+            st.warning("Online ordering is temporarily unavailable. Please try again later or contact us." if not fr else "La commande en ligne est momentanément indisponible. Réessayez plus tard ou contactez-nous.")
+            if st.session_state.get("auth_is_admin"): st.caption("Admin detail: "+"; ".join(probs))
+            if st.button("Close" if not fr else "Fermer",key="ord_close"): st.session_state.pop("_order",None); st.rerun()
+            return
+        cfg=_legal_cfg(); cat=_legal_cat(); offer=cat.get(o["key"]); bundle=_legal_bundle(lang)
+        email=(o.get("email") or st.session_state.get("auth_email") or "").strip().lower()
+        if not offer: st.error("Unknown offer."); return
+        if not email: st.info("Log in or create an account first, then choose the offer again." if not fr else "Connectez-vous ou créez un compte, puis choisissez à nouveau l'offre."); return
+        # 1. recap
+        st.markdown(f"**{'1. Récapitulatif' if fr else '1. Recap'}**")
+        for k_,v_ in ORD.recap(offer,{},lang,cfg): st.markdown(f"- **{_html.escape(k_)}** — {_html.escape(v_)}",unsafe_allow_html=False)
+        # 2. details
+        st.markdown(f"**{'2. Vos coordonnées de facturation' if fr else '2. Your billing details'}**")
+        ctype=st.radio("Vous êtes" if fr else "You are",["individual","business"],format_func=lambda x:({"individual":"Particulier","business":"Professionnel"} if fr else {"individual":"Individual","business":"Business"})[x],horizontal=True,key="ord_type",index=None)
+        c1,c2=st.columns(2)
+        with c1: fn=st.text_input("Prénom" if fr else "First name",key="ord_fn")
+        with c2: ln=st.text_input("Nom" if fr else "Last name",key="ord_ln")
+        comp=st.text_input("Raison sociale" if fr else "Company name",key="ord_co") if ctype=="business" else ""
+        st.text_input("E-mail",value=email,disabled=True,key="ord_em")
+        ctry=st.selectbox("Pays de facturation" if fr else "Billing country",[""]+sorted(ORD.COUNTRIES),format_func=lambda c:(ORD.COUNTRIES.get(c,"—") if c else "—"),key="ord_ct")
+        a1=st.text_input("Adresse" if fr else "Address",key="ord_a1"); a2=st.text_input("Complément d'adresse (facultatif)" if fr else "Address line 2 (optional)",key="ord_a2")
+        d1,d2=st.columns(2)
+        with d1: pc=st.text_input("Code postal" if fr else "Postal code",key="ord_pc")
+        with d2: ci=st.text_input("Ville" if fr else "City",key="ord_ci")
+        tid=st.text_input("N° de TVA / identifiant fiscal (facultatif)" if fr else "VAT / tax ID (optional)",key="ord_tid",help=("Facultatif. Laissez vide s'il ne s'applique pas à vous." if fr else "Optional. Leave empty if it does not apply to you.")) if ctype=="business" else ""
+        prof=dict(customer_type=ctype or "",first_name=fn,last_name=ln,company_name=comp,country=ctry,address_line1=a1,address_line2=a2,postal_code=pc,city=ci,tax_id=tid)
+        # 3. documents + acceptance
+        st.markdown(f"**{'3. Conditions' if fr else '3. Terms'}**")
+        _docs_intro="Documents (s'ouvrent dans un nouvel onglet, votre commande est conservée) : " if fr else "Documents (open in a new tab, your order is kept): "
+        st.markdown(f'<div style="font-size:.82rem">{_docs_intro}{_legal_links(lang)}</div>',unsafe_allow_html=True)
+        for dk in ("terms","withdrawal","privacy"):
+            with st.expander(bundle.docs[dk]["title"]): st.markdown(bundle.docs[dk]["text"])
+        t_ok=st.checkbox(LEG.label("terms",lang),value=False,key="ord_terms")
+        st.caption("Cette case est une déclaration d'acceptation, enregistrée avec la date, la version et l'empreinte du texte. Ce n'est pas une signature électronique qualifiée." if fr else
+                   "This box is a declaration of acceptance, recorded with the date, the version and a fingerprint of the text. It is not a qualified electronic signature.")
+        imm=ack=False
+        if ctype and ORD.needs_immediate_request(dict(customer_type=ctype),offer):
+            imm=st.checkbox(LEG.label("immediate",lang),value=False,key="ord_imm"); ack=st.checkbox(LEG.label("immediate_ack",lang),value=False,key="ord_ack")
+        mk=st.checkbox(LEG.label("marketing",lang),value=False,key="ord_mkt")
+        # 4. pay
+        p=o.get("placed")
+        if p and o.get("url"):
+            st.success(f"{'Commande' if fr else 'Order'} {p['id']} — {'prête à payer' if not fr else 'prête au paiement'}.")
+            st.markdown(f'<div style="text-align:center;margin:.6rem 0"><a href="{o["url"]}" target="_blank" style="background:#C9A84C;color:#0B1629;padding:.55rem 1.4rem;border-radius:5px;font-weight:700;text-decoration:none">💳 {"Payer sur Stripe" if fr else "Pay on Stripe"}</a></div>',unsafe_allow_html=True)
+            st.caption("L'accès est activé après confirmation du paiement par Stripe. Retrouvez ensuite votre commande dans « Mes achats et documents »." if fr else "Access is activated once Stripe confirms the payment. You will find your order afterwards in “My purchases and documents”.")
+        b1,b2=st.columns(2)
+        with b1:
+            if st.button(("Corriger / recommencer" if p else "Annuler") if fr else ("Edit / start over" if p else "Cancel"),key="ord_cancel",width="stretch"): _order_cancel(); st.rerun()
+        with b2:
+            if not (p and o.get("url")) and st.button("Confirmer et payer" if fr else "Confirm and pay",key="ord_go",width="stretch",type="primary"):
+                try:
+                    order=ORD.place_order(_sb_rest,email=email,offer=offer,profile=prof,accept=dict(terms=bool(t_ok),label=LEG.label("terms",lang),immediate=bool(imm),immediate_ack=bool(ack),marketing=bool(mk)),
+                                          bundle=bundle,cfg=cfg,extra=o["extra"])
+                    url,err=_order_checkout(order)
+                    o["placed"]=order; o["url"]=url; o["err"]=err
+                    if not url:
+                        ORD.cancel_pending(_sb_rest,email,order["id"]); o["placed"]=None
+                        st.warning("Payment couldn't be started right now. Please try again shortly." if not fr else "Le paiement n'a pas pu démarrer. Réessayez dans un instant.")
+                        if st.session_state.get("auth_is_admin"): st.caption(f"Admin detail: {err}")
+                    else: st.rerun()
+                except ORD.OrderError as e:
+                    for pr_ in (e.problems or [e.code]): st.error(pr_)
+
+# ── My purchases and documents ───────────────────────────────────────────────
+def _render_purchases():
+    email=st.session_state.get("auth_email"); lang=st.session_state.get("_legal_lang","en"); fr=lang=="fr"
+    st.markdown(f'<div class="main-title" style="font-size:1.4rem">🧾 {"Mes achats et documents" if fr else "My purchases and documents"}</div>',unsafe_allow_html=True)
+    if st.button("← Back to the app",key="pur_back"): st.session_state.pop("_view",None); st.rerun()
+    if not email: st.info("Log in to see your purchases."); return
+    if not _legal_on() or not _storage_configured(): st.info("Purchases history is not available on this installation."); return
+    if st.button("🔄 Refresh from Stripe / Get my invoice",key="pur_ref"): _sync_orders(email,force=True)
+    else: _sync_orders(email)
+    orders=ORD.list_orders(_sb_rest,email)                     # the e-mail filter is in the query: only this customer's rows
+    if not orders: st.info("No order yet." if not fr else "Aucune commande."); return
+    try:
+        import stripe; stripe.api_key=_secret("STRIPE_SECRET_KEY"); docs=ORD.stripe_documents(stripe,orders)
+        for o in orders:
+            if o.get("status") in ("paid","partially_refunded","refunded"):
+                tot,stt=ORD.refund_state(stripe,o)
+                if tot is not None: ORD.apply_refund(_sb_rest,o,tot,stt)
+        orders=ORD.list_orders(_sb_rest,email)
+    except Exception: stripe=None; docs=dict(invoices=[],credit_notes=[])
+    inv_by_sub={}; 
+    for i in docs["invoices"]: inv_by_sub.setdefault(i.get("subscription"),[]).append(i)
+    for o in orders:
+        with st.container(border=True):
+            price=ORD.money(o["amount_minor"],o["currency"])+((" / month") if o.get("interval") else "")
+            st.markdown(f"**{_html.escape(o['offer_label'])}** — {price} — `{o['status']}`  \n{o['id']} · {str(o.get('created_at',''))[:10]}")
+            if o.get("access_end"): st.caption(f"Access: {str(o.get('access_start',''))[:10]} → {str(o['access_end'])[:10]}")
+            if o.get("refunded_minor"): st.caption(f"Refunded: {ORD.money(o['refunded_minor'],o['currency'])}")
+            if o.get("stripe_subscription_id") and stripe is not None and o["status"] in ("paid","partially_refunded"):
+                try:
+                    sub=stripe.Subscription.retrieve(o["stripe_subscription_id"])
+                    pe=ORD.period_end(sub)
+                    if sub.get("cancel_at_period_end"): st.caption(f"Cancelled — ends on {pe}. It will not renew.")
+                    elif sub.get("status") in ("active","trialing","past_due"):
+                        st.caption(f"Next due date: {pe}")
+                        if st.checkbox("I want to cancel this subscription at the end of the paid period",key=f"pur_cc_{o['id']}") and st.button("Cancel subscription",key=f"pur_cx_{o['id']}"):
+                            if ORD.can_cancel(orders,o["stripe_subscription_id"]): stripe.Subscription.modify(o["stripe_subscription_id"],cancel_at_period_end=True); st.success("Done: the subscription will not renew."); st.rerun()
+                except Exception: st.caption("Subscription details are temporarily unavailable.")
+            sub_invs=inv_by_sub.get(o.get("stripe_subscription_id")) if o.get("stripe_subscription_id") else [i for i in docs["invoices"] if i["id"]==o.get("stripe_invoice_id")]
+            for i in sub_invs or []:
+                if i.get("hosted_url"): st.markdown(f"[Invoice {i.get('number') or i['id']} — {ORD.money(i['total'] or 0,i['currency'])} ({i['status']})]({i['hosted_url']})")
+            if o["status"] in ("paid","partially_refunded","refunded") and not (sub_invs): st.caption("Invoice: it appears here as soon as Stripe has issued it (use the refresh button)." if not fr else "Facture : elle apparaît ici dès que Stripe l'a émise (bouton d'actualisation).")
+            a,ds=ORD.accepted_documents(_sb_rest,email,o["id"])
+            if a:
+                try: st.download_button("⬇ Accepted terms and proof (PDF)" if not fr else "⬇ Conditions acceptées et preuve (PDF)",data=ORD.acceptance_pdf(a,ds,o,_legal_cfg().get("seller_name","")),file_name=f"terms-{o['id']}.pdf",mime="application/pdf",key=f"pur_pdf_{o['id']}")
+                except Exception: pass
+    if docs["credit_notes"]:
+        st.markdown("**Credit notes**")
+        for c in docs["credit_notes"]:
+            if c.get("pdf_url"): st.markdown(f"[Credit note {c.get('number') or c['id']}]({c['pdf_url']})")
+
+# ── admin: status of the legal set-up ────────────────────────────────────────
+def _legal_admin_panel():
+    with st.expander("⚖ Legal documents & orders (status)"):
+        if not LEG or not ORD: st.warning("menkor_legal.py / menkor_orders.py are not deployed."); return
+        cfg=_legal_cfg(); st.caption(f"Order flow switch (LEGAL_FLOW_ENABLED): {'ON' if _legal_on() else 'off'}")
+        mc=LEG.missing_config(cfg); st.caption("Configuration still missing: "+(", ".join(mc) if mc else "none"))
+        for lg in LEG.LANGS:
+            b=_legal_bundle(lg); st.caption(f"{lg.upper()}: {'READY' if b.ready else 'not ready'}"+("" if b.ready else " — "+" | ".join(b.problems)))
+        ok,probs=_legal_gate("en"); st.caption("Ordering: "+("available" if ok else "blocked — "+" | ".join(probs)))
+        if LEG.manifest_problems(): st.error("Text changed without a new version: "+", ".join(LEG.manifest_problems()))
+        doc=st.selectbox("Preview a draft (placeholders stay visible)",[f"{k}.{lg}" for k in LEG.DOC_KEYS for lg in LEG.LANGS],key="legal_prev")
+        k_,l_=doc.split("."); d=LEG.load_docs().get((k_,l_))
+        if d: st.markdown(LEG.render(d,cfg,{"offers_table":ORD.offers_table(_legal_cat(),l_)})[0])
 
 def render_auth():
     for k,v in [("auth_email",None),("auth_plan",None),("auth_is_admin",False)]:
@@ -991,6 +1581,8 @@ def render_auth():
                         ok,detail=_notify_admin_new_signup("diagnostic-test@menkor-aviation.test")
                         if ok: st.success(f"✓ Email sent to {_ae}. Check your inbox (and spam folder).")
                         else: st.error(detail)
+                if LEG and ORD: _legal_admin_panel()
+                if _legal_on() and st.button("🧾 My purchases and documents",key="open_purchases_admin",width="stretch"): st.session_state["_view"]="purchases"; st.rerun()
                 with st.expander("🩺 Stripe checkout diagnostics"):
                     _sk=_secret("STRIPE_SECRET_KEY",""); _pp=_secret("STRIPE_PRICE_PRO","")
                     st.caption(f"STRIPE_SECRET_KEY: {'✓ set (' + str(len(_sk)) + ' chars)' if _sk else '✗ missing'}")
@@ -1024,6 +1616,7 @@ def render_auth():
                     _plan_buttons(email,current_plan=None)
                 if st.button("🔄 Check subscription",key="chk_sub",width="stretch"):
                     st.session_state["auth_plan"]=_check_sub(email); st.rerun()
+                if _legal_on() and st.button("🧾 My purchases and documents",key="open_purchases",width="stretch"): st.session_state["_view"]="purchases"; st.rerun()
             if st.button("🚪 Log out",key="logout",width="stretch"):
                 st.session_state["auth_email"]=None; st.session_state["auth_plan"]=None
                 st.session_state["auth_is_admin"]=False; st.rerun()
@@ -1060,9 +1653,13 @@ def render_auth():
                 em=st.text_input("Email",key="rg_em",placeholder="your@email.com")
                 pw=st.text_input("Password (min 6)",key="rg_pw",type="password",
                                   help="Click the eye icon to verify what you typed before creating the account.")
+                _rg_acc=None; _rg_lg=st.session_state.get("_legal_lang","en")
+                if _legal_on():
+                    st.markdown(f'<div style="font-size:.7rem">{_legal_links(_rg_lg)}</div>',unsafe_allow_html=True)
+                    _rg_acc=st.checkbox(LEG.label("signup",_rg_lg),value=False,key="rg_terms")
                 if st.button("Create account",key="btn_reg",width="stretch"):
                     if em and pw:
-                        ok,msg=_register(em,pw)
+                        ok,msg=_register(em,pw,_rg_acc,_rg_lg)
                         if ok: st.success(msg); _plan_buttons(em.strip().lower(),current_plan=None)
                         else: st.error(msg)
                     else: st.warning("Fill in all fields.")
@@ -1119,7 +1716,7 @@ def _offers_panel(packs_live):
     rows+=[("pro","Menkor Pro","€ 79 / month",pro_what),
            ("market","Market Search",f"$ {MARKET_SEARCH_PRICE_USD} · per request","Manual market study, sold separately from the plans above. Order it from the 🌐 Market Search tab."),
            ("budget","Aircraft-specific budget",f"from € {PRECISE_BUDGET_FROM_EUR}","Manual study for one aircraft; scope agreed beforehand, extended work on quote.")]
-    st.caption("Click an offer to get its payment link.")
+    st.caption("Click an offer to review your order and pay." if _legal_on() else "Click an offer to get its payment link.")
     h1,h2,h3=st.columns([1.5,1.3,4])
     h1.markdown("**Offer**"); h2.markdown("**Price**"); h3.markdown("**What you get**")
     for key,name,price,what in rows:
@@ -1131,6 +1728,7 @@ def _offers_panel(packs_live):
             elif key=="pro" and plan=="pro": st.markdown("**Menkor Pro ✓** current plan")
             elif st.button(name,key=f"offer_{key}",width="stretch"):
                 if not email: st.session_state["_offer_msg"]=(key,None,"Create a free account (or log in) in the sidebar first, then click the offer again.")
+                elif _legal_on(): _order_start(key); st.rerun()
                 else:
                     url,err=(_checkout_url(email,"pro") if key=="pro" else _access_checkout_url(key,email,plan))
                     st.session_state["_offer_msg"]=(key,url,err)
@@ -2033,6 +2631,8 @@ def main():
     for _k in _JOURNEY_KEYS_G+tuple(x.format(a=_a0) for x in _JOURNEY_KEYS):
         if _k in st.session_state: st.session_state[_k]=st.session_state[_k]
 
+    _BTN_N[0]=0
+    if _render_legal_page(): return                     # public legal pages (?legal=...): no login, no sidebar
     is_essentiel,is_pro=render_auth()
     _track("visit",{"plan":_plan_key()},once_key="visit")
 
@@ -2045,6 +2645,19 @@ def main():
         st.markdown('<div class="sub-title">Operating Cost Simulation — Business Aviation</div>',unsafe_allow_html=True)
 
     if _render_password_reset(): st.stop()
+
+    # Order flow (explicit acceptance, billing details, payment) and the customer area; both only exist with LEGAL_FLOW_ENABLED=1.
+    if _legal_on():
+        try:
+            if any(str(st.query_params.get(k_,"")) for k_ in _LEGAL_RETURN_PARAMS) and not st.session_state.get("_ret_synced"):
+                st.session_state["_ret_synced"]=True; _sync_orders(st.session_state.get("auth_email"),force=True)      # back from Stripe: read the payment on the server, never trust the URL
+            if str(st.query_params.get("view",""))=="purchases": st.session_state["_view"]="purchases"
+        except Exception: pass
+        if st.session_state.get("_view")=="purchases": _render_purchases(); return
+        _sync_orders(st.session_state.get("auth_email"))
+        _render_order_panel()
+        if st.session_state.pop("_scroll_top",False):
+            components.html("<script>try{var d=window.parent.document;var m=d.querySelector('section.main')||d.querySelector('[data-testid=\"stMain\"]');if(m)m.scrollTo(0,0);window.parent.scrollTo(0,0);}catch(e){}</script>",height=0,width=0)
 
     _plan_name = "Pro" if is_pro else "Free"
     _plan_color = "#4ADE80" if is_pro else "#8496B0"
@@ -2296,7 +2909,8 @@ def main():
         if unlocked: return base
         return f"{base}  🔒 {'Pro or pack' if _packs_live else '79€/mo'}"
 
-    tab1,tab2,tab3,tab4,tab5,tab6,tab7=st.tabs([
+    _mk_on=_market_on()
+    _tabs=st.tabs([
         _tab_label("📊 Dashboard",None),
         _tab_label("📈 Profitability","pro"),
         _tab_label("🔍 Sensitivity","pro"),
@@ -2304,7 +2918,8 @@ def main():
         _tab_label("✈️ Quotation","pro"),
         _tab_label("🌐 Market Search",None),
         _tab_label("🗂 My scenarios","pro"),
-    ])
+    ]+(["🛩 Aircraft for sale"] if _mk_on else []))
+    tab1,tab2,tab3,tab4,tab5,tab6,tab7=_tabs[:7]; tab8=_tabs[7] if _mk_on else None
 
     # ── Cost Master EDITORS (rendered first so every tab uses the same scenario) ─────
     ov_fixed={}; ov_var={}; extra_fixed_usd=0.0; extra_var_usd=0.0
@@ -2991,6 +3606,8 @@ def main():
             else:
                 meta = {"aircraft_model":ms_model,"budget":ms_budget,"year_range":ms_year,
                         "max_hours":ms_hours,"location":ms_location,"client_name":ms_name,"notes":ms_notes[:450]}
+                if _legal_on():
+                    _order_start("market_search",extra={"meta":meta},email=ms_email.strip().lower()); st.rerun()
                 url = _market_search_checkout_url(ms_email, meta)
                 if url:
                     st.markdown(f'<div style="text-align:center;margin-top:.8rem"><a href="{url}" target="_blank" style="background:#C9A84C;color:#0B1629;padding:.6rem 1.5rem;border-radius:5px;font-weight:700;text-decoration:none">💳 Pay $ 600 and Submit Request</a></div>', unsafe_allow_html=True)
@@ -3039,10 +3656,14 @@ def main():
         if not (is_essentiel or is_pro): premium_gate("pro")
         else: _render_my_scenarios(get_base(),aid,scn,res,disp,is_pro)
 
+    if tab8 is not None:
+        with tab8: _render_marketplace(get_base(),is_pro)
+
     _goto=st.session_state.pop("_goto_tab",None)
     if _goto: _goto_tab_script(_goto)
     st.markdown("<hr>",unsafe_allow_html=True)
     st.markdown('<div style="text-align:center;font-size:.72rem;color:#4A5568">MENKOR AVIATION — Figures for simulation purposes only</div>',unsafe_allow_html=True)
+    _legal_footer()
 
 if __name__=="__main__":
     main()

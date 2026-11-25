@@ -171,3 +171,15 @@ Aucun déploiement ni migration en production. La base précédente (167 avions,
 - `menkor_store.py` et le gabarit d'e-mail de `menkor_accounts.py` ne sont pas modifiés (aucun effet sans abonné Essentiel).
 - Tests : accès et prix exécutés avec des stubs ; le reste de la suite ne tourne pas dans mon environnement (modules et données absents). Ce n'est pas une validation dans un vrai navigateur.
 - v27b : nouveau panneau « 💶 Plans & pricing — what you can get » (sous le bandeau du plan, visible de tous) : Free, Budget individuel 29 €, Pack Comparaison 59 €, modèle supplémentaire 15 €, Pro 79 €/mois, Market Search 600 USD, budget dès 490 €, avec le contenu de chaque offre. Les lignes packs n'apparaissent que si `ACCESS_RULES_ENABLED=1`. Libellé des onglets verrouillés : « Pro or pack » quand les packs sont actifs.
+
+## v28 — Marketplace « Aircraft for sale » (désactivée par défaut)
+- Nouveau module `menkor_market.py` + onglet « 🛩 Aircraft for sale » (visible seulement si `MARKET_ENABLED=1` et tables présentes, `market_migration.sql`).
+- Catalogue avec filtres (type, constructeur, pays, année, heures, recherche), fiche avec coût d'exploitation de référence (même moteur et mêmes règles d'accès), contact vendeur par e-mail, annonces SAMPLE fictives, bandeau rouge SOLD.
+- « My listings » : brouillon → relecture admin → activation (Pro : incluse ; sinon abonnement Stripe 15 €/mois) ; arrêt du renouvellement ; marquer vendu. Vue « Moderation » pour l'admin.
+- Voir `MARKET_SETUP.md` (ordre de mise en service et limites : pas de photos ni de modification d'annonce dans cette version).
+
+## v29 — Vente aux particuliers et professionnels : acceptation des conditions, preuves, documents (éteint par défaut)
+- Nouveaux `menkor_legal.py` (textes versionnés FR/EN, empreinte, PDF, blocage tant que les informations vendeur manquent) et `menkor_orders.py` (commandes, preuve d'acceptation, cohérence des montants, lecture idempotente des paiements, documents du client). Textes dans `legal/` (projets, `status: draft`, non validés par un avocat). `legal_migration.sql` : 4 tables, preuves non modifiables.
+- `app.py` : point d'entrée unique de paiement `_stripe_checkout` (refuse sans commande acceptée), parcours de commande, inscription avec acceptation, pages publiques `?legal=`, pied de page, « My purchases and documents », panneau admin. Actif seulement avec `LEGAL_FLOW_ENABLED=1`.
+- `menkor_access.py`, `menkor_market.py` : paramètre optionnel `allowed_order_ids` (aucun effet s'il est absent). Calculs de coûts inchangés.
+- 92 nouveaux tests ; suite complète : mêmes échecs avant et après (données absentes du bac à sable). Voir `LEGAL_SETUP.md`.

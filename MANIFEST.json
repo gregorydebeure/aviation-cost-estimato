@@ -1,0 +1,42 @@
+{
+ "cookies.en": {
+  "version": "1.0",
+  "sha256": "d9fcf8c072ffeec08613fbed43f84bbbb87c241ba710e1311ad601ef237174f9"
+ },
+ "cookies.fr": {
+  "version": "1.0",
+  "sha256": "5c0861d7b4fa9aa6f33fec92756be2a59c333211e0150b090639e503f4da9c58"
+ },
+ "notice.en": {
+  "version": "1.0",
+  "sha256": "edb2ca50821aabea10075a9b8a54f7d238a1e1076c1c805431f9142cec1e69c4"
+ },
+ "notice.fr": {
+  "version": "1.0",
+  "sha256": "7715c676ad13563b247924a2a01ea133ca91febf20b1d7f9b5ffbc4541f7a636"
+ },
+ "privacy.en": {
+  "version": "1.0",
+  "sha256": "ef711ff0b7bce59e4103c32d6efd827987c2a61fcb5f39f2fa712cb42663491b"
+ },
+ "privacy.fr": {
+  "version": "1.0",
+  "sha256": "9e3d9fba68eae404c45864169fc9d31af34af7f64ca25cbe48f36f9a4887276b"
+ },
+ "terms.en": {
+  "version": "1.0",
+  "sha256": "769f0053ab262f4c771666f7c90b0a6d270e8f8def4eff7feee3e20c5de1b151"
+ },
+ "terms.fr": {
+  "version": "1.0",
+  "sha256": "388dc036f9051c7636661ced9afd9a661a6906e40b41c6a1106183db96fa98db"
+ },
+ "withdrawal.en": {
+  "version": "1.0",
+  "sha256": "282eceda2d8af7a51affcbd9be2fd577345919f52fb1b35c31133698ba689c70"
+ },
+ "withdrawal.fr": {
+  "version": "1.0",
+  "sha256": "8bb64a7d0be0b4de5c97c22025e31828275f0c17a21fc312a006029a7eb417f8"
+ }
+}

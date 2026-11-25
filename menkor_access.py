@@ -46,8 +46,10 @@ def checkout_params(kind, email, ctx, success_url, cancel_url):
                 success_url=success_url, cancel_url=cancel_url)
 
 
-def grants_from_sessions(sessions, email, known_session_ids, report=None):
-    """Pure: Stripe Checkout Sessions (dicts) -> new grant records. Only PAID one-off sessions of this app, exact amount, same e-mail, not already stored."""
+def grants_from_sessions(sessions, email, known_session_ids, report=None, allowed_order_ids=None):
+    """Pure: Stripe Checkout Sessions (dicts) -> new grant records. Only PAID one-off sessions of this app, exact amount, same e-mail, not already stored.
+    allowed_order_ids (set | None): when given (legal order flow on), a session grants nothing unless it carries the id of an order that is PAID and accepted
+    (menkor_orders.paid_order_ids). A session created outside the order flow (old payment link, direct API call) never grants access."""
     email = (email or "").strip().lower(); out = []
     for s in sessions or []:
         try:
@@ -60,7 +62,9 @@ def grants_from_sessions(sessions, email, known_session_ids, report=None):
             if kind not in PRODUCTS: _skip("not an access purchase (no product metadata)"); continue
             if s.get("mode") != "payment" or s.get("payment_status") != "paid": _skip(f"not paid (mode={s.get('mode')}, status={s.get('payment_status')})"); continue
             pr = PRODUCTS[kind]
-            if s.get("currency") != "eur" or s.get("amount_total") != pr["price_eur"] * 100: _skip(f"amount/currency mismatch ({s.get('amount_total')} {s.get('currency')})"); continue
+            if allowed_order_ids is not None and md.get("order_id") not in allowed_order_ids: _skip("no paid and accepted order for this session"); continue
+            _amt_ok = s.get("amount_total") == pr["price_eur"] * 100 or (allowed_order_ids is not None and s.get("amount_subtotal") == pr["price_eur"] * 100)   # taxes added by Stripe Tax change the total, not the price
+            if s.get("currency") != "eur" or not _amt_ok: _skip(f"amount/currency mismatch ({s.get('amount_total')} {s.get('currency')})"); continue
             who = ((s.get("customer_details") or {}).get("email") or s.get("customer_email") or "").strip().lower()
             if who != email: _skip("different e-mail"); continue
             bought = _dt.datetime.fromtimestamp(int(s["created"]), _dt.timezone.utc)
@@ -85,7 +89,7 @@ def _as_dict(x):
     return dict(x) if not isinstance(x, dict) else x
 
 
-def sync_from_stripe(stripe_mod, store, email):
+def sync_from_stripe(stripe_mod, store, email, allowed_order_ids=None):
     """Reads the paid Checkout Sessions of this e-mail from Stripe and stores the missing grants. Returns the number of new grants. Never raises;
     what happened is left in LAST_SYNC (counts, skip reasons, error type)."""
     info = LAST_SYNC; info.clear(); info.update(email=email, sessions=0, new=0, stored=0, skipped=[], error=None)
@@ -102,7 +106,7 @@ def sync_from_stripe(stripe_mod, store, email):
         sessions = [_as_dict(x) for x in data]
         info["sessions"] = len(sessions)
         known = {g["session_id"] for g in store.list_grants(email)}
-        new = grants_from_sessions(sessions, email, known, info["skipped"])
+        new = grants_from_sessions(sessions, email, known, info["skipped"], allowed_order_ids)
         info["new"] = len(new)
         for g in new:
             if store.insert_grant(g) is not False: info["stored"] += 1
