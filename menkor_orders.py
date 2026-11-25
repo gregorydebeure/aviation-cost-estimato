@@ -59,7 +59,7 @@ def money(minor: int, currency: str) -> str:
 
 
 # ── catalog: what is really sold (read from the code that grants the access, never retyped) ──────────────
-def catalog(access=None, mkt=None, market_search_usd: int = 600, pro_eur: int = PRO_PRICE_EUR) -> dict:
+def catalog(access=None, mkt=None, market_search_eur: int = 600, pro_eur: int = PRO_PRICE_EUR) -> dict:
     """offer key -> offer. Prices come from menkor_access.PRODUCTS / menkor_market.LISTING_PRICE_EUR / the Market Search constant / PRO_PRICE_EUR."""
     days = getattr(access, "PACK_DAYS", PACK_DAYS_DEFAULT); quota = getattr(access, "PRO_MODELS_PER_MONTH", 10)
     chg = getattr(access, "MAX_MODEL_CHANGES_PER_24H", 3)
@@ -102,8 +102,8 @@ def catalog(access=None, mkt=None, market_search_usd: int = 600, pro_eur: int = 
                               duration=dict(en="Monthly subscription, renewed automatically until cancelled; the listing stays visible until the end of the paid period.",
                                             fr="Abonnement mensuel, reconduit automatiquement jusqu'à résiliation ; l'annonce reste visible jusqu'à la fin de la période payée."),
                               credits=dict(en="No credits are consumed.", fr="Aucun crédit n'est consommé."))
-    if market_search_usd:
-        cat["market_search"] = dict(key="market_search", category="manual_service", mode="payment", currency="USD", amount_minor=market_search_usd * 100, interval=None, access_days=None, models=0,
+    if market_search_eur:
+        cat["market_search"] = dict(key="market_search", category="manual_service", mode="payment", currency="EUR", amount_minor=market_search_eur * 100, interval=None, access_days=None, models=0,
                                     label=dict(en="Personalized Aircraft Market Search", fr="Recherche de marché personnalisée"),
                                     includes=dict(en="A manual market study prepared by Menkor Aviation from the criteria you submit. Delivery time is confirmed when your request is reviewed.",
                                                   fr="Une étude de marché manuelle préparée par Menkor Aviation à partir des critères que vous soumettez. Le délai de livraison est confirmé lors de l'examen de votre demande."),

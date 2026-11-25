@@ -174,7 +174,7 @@ class TestOrderScreens(unittest.TestCase):
             st, app, rest, stripe, _ = boot(overrides=ov); app._order_start(key, extra={"meta": {"budget": "x"}} if key == "market_search" else None); run(app._render_order_panel)
             self.assertEqual(len(stripe.created), 1, key); o = rest.t["orders"][0]; p = stripe.created[0]
             amt = ORD.params_amount(p); self.assertTrue(amt is None or amt == o["amount_minor"], key); self.assertEqual(p["metadata"]["order_id"], o["id"], key)
-            if key == "market_search": self.assertEqual(o["currency"], "USD"); self.assertEqual(amt, 60000)
+            if key == "market_search": self.assertEqual(o["currency"], "EUR"); self.assertEqual(amt, 60000)
 
     def test_listing_order_is_bound_to_its_owner(self):
         import menkor_market as M
@@ -318,3 +318,24 @@ class TestPurchasesPage(unittest.TestCase):
 
 
 if __name__ == "__main__": unittest.main()
+
+
+class MarketSearchEurAndTimelineTests(unittest.TestCase):
+    """v30: Market Search is sold in EUR, can be requested by e-mail without paying, and the acquisition timeline shows no prices."""
+    def _src(self):
+        with open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "app.py"), encoding="utf-8") as f: return f.read()
+    def test_no_usd_left_in_market_search(self):
+        s = self._src()
+        self.assertNotIn("MARKET_SEARCH_PRICE_USD", s); self.assertNotIn('"currency":"usd"', s)
+        for bad in ("$ 600", "$600"): self.assertNotIn(bad, s)
+        self.assertIn('"currency":"eur","unit_amount":MARKET_SEARCH_PRICE_EUR*100', s)
+    def test_timeline_has_no_prices(self):
+        s = self._src(); i = s.index("_tl_steps=["); j = s.index("for num,title,desc,delay in _tl_steps:")
+        blk = s[i:j]; self.assertNotIn("$", blk); self.assertNotIn("€", blk); self.assertNotIn("💰", s[j:j + 600])
+    def test_free_email_request_does_not_create_order_or_payment(self):
+        sent = []
+        class R:  status_code = 200
+        def post(url, headers=None, json=None, timeout=None): sent.append(json); return R()
+        st, app, rest, stripe, _ = boot(); ok, d = app._send_budget_request({"Name": "A", "Email": "a@x.com", "Aircraft model": "G650"}, secrets={"RESEND_API_KEY": "k", "ADMIN_EMAIL": "me@x.com"}, post=post,
+                                               subject="Market Search request (no payment) — G650", intro="x")
+        self.assertTrue(ok); self.assertEqual(sent[0]["subject"], "Market Search request (no payment) — G650"); self.assertEqual(sent[0]["to"], ["me@x.com"])

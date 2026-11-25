@@ -153,7 +153,7 @@ class TestProfiles(unittest.TestCase):
 class TestConsistency(unittest.TestCase):
     def test_catalog_amounts_come_from_the_code_that_grants_access(self):
         for k, p in ACCESS.PRODUCTS.items(): self.assertEqual(CAT[k]["amount_minor"], p["price_eur"] * 100)
-        self.assertEqual(CAT["pro"]["amount_minor"], 7900); self.assertEqual(CAT["pro"]["interval"], "month"); self.assertEqual(CAT["market_search"]["currency"], "USD")
+        self.assertEqual(CAT["pro"]["amount_minor"], 7900); self.assertEqual(CAT["pro"]["interval"], "month"); self.assertEqual(CAT["market_search"]["currency"], "EUR")
 
     def test_recap_states_price_currency_taxes_total_and_nature(self):
         rows = dict(ORD.recap(CAT["pro"], {}, "en", CFG)); self.assertIn("79", rows["Price"]); self.assertEqual(rows["Currency"], "EUR")

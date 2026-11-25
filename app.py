@@ -1120,7 +1120,7 @@ def _login(email,pwd):
 
 PLAN_PRICE_KEYS = {"pro":"STRIPE_PRICE_PRO"}
 PLAN_LABELS = {"pro":"Menkor Pro — €79/month"}
-MARKET_SEARCH_PRICE_USD = 600          # one flat fee, charged in USD (Stripe unit_amount = cents)
+MARKET_SEARCH_PRICE_EUR = 600          # one flat fee, charged in EUR (Stripe unit_amount = cents). CONFIRM THE AMOUNT before going live.
 PRECISE_BUDGET_FROM_EUR = 490          # manual aircraft-specific budget: "from" price, scope agreed, extended work on quote
 def _check_sub(email):
     """Returns 'pro' or None based on any active Stripe subscription for this email.
@@ -1184,7 +1184,7 @@ def _market_search_checkout_url(email, meta, order=None):
         # Dashboard (Settings → Payment methods) and reject this parameter on Checkout Session creation.
         s=_stripe_checkout(dict(
             mode="payment", customer_email=email,
-            line_items=[{"price_data":{"currency":"usd","unit_amount":MARKET_SEARCH_PRICE_USD*100,
+            line_items=[{"price_data":{"currency":"eur","unit_amount":MARKET_SEARCH_PRICE_EUR*100,
                 "product_data":{"name":"Personalized Aircraft Market Search"}},"quantity":1}],
             metadata=meta,
             success_url="https://aviation-cost-estimator.onrender.com/?market_submitted=1",
@@ -1228,7 +1228,7 @@ def _legal_cfg():
     except Exception: return {}
 
 def _legal_cat():
-    return ORD.catalog(ACCESS,MKT,MARKET_SEARCH_PRICE_USD)
+    return ORD.catalog(ACCESS,MKT,MARKET_SEARCH_PRICE_EUR)
 
 def _legal_bundle(lang):
     return LEG.build_bundle(lang,_legal_cfg(),extra={"offers_table":ORD.offers_table(_legal_cat(),lang)},stripe_key=str(_secret("STRIPE_SECRET_KEY","") or ""))
@@ -1671,7 +1671,7 @@ PLAN_ROWS=[("Dashboard — free demo (Falcon 7X, report scenario)",True,True,Tru
            ("Dashboard — any aircraft, your hours and fuel price",False,True,True),
            ("Profitability",False,True,True),("Sensitivity",False,True,True),
            ("Cost Master, PDF report and CSV export",False,True,True),("Quotation",False,True,True),
-           ("Market Search (manual service, $ 600 per request, separate)",True,True,True),
+           ("Market Search (manual service, € 600 per request, separate)",True,True,True),
            ("Aircraft-specific budget (manual study, from € 490, scope agreed, separate)",True,True,True)]
 # Pack column = full features, but only on the models unlocked by the pack (shown only when the access rules are on).
 
@@ -1714,7 +1714,7 @@ def _offers_panel(packs_live):
                ("comparison","Comparison pack",f"€ {P['comparison']['price_eur']} · one-off",f"3 models for {days} days, with side-by-side comparison between them. Same features as above."),
                ("extra_model","Additional model",f"€ {P['extra_model']['price_eur']} · one-off","1 more model: added to your pack for its remaining period, or +1 for the month on Menkor Pro. Packs bought together add up.")]
     rows+=[("pro","Menkor Pro","€ 79 / month",pro_what),
-           ("market","Market Search",f"$ {MARKET_SEARCH_PRICE_USD} · per request","Manual market study, sold separately from the plans above. Order it from the 🌐 Market Search tab."),
+           ("market","Market Search",f"€ {MARKET_SEARCH_PRICE_EUR} · per request","Manual market study, sold separately from the plans above. Order it from the 🌐 Market Search tab."),
            ("budget","Aircraft-specific budget",f"from € {PRECISE_BUDGET_FROM_EUR}","Manual study for one aircraft; scope agreed beforehand, extended work on quote.")]
     st.caption("Click an offer to review your order and pay." if _legal_on() else "Click an offer to get its payment link.")
     h1,h2,h3=st.columns([1.5,1.3,4])
@@ -1865,7 +1865,7 @@ BUDGET_DISCLAIMER=("This is a manually prepared budget study. It is not a pre-pu
 BUDGET_CONFIG_HELP=("Reception is not configured: set RESEND_API_KEY and ADMIN_EMAIL (existing secrets; optionally BUDGET_REQUEST_TO to receive these requests "
                     "at another address) in the app secrets. Until then no request can be transmitted.")
 
-def _send_budget_request(data,secrets=None,post=None):
+def _send_budget_request(data,secrets=None,post=None,subject=None,intro=None):
     """Transmit a budget request by email through the existing Resend channel. Returns (ok, detail).
     ok is True ONLY after a successful transmission; a missing configuration or any failure returns False (never 'sent')."""
     import html as _html
@@ -1881,8 +1881,8 @@ def _send_budget_request(data,secrets=None,post=None):
             import requests; post=requests.post
         r=post("https://api.resend.com/emails",headers={"Authorization":f"Bearer {key}","Content-Type":"application/json"},
                json={"from":"Aviation Cost Estimator <onboarding@resend.dev>","to":[to],"reply_to":data.get("Email",""),
-                     "subject":f"Aircraft-specific operating budget request — {data.get('Aircraft model','')}",
-                     "html":f"<p>Budget request received from the Aviation Cost Estimator:</p><table>{rows}</table>"},timeout=8)
+                     "subject":subject or f"Aircraft-specific operating budget request — {data.get('Aircraft model','')}",
+                     "html":f"<p>{_html.escape(intro or 'Budget request received from the Aviation Cost Estimator:')}</p><table>{rows}</table>"},timeout=8)
         if r.status_code in (200,201): return True,""
         return False,f"HTTP {r.status_code}"
     except Exception as e:
@@ -3499,27 +3499,26 @@ def main():
 
             # ── Turnkey acquisition timeline ─────────────────────────────
             st.markdown('<div class="section-header" style="margin-top:1.4rem">Indicative acquisition timeline — Market → AOC</div>',unsafe_allow_html=True)
-            st.caption("Indicative timeline: durations and costs are order-of-magnitude figures, adapted to each project (aircraft, jurisdiction, financing, inspection findings).")
+            st.caption("Indicative timeline: durations are order-of-magnitude figures, adapted to each project (aircraft, jurisdiction, financing, inspection findings).")
             _tl_steps=[
-                ("01","Market Search / Advisory — Taxes / AOC / Registration","Full market search and technical screening, run alongside early advisory on applicable taxes, AOC placement options and the target registration jurisdiction.","3–5 days","$ 600"),
-                ("02","Preselection / First Pre-Audit","Shortlist narrowed by our B1/B2 engineers and CAMO team; first pre-audit of maintenance records, engine program status and airframe history.","3–7 days",None),
-                ("03","LOI / Deposit Escrow / Pre-Inspection","Letter of Intent negotiated and signed; deposit placed in escrow; informal pre-inspection to confirm the aircraft warrants a full PPI.","5–10 days","$1,500–$3,000"),
-                ("04","APA / PPI","Aircraft Purchase Agreement finalized alongside the Pre-Purchase Inspection: full technical inspection, discrepancy list, closing conditions drafted.","7–14 days","$15,000–$35,000"),
-                ("05","PPI Negotiation / PPI Review","Findings reviewed; price adjustment or corrective work negotiated with the seller based on the discrepancies the inspection raised.","3–7 days",None),
-                ("06","Delivering","Technical acceptance, documentation handover, ferry flight to the aircraft's new base with a type-qualified crew.","1–3 days","$5,000–$25,000"),
-                ("07","Deregistration","Export Certificate of Airworthiness issued and the aircraft removed from its current registry.","5–15 days","$1,500–$3,500"),
-                ("08","Deal Closing","Escrow funds released, title transferred, bill of sale recorded, final settlement between buyer and seller.","2–5 days",None),
-                ("09","Registration","Import and airworthiness certification in the target jurisdiction (EASA, FAA, other), new registration issued.","10–30 days","$8,000–$20,000"),
-                ("10","New AOC Registration","Aircraft added to the operator's Air Operator Certificate, operations manual amended, regulatory approvals secured.","15–45 days","$4,000–$12,000"),
+                ("01","Market Search / Advisory — Taxes / AOC / Registration","Full market search and technical screening, run alongside early advisory on applicable taxes, AOC placement options and the target registration jurisdiction.","3–5 days"),
+                ("02","Preselection / First Pre-Audit","Shortlist narrowed by our B1/B2 engineers and CAMO team; first pre-audit of maintenance records, engine program status and airframe history.","3–7 days"),
+                ("03","LOI / Deposit Escrow / Pre-Inspection","Letter of Intent negotiated and signed; deposit placed in escrow; informal pre-inspection to confirm the aircraft warrants a full PPI.","5–10 days"),
+                ("04","APA / PPI","Aircraft Purchase Agreement finalized alongside the Pre-Purchase Inspection: full technical inspection, discrepancy list, closing conditions drafted.","7–14 days"),
+                ("05","PPI Negotiation / PPI Review","Findings reviewed; price adjustment or corrective work negotiated with the seller based on the discrepancies the inspection raised.","3–7 days"),
+                ("06","Delivering","Technical acceptance, documentation handover, ferry flight to the aircraft's new base with a type-qualified crew.","1–3 days"),
+                ("07","Deregistration","Export Certificate of Airworthiness issued and the aircraft removed from its current registry.","5–15 days"),
+                ("08","Deal Closing","Escrow funds released, title transferred, bill of sale recorded, final settlement between buyer and seller.","2–5 days"),
+                ("09","Registration","Import and airworthiness certification in the target jurisdiction (EASA, FAA, other), new registration issued.","10–30 days"),
+                ("10","New AOC Registration","Aircraft added to the operator's Air Operator Certificate, operations manual amended, regulatory approvals secured.","15–45 days"),
             ]
-            for num,title,desc,delay,cost in _tl_steps:
-                _cost_html=f'<span style="margin-left:1.2rem">💰 {cost}</span>' if cost else ''
+            for num,title,desc,delay in _tl_steps:
                 st.markdown(f'''<div class="metric-card" style="display:flex;gap:1rem;align-items:flex-start">
                     <div style="font-size:1.3rem;font-weight:800;color:#E8C46A;min-width:34px">{num}</div>
                     <div>
                         <div style="font-size:.95rem;font-weight:700;color:#D6E4F7">{title}</div>
                         <div style="font-size:.82rem;color:#8496B0;margin-top:.2rem">{desc}</div>
-                        <div style="font-size:.72rem;color:#5A6B85;margin-top:.4rem">⏱ {delay}{_cost_html}</div>
+                        <div style="font-size:.72rem;color:#5A6B85;margin-top:.4rem">⏱ {delay}</div>
                     </div>
                 </div>''',unsafe_allow_html=True)
             st.markdown('''<div class="metric-card" style="border-left:3px dashed #C9A84C;display:flex;gap:1rem;align-items:flex-start">
@@ -3563,7 +3562,7 @@ def main():
             </div>''',unsafe_allow_html=True)
 
         st.markdown("<hr>",unsafe_allow_html=True)
-        st.markdown('<div class="section-header">What You Get — $ 600 Flat Fee</div>',unsafe_allow_html=True)
+        st.markdown('<div class="section-header">What You Get — € 600 Flat Fee</div>',unsafe_allow_html=True)
         f1,f2,f3=st.columns(3)
         with f1:
             st.markdown('''<div class="metric-card">
@@ -3580,7 +3579,7 @@ def main():
                 <div class="metric-label">✓ Market Positioning</div>
                 <div class="metric-sub">Where each asking price sits against comparable aircraft, with the information we hold on maintenance programmes. Asking prices and estimated values are shown separately.</div>
             </div>''',unsafe_allow_html=True)
-        st.caption("Flat fee: $ 600 (USD), one price for every model. Delivery timeframe confirmed when your request is reviewed.")
+        st.caption("Flat fee: € 600 (EUR), one price for every model. Delivery timeframe confirmed when your request is reviewed.")
 
         st.markdown("<hr>",unsafe_allow_html=True)
         st.markdown('<div class="section-header">Request Your Market Search</div>',unsafe_allow_html=True)
@@ -3598,7 +3597,7 @@ def main():
             ms_name = st.text_input("Your name")
             ms_email = st.text_input("Your email")
             ms_notes = st.text_area("Additional criteria (optional)")
-            submitted = st.form_submit_button("Proceed to Payment — $ 600", width="stretch")
+            submitted = st.form_submit_button("Proceed to Payment — € 600", width="stretch")
 
         if submitted:
             if not (ms_name and ms_email and ms_budget):
@@ -3610,8 +3609,29 @@ def main():
                     _order_start("market_search",extra={"meta":meta},email=ms_email.strip().lower()); st.rerun()
                 url = _market_search_checkout_url(ms_email, meta)
                 if url:
-                    st.markdown(f'<div style="text-align:center;margin-top:.8rem"><a href="{url}" target="_blank" style="background:#C9A84C;color:#0B1629;padding:.6rem 1.5rem;border-radius:5px;font-weight:700;text-decoration:none">💳 Pay $ 600 and Submit Request</a></div>', unsafe_allow_html=True)
+                    st.markdown(f'<div style="text-align:center;margin-top:.8rem"><a href="{url}" target="_blank" style="background:#C9A84C;color:#0B1629;padding:.6rem 1.5rem;border-radius:5px;font-weight:700;text-decoration:none">💳 Pay € 600 and Submit Request</a></div>', unsafe_allow_html=True)
                     st.info("After payment, our team prepares your personalized market report. Delivery timeframe confirmed when your request is reviewed.")
+
+        # Free alternative: the same request can be sent by e-mail, without paying and without creating an order.
+        st.markdown('<div class="section-header">Prefer to write to us first?</div>',unsafe_allow_html=True)
+        st.caption("You can send your Market Search request to Menkor Aviation by e-mail without paying anything. Payment is only needed if you order the service above.")
+        with st.form("market_search_free_form"):
+            fc1,fc2=st.columns(2)
+            with fc1: fr_name=st.text_input("Name",key="msf_name")
+            with fc2: fr_email=st.text_input("Email",key="msf_email")
+            fr_model=st.text_input("Aircraft model",value=ms_model_preview or "",key="msf_model")
+            fr_msg=st.text_area("Your request (budget, years, hours, region…)",key="msf_msg",max_chars=1500)
+            st.caption("Please do not send sensitive documents through this form.")
+            fr_sub=st.form_submit_button("Send request by e-mail (no payment)")
+        if fr_sub:
+            if not (fr_name.strip() and fr_email.strip() and fr_model.strip()): st.warning("Please fill in name, email and aircraft model.")
+            elif not _re.match(r"[^@\s]+@[^@\s]+\.[^@\s]+",fr_email.strip()): st.warning("Please enter a valid email address.")
+            else:
+                ok,detail=_send_budget_request({"Name":fr_name.strip(),"Email":fr_email.strip(),"Aircraft model":fr_model.strip(),"Message":fr_msg.strip()[:1500]},
+                                               subject=f"Market Search request (no payment) — {fr_model.strip()}",intro="Market Search request received without payment, from the Aviation Cost Estimator:")
+                if ok: st.success("Your request has been transmitted to Menkor Aviation. We will contact you.")
+                elif detail=="not_configured": st.error("Your request could not be sent: reception is not configured on this installation. No request has been recorded. Please try again later.")
+                else: st.error(f"Your request could not be sent ({detail}). No request has been recorded: please try again later.")
 
     # ── Cost Master → saved scenarios → comparison ──────────────────────────────────────────────────────────
     with tab4:

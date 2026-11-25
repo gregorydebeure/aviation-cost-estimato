@@ -183,3 +183,9 @@ Aucun déploiement ni migration en production. La base précédente (167 avions,
 - `app.py` : point d'entrée unique de paiement `_stripe_checkout` (refuse sans commande acceptée), parcours de commande, inscription avec acceptation, pages publiques `?legal=`, pied de page, « My purchases and documents », panneau admin. Actif seulement avec `LEGAL_FLOW_ENABLED=1`.
 - `menkor_access.py`, `menkor_market.py` : paramètre optionnel `allowed_order_ids` (aucun effet s'il est absent). Calculs de coûts inchangés.
 - 92 nouveaux tests ; suite complète : mêmes échecs avant et après (données absentes du bac à sable). Voir `LEGAL_SETUP.md`.
+
+## v30 — Market Search en euros, demande sans paiement, timeline sans prix (25 nov. 2026)
+- Market Search : prix et paiement Stripe en **EUR** (`MARKET_SEARCH_PRICE_EUR = 600` dans `app.py` — montant à confirmer), libellés « € 600 » partout ; catalogue des commandes (`menkor_orders.py`) en EUR.
+- Nouveau formulaire « Send request by e-mail (no payment) » sous la demande payante : même canal e-mail que la demande de budget, aucune commande, aucun paiement.
+- Page d'acquisition (Market → AOC) : tous les prix indicatifs retirés de la timeline (durées conservées).
+- Tests mis à jour (EUR) + 3 nouveaux.
