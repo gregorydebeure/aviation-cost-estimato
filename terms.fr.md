@@ -2,8 +2,8 @@
 key: terms
 lang: fr
 version: 1.0
-status: draft
-effective:
+status: published
+effective: 2026-11-25
 title: Conditions générales de vente et d'utilisation
 ---
 # Conditions générales de vente et d'utilisation

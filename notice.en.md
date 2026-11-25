@@ -2,8 +2,8 @@
 key: notice
 lang: en
 version: 1.0
-status: draft
-effective:
+status: published
+effective: 2026-11-25
 title: Legal notice
 ---
 # Legal notice

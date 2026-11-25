@@ -2,8 +2,8 @@
 key: terms
 lang: en
 version: 1.0
-status: draft
-effective:
+status: published
+effective: 2026-11-25
 title: Terms of Sale and Use
 ---
 # Terms of Sale and Use

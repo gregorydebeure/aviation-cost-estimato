@@ -2,8 +2,8 @@
 key: notice
 lang: fr
 version: 1.0
-status: draft
-effective:
+status: published
+effective: 2026-11-25
 title: Mentions légales
 ---
 # Mentions légales

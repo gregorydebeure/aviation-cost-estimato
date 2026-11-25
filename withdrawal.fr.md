@@ -2,8 +2,8 @@
 key: withdrawal
 lang: fr
 version: 1.0
-status: draft
-effective:
+status: published
+effective: 2026-11-25
 title: Rétractation, remboursements et résiliation
 ---
 # Rétractation, remboursements et résiliation
